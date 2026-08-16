@@ -97,6 +97,10 @@ eleventyComputed:
         <h1>{{ document.title }}</h1>
         <p class="article-description">{{ document.description }}</p>
         <div class="article-actions">
+          <button type="button" data-comments-toggle aria-expanded="false">
+            <i data-lucide="message-square-text" aria-hidden="true"></i>
+            评论
+          </button>
           <button class="edit-mode-only" type="button" data-edit-current>
             <i data-lucide="square-pen" aria-hidden="true"></i>
             编辑此页
@@ -194,6 +198,34 @@ eleventyComputed:
         <span>{{ currentUnit.articleCount }} 篇文档{% if currentUnit.codeCount %} · {{ currentUnit.codeCount }} 个源码文件{% endif %}</span>
       </div>
     {% endif %}
+  </aside>
+
+  <aside class="reader-comments" data-comments-panel aria-label="文档评论" hidden>
+    <button
+      class="comment-resize-handle"
+      type="button"
+      data-comments-resize
+      aria-label="调整评论区宽度"
+      title="调整评论区宽度"
+    ></button>
+    <header class="comments-header">
+      <div>
+        <p>Comments</p>
+        <strong data-comments-title>评论</strong>
+      </div>
+      <button
+        class="icon-button"
+        type="button"
+        data-comments-close
+        aria-label="关闭评论区"
+        title="关闭评论区"
+      >
+        <i data-lucide="x" aria-hidden="true"></i>
+      </button>
+    </header>
+    <div class="comment-composer" data-comment-composer hidden></div>
+    <div class="comments-track" data-comments-track></div>
+    <p class="comments-empty" data-comments-empty hidden>当前文档还没有评论。</p>
   </aside>
 </div>
 <div class="sidebar-backdrop" data-sidebar-backdrop></div>

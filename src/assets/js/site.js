@@ -351,6 +351,19 @@
     start();
   }
 
+  function setupReaderComments() {
+    if (!document.querySelector("[data-comments-panel]")) {
+      return;
+    }
+    const script = document.createElement("script");
+    const base = (window.GCK_CONFIG && window.GCK_CONFIG.basePath) || "";
+    const version =
+      (window.GCK_CONFIG && window.GCK_CONFIG.contentVersion) || "local";
+    script.src =
+      base + "/assets/js/reader-comments.js?v=" + encodeURIComponent(version);
+    document.body.appendChild(script);
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     refreshIcons();
     setupHeaderNavigation();
@@ -359,6 +372,7 @@
     setupTableOfContents();
     setupMermaid();
     setupKnowledgeField();
+    setupReaderComments();
     refreshIcons();
   });
 })();
