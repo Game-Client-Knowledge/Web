@@ -14,22 +14,15 @@ Both values are stored in the existing SQLite `settings` table and returned by
 
 ## New mode
 
-Entering edit mode keeps the real rendered document visible. A preview toolbar
-provides:
+The global edit-mode command immediately changes the current document from
+preview to in-place editing. No reader toolbar, formatting toolbar, local edit
+button, or save button is mounted. The editor keeps the same typography and
+layout as `.prose`.
 
-- **Edit content** to enter the in-place visual editor.
-- **Line Diff** to switch the current document between rendered Markdown and
-  full source comparison.
-- **Revert change** when the current file has a personal draft.
-
-The editor removes the source H1 from the editor body and edits the existing page
-title in place. The visual editor uses the same typography, heading spacing,
-lists, quotes, code, and table styling as `.prose`. Source files use the same
-dark code surface in preview and edit states.
-
-Closing the editor without saving restores the last saved preview. Saving runs
-the existing three-way source-preservation logic, refreshes the rendered
-preview, and exposes Diff and revert actions without leaving the page.
+Input is written to a user- and path-scoped local buffer immediately and synced
+to the server every 30 seconds when content changed. A failed or interrupted
+sync leaves the local copy available for recovery on the next visit. See
+[Seamless Reader Editing and Autosave](./seamless-reader-autosave.md).
 
 ## Old mode
 
@@ -37,7 +30,7 @@ preview, and exposes Diff and revert actions without leaving the page.
 
 - Entering reader edit mode immediately opens Toast UI.
 - The framed inline editor and its existing controls remain unchanged.
-- The new preview toolbar is not mounted.
+- Saving remains explicit.
 
 This provides an operational fallback while the new mode is the default.
 
@@ -55,9 +48,6 @@ Unchanged lines remain visible without a status color. Diff is computed locally
 with the already bundled `diff` package. The server receives no additional
 content request when the deployed raw source still matches the draft base SHA.
 
-## Revert
-
-Revert deletes only the current user's draft through the existing
-`DELETE /api/drafts/{id}` endpoint. The reader then reloads the published page
-without the draft query parameter. It never changes `main` or another user's
-workspace.
+The seamless reader does not mount a Diff toolbar. Full line Diff and draft
+removal remain available in the editor workspace, where all pending files can be
+reviewed together before submission.

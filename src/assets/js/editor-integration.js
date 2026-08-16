@@ -12,8 +12,6 @@
     editMode: window.localStorage.getItem("gck-edit-mode") === "1",
     inlinePanel: null,
     inlineEditor: null,
-    renderTimer: null,
-    previewControls: null,
     onboardingStep: 0,
     onboardingSaving: false
   };
@@ -220,7 +218,6 @@
     });
     updateAccountView();
     addDraftNavigation();
-    updateReaderPreviewControls();
   }
 
   function requestedDraftPath() {
@@ -410,13 +407,11 @@
       return item.path === sourcePath;
     });
     if (!draft) {
-      updateReaderPreviewControls();
       return;
     }
     host.dataset.editorSource = draft.path;
     if (draft.operation === "delete") {
       showDeletedDraft(host, draft);
-      updateReaderPreviewControls();
       return;
     }
     try {
@@ -430,7 +425,6 @@
         ).html;
       renderMarkdownIntoHost(host, html);
       showDraftBadge(host, draft);
-      updateReaderPreviewControls();
     } catch {
       // Invalid drafts stay available in the workspace for correction.
     }
@@ -468,7 +462,6 @@
     const onboardingOpen = openOnboardingIfNeeded();
     if (
       !onboardingOpen &&
-      readerEditMode() === "old" &&
       state.editMode &&
       state.session.authenticated &&
       state.session.can_edit &&
@@ -583,230 +576,6 @@
       : "old";
   }
 
-  function currentReaderHost() {
-    return query("[data-editor-host]");
-  }
-
-  function currentReaderPath(host) {
-    const target = host || currentReaderHost();
-    return (
-      (target && target.dataset.editorSource) ||
-      (config.editorContext && config.editorContext.sourcePath) ||
-      ""
-    );
-  }
-
-  function currentReaderDraft(host) {
-    const path = currentReaderPath(host);
-    return state.drafts.find(function (draft) {
-      return draft.path === path;
-    });
-  }
-
-  function resetReaderDiff(controls) {
-    const target = controls || state.previewControls;
-    if (!target || !target.diffActive) {
-      return;
-    }
-    const host = target.closest("[data-editor-host]");
-    const rendered = query("[data-editable-rendered]", host);
-    if (rendered && target.previewNodes) {
-      rendered.replaceChildren(...target.previewNodes);
-    }
-    target.diffActive = false;
-    target.previewNodes = null;
-    const button = query("[data-reader-diff]", target);
-    if (button) {
-      button.setAttribute("aria-pressed", "false");
-      button.classList.remove("is-active");
-    }
-  }
-
-  function renderReaderDiff(rendered, rows) {
-    const viewer = document.createElement("section");
-    viewer.className = "reader-source-diff";
-    viewer.setAttribute("aria-label", "当前文件行级差异");
-    const legend = document.createElement("div");
-    legend.className = "reader-diff-legend";
-    legend.innerHTML =
-      '<span data-status="A">新增</span>' +
-      '<span data-status="M">修改</span>' +
-      '<span data-status="D">删除</span>';
-    const source = document.createElement("div");
-    source.className = "reader-diff-source";
-    rows.forEach(function (item) {
-      const row = document.createElement("div");
-      row.className = "reader-diff-line is-" + item.type;
-      const oldNumber = document.createElement("span");
-      const newNumber = document.createElement("span");
-      const marker = document.createElement("span");
-      const code = document.createElement("code");
-      oldNumber.textContent =
-        item.oldNumber === null ? "" : String(item.oldNumber);
-      newNumber.textContent =
-        item.newNumber === null ? "" : String(item.newNumber);
-      marker.textContent = item.marker;
-      code.textContent = item.text;
-      row.append(oldNumber, newNumber, marker, code);
-      source.append(row);
-    });
-    viewer.append(legend, source);
-    rendered.replaceChildren(viewer);
-  }
-
-  async function toggleReaderDiff() {
-    const controls = state.previewControls;
-    const host = controls && controls.closest("[data-editor-host]");
-    const rendered = host && query("[data-editable-rendered]", host);
-    const draft = currentReaderDraft(host);
-    const button = controls && query("[data-reader-diff]", controls);
-    if (!controls || !rendered || !draft || !button) {
-      return;
-    }
-    if (controls.diffActive) {
-      resetReaderDiff(controls);
-      return;
-    }
-    button.disabled = true;
-    try {
-      let baseContent = "";
-      if (draft.base_sha) {
-        let source = await loadDeployedSource(draft.path);
-        if (!source || source.sha !== draft.base_sha) {
-          source = await api(
-            "/repository/file?path=" + encodeURIComponent(draft.path)
-          );
-        }
-        baseContent = source.content;
-      }
-      const rows =
-        window.GCKReaderDiff && window.GCKReaderDiff.buildLineDiff
-          ? window.GCKReaderDiff.buildLineDiff(
-              baseContent,
-              draft.operation === "delete" ? "" : draft.content
-            )
-          : [];
-      controls.previewNodes = Array.from(rendered.childNodes);
-      controls.diffActive = true;
-      renderReaderDiff(rendered, rows);
-      button.setAttribute("aria-pressed", "true");
-      button.classList.add("is-active");
-    } catch (error) {
-      feedback(query("[data-reader-preview-feedback]", controls), error.message);
-    } finally {
-      button.disabled = false;
-    }
-  }
-
-  async function revertReaderDraft() {
-    const controls = state.previewControls;
-    const host = controls && controls.closest("[data-editor-host]");
-    const draft = currentReaderDraft(host);
-    const button = controls && query("[data-reader-revert]", controls);
-    if (!draft || !button) {
-      return;
-    }
-    button.disabled = true;
-    try {
-      await discardDraft(draft);
-      const url = new URL(window.location.href);
-      url.searchParams.delete("draft");
-      window.location.assign(url.pathname + url.search + url.hash);
-    } catch (error) {
-      button.disabled = false;
-      feedback(query("[data-reader-preview-feedback]", controls), error.message);
-    }
-  }
-
-  function createReaderPreviewControls(host) {
-    const controls = document.createElement("section");
-    controls.className = "reader-preview-controls";
-    controls.dataset.readerPreviewControls = "";
-    controls.innerHTML =
-      '<div class="reader-preview-context">' +
-      '<span><i data-lucide="eye" aria-hidden="true"></i>预览状态</span>' +
-      '<code data-reader-preview-path></code>' +
-      "</div>" +
-      '<div class="reader-preview-actions">' +
-      '<button class="secondary-button" type="button" data-reader-edit>' +
-      '<i data-lucide="square-pen" aria-hidden="true"></i>编辑内容</button>' +
-      '<button class="secondary-button" type="button" data-reader-diff ' +
-      'aria-pressed="false"><i data-lucide="git-compare-arrows" ' +
-      'aria-hidden="true"></i>行级 Diff</button>' +
-      '<button class="secondary-button reader-revert-button" type="button" ' +
-      'data-reader-revert><i data-lucide="undo-2" aria-hidden="true"></i>' +
-      "撤回更改</button>" +
-      "</div>" +
-      '<div class="account-feedback" data-reader-preview-feedback ' +
-      'role="status" aria-live="polite"></div>';
-    const rendered = query("[data-editable-rendered]", host);
-    if (rendered) {
-      rendered.before(controls);
-    } else {
-      host.append(controls);
-    }
-    query("[data-reader-edit]", controls).addEventListener(
-      "click",
-      function () {
-        openInlineEditor(host);
-      }
-    );
-    query("[data-reader-diff]", controls).addEventListener(
-      "click",
-      toggleReaderDiff
-    );
-    query("[data-reader-revert]", controls).addEventListener(
-      "click",
-      revertReaderDraft
-    );
-    refreshIcons(controls);
-    return controls;
-  }
-
-  function updateReaderPreviewControls() {
-    if (!state.editMode || readerEditMode() !== "new") {
-      return;
-    }
-    const host = currentReaderHost();
-    if (!host) {
-      return;
-    }
-    let controls = state.previewControls;
-    if (!controls || !controls.isConnected) {
-      controls = createReaderPreviewControls(host);
-      state.previewControls = controls;
-    }
-    resetReaderDiff(controls);
-    const draft = currentReaderDraft(host);
-    query("[data-reader-preview-path]", controls).textContent =
-      currentReaderPath(host);
-    const editButton = query("[data-reader-edit]", controls);
-    editButton.disabled = Boolean(draft && draft.operation === "delete");
-    editButton.title = editButton.disabled
-      ? "先撤回删除标记再编辑"
-      : "编辑当前文件";
-    const diffButton = query("[data-reader-diff]", controls);
-    diffButton.hidden = !(
-      state.config && state.config.reader_diff_enabled
-    );
-    diffButton.disabled = !draft;
-    diffButton.title = draft
-      ? "显示当前草稿相对 main 的逐行差异"
-      : "保存草稿后可查看行级差异";
-    query("[data-reader-revert]", controls).hidden = !draft;
-    controls.hidden = Boolean(state.inlinePanel);
-    feedback(query("[data-reader-preview-feedback]", controls), "");
-  }
-
-  function removeReaderPreviewControls() {
-    if (!state.previewControls) {
-      return;
-    }
-    resetReaderDiff(state.previewControls);
-    state.previewControls.remove();
-    state.previewControls = null;
-  }
-
   function applyEditMode(enabled) {
     state.editMode = Boolean(enabled);
     document.body.classList.toggle("is-edit-mode", state.editMode);
@@ -835,11 +604,6 @@
         : '<i data-lucide="square-pen" aria-hidden="true"></i><span data-edit-mode-label>编辑</span>';
       refreshIcons(button);
     }
-    if (state.editMode && readerEditMode() === "new") {
-      updateReaderPreviewControls();
-    } else {
-      removeReaderPreviewControls();
-    }
   }
 
   async function openCurrentEditor() {
@@ -867,41 +631,47 @@
       (kind ? " is-" + kind : "");
   }
 
+  function editorBufferApi() {
+    return window.GCKEditorBuffer || null;
+  }
+
+  function editorUserId() {
+    return (
+      state.session &&
+      state.session.authenticated &&
+      state.session.user.id
+    );
+  }
+
+  function readEditorBuffer(path) {
+    const buffers = editorBufferApi();
+    const userId = editorUserId();
+    if (!buffers || !userId) {
+      return null;
+    }
+    return buffers.read(window.localStorage, userId, path);
+  }
+
+  function removeEditorBuffer(path) {
+    const buffers = editorBufferApi();
+    const userId = editorUserId();
+    if (buffers && userId) {
+      buffers.remove(window.localStorage, userId, path);
+    }
+  }
+
   function createInlinePanel(host, sourcePath) {
     const panel = document.createElement("section");
     panel.className = "inline-editor";
-    panel.classList.toggle("is-modern", readerEditMode() === "new");
+    const modern = readerEditMode() === "new";
+    panel.classList.toggle("is-modern", modern);
     panel.classList.toggle(
       "is-compact",
       Boolean(host.closest(".module-page-shell"))
     );
     panel.dataset.inlineEditor = "";
+    panel.hidden = modern;
     document.body.classList.add("has-inline-editor");
-
-    const toolbar = document.createElement("div");
-    toolbar.className = "inline-editor-toolbar";
-    const path = document.createElement("span");
-    path.className = "inline-editor-path";
-    path.textContent = sourcePath;
-    const actions = document.createElement("div");
-    actions.className = "inline-editor-actions";
-
-    const remove = document.createElement("button");
-    remove.className = "danger-button";
-    remove.type = "button";
-    remove.dataset.inlineDelete = "";
-    remove.textContent = "删除文件";
-    const close = document.createElement("button");
-    close.className = "secondary-button";
-    close.type = "button";
-    close.dataset.inlineClose = "";
-    close.textContent = readerEditMode() === "new" ? "返回预览" : "关闭";
-    const save = document.createElement("button");
-    save.className = "primary-button";
-    save.dataset.inlineSave = "";
-    save.textContent = "保存草稿";
-    actions.append(remove, close, save);
-    toolbar.append(path, actions);
 
     const visualEditor = document.createElement("div");
     visualEditor.dataset.visualEditor = "";
@@ -912,60 +682,98 @@
     const status = document.createElement("div");
     status.className = "inline-editor-feedback";
     status.dataset.inlineFeedback = "";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
     status.textContent = "正在加载源文件…";
-    panel.append(toolbar, visualEditor, textarea, status);
+    if (!modern) {
+      const toolbar = document.createElement("div");
+      toolbar.className = "inline-editor-toolbar";
+      const path = document.createElement("span");
+      path.className = "inline-editor-path";
+      path.textContent = sourcePath;
+      const actions = document.createElement("div");
+      actions.className = "inline-editor-actions";
+      const remove = document.createElement("button");
+      remove.className = "danger-button";
+      remove.type = "button";
+      remove.dataset.inlineDelete = "";
+      remove.textContent = "删除文件";
+      const close = document.createElement("button");
+      close.className = "secondary-button";
+      close.type = "button";
+      close.dataset.inlineClose = "";
+      close.textContent = "关闭";
+      const save = document.createElement("button");
+      save.className = "primary-button";
+      save.dataset.inlineSave = "";
+      save.textContent = "保存草稿";
+      actions.append(remove, close, save);
+      toolbar.append(path, actions);
+      panel.append(toolbar);
+    }
+    panel.append(visualEditor, textarea, status);
 
     const rendered = query("[data-editable-rendered]", host);
     if (rendered) {
-      if (panel.classList.contains("is-modern")) {
-        panel.previewHtml = rendered.innerHTML;
-      }
       rendered.before(panel);
-      rendered.hidden = true;
+      if (!modern) {
+        rendered.hidden = true;
+      }
     } else {
       host.append(panel);
-    }
-    if (state.previewControls) {
-      resetReaderDiff(state.previewControls);
-      state.previewControls.hidden = true;
     }
     return panel;
   }
 
-  function closeInlineEditor() {
+  async function closeInlineEditor(options) {
     if (!state.inlinePanel) {
       return;
     }
-    const host = state.inlinePanel.closest("[data-editor-host]");
+    const panel = state.inlinePanel;
+    const settings = options || {};
+    const host = panel.closest("[data-editor-host]");
     const rendered = query("[data-editable-rendered]", host);
-    if (rendered) {
-      if (
-        state.inlinePanel.classList.contains("is-modern") &&
-        state.inlinePanel.previewHtml !== undefined
-      ) {
-        rendered.innerHTML = state.inlinePanel.previewHtml;
-        refreshIcons(rendered);
+    panel.closing = true;
+    if (panel.classList.contains("is-modern") && panel.ready) {
+      const buffered = cacheInlineEditor(panel);
+      panel.inert = true;
+      if (panel.titleElement) {
+        panel.titleElement.removeAttribute("contenteditable");
+        panel.titleElement.removeAttribute("role");
+        panel.titleElement.removeAttribute("aria-label");
       }
+      if (
+        settings.renderLatest !== false &&
+        buffered &&
+        panel.dataset.path.toLowerCase().endsWith(".md")
+      ) {
+        try {
+          const preview = await api("/preview", {
+            method: "POST",
+            body: JSON.stringify({ content: buffered.serialized })
+          });
+          renderMarkdownIntoHost(host, preview.html);
+        } catch {
+          // The latest local buffer remains available for the next edit session.
+        }
+      }
+    }
+    window.clearInterval(panel.syncTimer);
+    if (rendered) {
       rendered.hidden = false;
     }
-    if (state.inlinePanel.titleElement) {
-      state.inlinePanel.titleElement.removeAttribute("contenteditable");
-      state.inlinePanel.titleElement.removeAttribute("role");
-      state.inlinePanel.titleElement.removeAttribute("aria-label");
-      state.inlinePanel.titleElement.textContent =
-        state.inlinePanel.savedTitle ||
-        state.inlinePanel.originalTitle ||
-        state.inlinePanel.titleElement.textContent;
+    if (panel.titleElement && !panel.inert) {
+      panel.titleElement.removeAttribute("contenteditable");
+      panel.titleElement.removeAttribute("role");
+      panel.titleElement.removeAttribute("aria-label");
     }
     if (state.inlineEditor) {
       state.inlineEditor.destroy();
       state.inlineEditor = null;
     }
-    window.clearTimeout(state.renderTimer);
-    state.inlinePanel.remove();
+    panel.remove();
     state.inlinePanel = null;
     document.body.classList.remove("has-inline-editor");
-    updateReaderPreviewControls();
   }
 
   function renderMarkdownIntoHost(host, html) {
@@ -993,21 +801,6 @@
     prose.append(template.content);
     rendered.replaceChildren(prose);
     rendered.dataset.draftOverlay = "true";
-  }
-
-  function scheduleLiveRender(host, markdown) {
-    window.clearTimeout(state.renderTimer);
-    state.renderTimer = window.setTimeout(async function () {
-      try {
-        const result = await api("/preview", {
-          method: "POST",
-          body: JSON.stringify({ content: markdown })
-        });
-        renderMarkdownIntoHost(host, result.html);
-      } catch {
-        // Saving still performs server-side validation and reports the error.
-      }
-    }, 250);
   }
 
   function splitMarkdownDocument(content) {
@@ -1048,15 +841,13 @@
       return;
     }
     panel.titleElement = title;
-    panel.originalTitle = parts.title;
-    panel.savedTitle = parts.title;
     title.textContent = parts.title;
     title.contentEditable = "plaintext-only";
     title.setAttribute("role", "textbox");
     title.setAttribute("aria-label", "文档标题");
     title.addEventListener("input", function () {
-      if (state.inlinePanel === panel) {
-        scheduleLiveRender(host, inlineContent(panel));
+      if (state.inlinePanel === panel && panel.ready) {
+        cacheInlineEditor(panel);
       }
     });
     title.addEventListener("keydown", function (event) {
@@ -1068,7 +859,6 @@
   }
 
   function initializeVisualEditor(panel, host, content) {
-    const initializationStartedAt = performance.now();
     const mount = query("[data-visual-editor]", panel);
     const textarea = query("[data-inline-input]", panel);
     const modern = readerEditMode() === "new";
@@ -1080,11 +870,11 @@
       setupModernTitle(panel, host, parts);
     }
     const editorValue = modern ? parts.body : content;
+    panel.originalContent = content;
     if (!window.toastui || !window.toastui.Editor) {
       mount.hidden = true;
       textarea.hidden = false;
       textarea.value = editorValue;
-      panel.originalContent = content;
       panel.canonicalContent = modern
         ? assembleMarkdownDocument(parts, parts.title, editorValue)
         : content;
@@ -1094,30 +884,29 @@
     mount.hidden = false;
     state.inlineEditor = new window.toastui.Editor({
       el: mount,
-      height: "600px",
+      height: modern ? "auto" : "600px",
       initialEditType: "wysiwyg",
       previewStyle: "tab",
       initialValue: editorValue,
       usageStatistics: false,
-      autofocus: true,
-      toolbarItems: [
-        ["heading", "bold", "italic"],
-        ["hr", "quote"],
-        ["ul", "ol", "task"],
-        ["table", "link"],
-        ["code", "codeblock"]
-      ],
+      autofocus: !modern,
+      toolbarItems: modern
+        ? []
+        : [
+            ["heading", "bold", "italic"],
+            ["hr", "quote"],
+            ["ul", "ol", "task"],
+            ["table", "link"],
+            ["code", "codeblock"]
+          ],
       events: {
         change: function () {
-          const serializedContent = inlineContent(panel);
-          // #region debug-point E:reader-change
-          fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"E",location:"editor-integration.js:change",msg:"[DEBUG] Reader editor change serialization",data:{inputLength:content.length,outputLength:serializedContent.length,same:serializedContent===content},ts:Date.now()})}).catch(()=>{});
-          // #endregion
-          scheduleLiveRender(host, serializedContent);
+          if (panel.ready && panel.classList.contains("is-modern")) {
+            cacheInlineEditor(panel);
+          }
         }
       }
     });
-    panel.originalContent = content;
     panel.canonicalContent = modern
       ? assembleMarkdownDocument(
           parts,
@@ -1125,12 +914,6 @@
           state.inlineEditor.getMarkdown()
         )
       : state.inlineEditor.getMarkdown();
-    // #region debug-point H:reader-editor-layout
-    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"H",location:"editor-integration.js:initializeVisualEditor","msg":"[DEBUG] Reader editor initialized","data":{sourceLength:content.length,initializationMs:Math.round((performance.now()-initializationStartedAt)*10)/10,totalOpenMs:Math.round((performance.now()-(panel.openStartedAt||initializationStartedAt))*10)/10},ts:Date.now()})}).catch(()=>{});
-    // #endregion
-    // #region debug-point C:reader-initial-serialization
-    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"C",location:"editor-integration.js:initializeVisualEditor",msg:"[DEBUG] Reader initial Markdown serialization",data:(()=>{const output=state.inlineEditor.getMarkdown();return{inputLength:content.length,outputLength:output.length,same:output===content,escapedHeadings:(output.match(/^## \\d+\\\\\\./gm)||[]).length,dashBullets:(output.match(/^- /gm)||[]).length,starBullets:(output.match(/^\\* /gm)||[]).length,compactTable:output.includes("|---|"),spacedTable:output.includes("| --- |")}})(),ts:Date.now()})}).catch(()=>{});
-    // #endregion
   }
 
   function inlineContent(panel) {
@@ -1147,6 +930,173 @@
       return body;
     }
     return body;
+  }
+
+  function serializedInlineContent(panel) {
+    const canonical = inlineContent(panel);
+    const serialized =
+      state.inlineEditor &&
+      window.GCKMarkdown &&
+      panel.originalContent !== undefined
+        ? window.GCKMarkdown.preserveSourceFormatting(
+            panel.originalContent,
+            panel.canonicalContent,
+            canonical
+          )
+        : canonical;
+    return { canonical, serialized };
+  }
+
+  function setEditorSyncState(panel, value, message, kind) {
+    panel.dataset.syncState = value;
+    document.body.dataset.editorSyncState = value;
+    setInlineFeedback(panel, message, kind);
+  }
+
+  function cacheInlineEditor(panel) {
+    if (!panel.ready) {
+      return null;
+    }
+    const path = panel.dataset.path;
+    const content = serializedInlineContent(panel);
+    panel.currentCanonical = content.canonical;
+    panel.bufferedContent = content.serialized;
+    if (content.serialized === panel.lastSyncedContent) {
+      removeEditorBuffer(path);
+      setEditorSyncState(panel, "synced", "所有更改已同步。", "success");
+      return content;
+    }
+
+    const buffers = editorBufferApi();
+    const userId = editorUserId();
+    const cached =
+      buffers &&
+      userId &&
+      buffers.write(window.localStorage, userId, path, {
+        content: content.serialized,
+        baseSha: panel.dataset.baseSha || null,
+        serverRevision: panel.serverRevision,
+        updatedAt: Date.now()
+      });
+    setEditorSyncState(
+      panel,
+      cached ? "local" : "memory",
+      cached
+        ? "更改已保存到本地缓存。"
+        : "本地缓存不可用，将尽快同步到服务器。",
+      cached ? "success" : "error"
+    );
+    if (!cached && !panel.syncPromise) {
+      window.setTimeout(function () {
+        syncInlineBuffer(panel);
+      }, 0);
+    }
+    return content;
+  }
+
+  function replaceDraft(saved) {
+    const index = state.drafts.findIndex(function (item) {
+      return item.path === saved.path;
+    });
+    if (index >= 0) {
+      state.drafts[index] = saved;
+    } else {
+      state.drafts.push(saved);
+    }
+  }
+
+  async function syncInlineBuffer(panel, options) {
+    if (
+      !panel ||
+      !panel.ready ||
+      !panel.classList.contains("is-modern")
+    ) {
+      return null;
+    }
+    const content = cacheInlineEditor(panel);
+    if (!content || content.serialized === panel.lastSyncedContent) {
+      return null;
+    }
+    if (panel.syncPromise) {
+      return panel.syncPromise;
+    }
+
+    const path = panel.dataset.path;
+    const contentAtRequest = content.serialized;
+    const canonicalAtRequest = content.canonical;
+    setEditorSyncState(panel, "syncing", "正在同步更改…");
+    panel.syncPromise = api("/drafts", {
+      method: "PUT",
+      keepalive: Boolean(options && options.keepalive),
+      body: JSON.stringify({
+        path,
+        content: contentAtRequest,
+        base_sha: panel.dataset.baseSha || null,
+        operation: "upsert"
+      })
+    })
+      .then(function (saved) {
+        replaceDraft(saved);
+        panel.dataset.draftId = String(saved.id);
+        panel.serverRevision = saved.revision;
+        panel.lastSyncedContent = saved.content;
+        panel.originalContent = saved.content;
+        panel.canonicalContent = canonicalAtRequest;
+        if (panel.titleElement) {
+          panel.documentParts = splitMarkdownDocument(saved.content);
+        }
+        if (panel.bufferedContent === contentAtRequest) {
+          removeEditorBuffer(path);
+          setEditorSyncState(
+            panel,
+            "synced",
+            "更改已同步到服务器。",
+            "success"
+          );
+        } else if (state.inlinePanel === panel && !panel.closing) {
+          cacheInlineEditor(panel);
+        } else {
+          document.body.dataset.editorSyncState = "local";
+        }
+        updateAccountView();
+        addDraftNavigation();
+        const host = panel.closest("[data-editor-host]");
+        if (host) {
+          showDraftBadge(host, saved);
+        }
+        return saved;
+      })
+      .catch(function (error) {
+        setEditorSyncState(
+          panel,
+          "local",
+          error.message + "；更改仍保存在本地缓存。",
+          "error"
+        );
+        return null;
+      })
+      .finally(function () {
+        panel.syncPromise = null;
+      });
+    return panel.syncPromise;
+  }
+
+  function beginInlineAutoSync(panel) {
+    const buffers = editorBufferApi();
+    const interval = buffers ? buffers.AUTO_SYNC_MS : 30000;
+    window.clearInterval(panel.syncTimer);
+    panel.syncTimer = window.setInterval(function () {
+      syncInlineBuffer(panel);
+    }, interval);
+  }
+
+  function activateInlinePanel(panel, host) {
+    const rendered = query("[data-editable-rendered]", host);
+    panel.hidden = false;
+    panel.classList.add("is-ready");
+    if (rendered) {
+      rendered.hidden = true;
+    }
   }
 
   async function loadDeployedSource(path) {
@@ -1187,16 +1137,15 @@
     if (!host || !sourcePath) {
       return;
     }
-    closeInlineEditor();
+    await closeInlineEditor();
     const panel = createInlinePanel(host, sourcePath);
-    panel.openStartedAt = performance.now();
+    panel.dataset.path = sourcePath;
     state.inlinePanel = panel;
     const textarea = query("[data-inline-input]", panel);
     try {
       const draft = state.drafts.find(function (item) {
         return item.path === sourcePath;
       });
-      const sourceStartedAt = performance.now();
       let source = draft
         ? { ...draft, sourceType: "draft" }
         : await loadDeployedSource(sourcePath);
@@ -1206,56 +1155,78 @@
         );
         source.sourceType = "repository-api";
       }
-      // #region debug-point G:reader-source-load
-      fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"G",location:"editor-integration.js:openInlineEditor","msg":"[DEBUG] Reader source loaded","data":{sourceType:source.sourceType,sourceMs:Math.round((performance.now()-sourceStartedAt)*10)/10,sourceLength:source.content.length,hasBaseSha:Boolean(source.base_sha||source.sha)},ts:Date.now()})}).catch(()=>{});
-      // #endregion
-      panel.dataset.baseSha = source.base_sha || source.sha || "";
+      const cached = readEditorBuffer(sourcePath);
+      const editorContent = cached ? cached.content : source.content;
+      panel.dataset.baseSha =
+        (cached && cached.baseSha) ||
+        source.base_sha ||
+        source.sha ||
+        "";
       panel.dataset.draftId = draft ? String(draft.id) : "";
-      query("[data-inline-delete]", panel).textContent =
-        panel.dataset.baseSha ? "删除文件" : "删除新增文件";
+      panel.serverRevision = draft ? draft.revision : 0;
+      panel.lastSyncedContent = source.content;
+      panel.bufferedContent = editorContent;
+      const deleteButton = query("[data-inline-delete]", panel);
+      if (deleteButton) {
+        deleteButton.textContent =
+          panel.dataset.baseSha ? "删除文件" : "删除新增文件";
+      }
       if (sourcePath.toLowerCase().endsWith(".md")) {
-        initializeVisualEditor(panel, host, source.content);
+        initializeVisualEditor(panel, host, editorContent);
       } else {
         query("[data-visual-editor]", panel).hidden = true;
         textarea.hidden = false;
-        textarea.value = source.content;
-        panel.originalContent = source.content;
-        panel.canonicalContent = source.content;
+        textarea.value = editorContent;
+        panel.originalContent = editorContent;
+        panel.canonicalContent = editorContent;
+      }
+      panel.ready = true;
+      textarea.addEventListener("input", function () {
+        if (panel.classList.contains("is-modern")) {
+          cacheInlineEditor(panel);
+        }
+      });
+      if (cached && cached.content !== source.content) {
+        setEditorSyncState(
+          panel,
+          "local",
+          "已从本地缓存恢复尚未同步的更改。",
+          "success"
+        );
+      } else {
+        removeEditorBuffer(sourcePath);
+        setEditorSyncState(
+          panel,
+          "synced",
+          draft ? "已加载服务器更改。" : "已加载 main 分支源文件。",
+          "success"
+        );
+      }
+      activateInlinePanel(panel, host);
+      if (panel.classList.contains("is-modern")) {
+        beginInlineAutoSync(panel);
+      } else {
         textarea.focus();
       }
-      setInlineFeedback(
-        panel,
-        draft ? "已加载个人草稿。" : "已加载 main 分支源文件。"
-      );
     } catch (error) {
+      panel.hidden = false;
       setInlineFeedback(panel, error.message, "error");
     }
   }
 
   async function saveInlineEditor(panel) {
     const host = panel.closest("[data-editor-host]");
-    const path = host.dataset.editorSource;
+    const path = panel.dataset.path || host.dataset.editorSource;
     const button = query("[data-inline-save]", panel);
+    if (!button) {
+      return syncInlineBuffer(panel);
+    }
     button.disabled = true;
     try {
-      const canonicalContent = inlineContent(panel);
-      const serializedContent =
-        state.inlineEditor &&
-        window.GCKMarkdown &&
-        panel.originalContent !== undefined
-          ? window.GCKMarkdown.preserveSourceFormatting(
-              panel.originalContent,
-              panel.canonicalContent,
-              canonicalContent
-            )
-          : canonicalContent;
-      // #region debug-point D:reader-save-payload
-      fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"D",location:"editor-integration.js:saveInlineEditor",msg:"[DEBUG] Reader draft save payload",data:{originalLength:panel.originalContent.length,canonicalLength:canonicalContent.length,outputLength:serializedContent.length,canonicalSame:canonicalContent===panel.canonicalContent,sourceSame:serializedContent===panel.originalContent,escapedHeadings:(serializedContent.match(/^## \\d+\\\\\\./gm)||[]).length,dashBullets:(serializedContent.match(/^- /gm)||[]).length,starBullets:(serializedContent.match(/^\\* /gm)||[]).length,compactTable:serializedContent.includes("|---|"),spacedTable:serializedContent.includes("| --- |")},ts:Date.now()})}).catch(()=>{});
-      // #endregion
+      const content = serializedInlineContent(panel);
+      const canonicalContent = content.canonical;
+      const serializedContent = content.serialized;
       if (serializedContent === panel.originalContent) {
-        // #region debug-point F:reader-noop-skipped
-        fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"F",location:"editor-integration.js:saveInlineEditor","msg":"[DEBUG] Reader unchanged save skipped","data":{sourceSame:true,apiCalled:false,hadDraft:Boolean(panel.dataset.draftId)},ts:Date.now()})}).catch(()=>{});
-        // #endregion
         setInlineFeedback(
           panel,
           "没有检测到需要保存的更改。",
@@ -1272,36 +1243,16 @@
           operation: "upsert"
         })
       });
-      // #region debug-point F:reader-noop-created
-      fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"F",location:"editor-integration.js:saveInlineEditor","msg":"[DEBUG] Reader changed save completed","data":{sourceSame:false,apiCalled:true,savedDraftId:saved.id,hadDraft:Boolean(panel.dataset.draftId)},ts:Date.now()})}).catch(()=>{});
-      // #endregion
-      const index = state.drafts.findIndex(function (item) {
-        return item.path === saved.path;
-      });
-      if (index >= 0) {
-        state.drafts[index] = saved;
-      } else {
-        state.drafts.push(saved);
-      }
+      replaceDraft(saved);
       panel.dataset.draftId = String(saved.id);
       panel.originalContent = saved.content;
       panel.canonicalContent = canonicalContent;
-      if (panel.titleElement) {
-        panel.savedTitle = panel.titleElement.textContent.trim();
-        panel.originalTitle = panel.savedTitle;
-        panel.documentParts = splitMarkdownDocument(saved.content);
-      }
       if (path.toLowerCase().endsWith(".md")) {
-        window.clearTimeout(state.renderTimer);
         const preview = await api("/preview", {
           method: "POST",
           body: JSON.stringify({ content: saved.content })
         });
         renderMarkdownIntoHost(host, preview.html);
-        if (panel.classList.contains("is-modern")) {
-          const rendered = query("[data-editable-rendered]", host);
-          panel.previewHtml = rendered ? rendered.innerHTML : undefined;
-        }
       }
       setInlineFeedback(
         panel,
@@ -1311,7 +1262,6 @@
       updateAccountView();
       addDraftNavigation();
       showDraftBadge(host, saved);
-      updateReaderPreviewControls();
     } catch (error) {
       setInlineFeedback(panel, error.message, "error");
     } finally {
@@ -1321,7 +1271,7 @@
 
   async function deleteInlineFile(panel) {
     const host = panel.closest("[data-editor-host]");
-    const path = host.dataset.editorSource;
+    const path = panel.dataset.path || host.dataset.editorSource;
     const existing = state.drafts.find(function (item) {
       return item.path === path;
     });
@@ -1337,6 +1287,7 @@
         if (existing) {
           await discardDraft(existing);
         }
+        removeEditorBuffer(path);
         window.location.href = "/" + path.split("/")[0] + "/";
         return;
       }
@@ -1349,15 +1300,9 @@
           operation: "delete"
         })
       });
-      const index = state.drafts.findIndex(function (item) {
-        return item.path === path;
-      });
-      if (index >= 0) {
-        state.drafts[index] = deleted;
-      } else {
-        state.drafts.push(deleted);
-      }
-      closeInlineEditor();
+      replaceDraft(deleted);
+      removeEditorBuffer(path);
+      await closeInlineEditor({ renderLatest: false });
       showDeletedDraft(host, deleted);
       updateAccountView();
       addDraftNavigation();
@@ -1531,10 +1476,10 @@
       }
       const next = !state.editMode;
       if (!next) {
-        closeInlineEditor();
+        await closeInlineEditor();
       }
       applyEditMode(next);
-      if (next && readerEditMode() === "old") {
+      if (next) {
         await openCurrentEditor();
       }
     });
@@ -1565,11 +1510,6 @@
       link.setAttribute("aria-busy", "true");
       link.textContent = "正在前往 GitHub";
       window.location.assign(link.href);
-    });
-    queryAll("[data-edit-current]").forEach(function (button) {
-      button.addEventListener("click", function () {
-        openInlineEditor(button);
-      });
     });
     queryAll("[data-create-context]").forEach(function (button) {
       button.addEventListener("click", function () {
@@ -1619,6 +1559,23 @@
     );
     query("[data-onboarding-dialog]").addEventListener("cancel", function (event) {
       event.preventDefault();
+    });
+    document.addEventListener("visibilitychange", function () {
+      if (
+        document.hidden &&
+        state.inlinePanel &&
+        state.inlinePanel.classList.contains("is-modern")
+      ) {
+        syncInlineBuffer(state.inlinePanel, { keepalive: true });
+      }
+    });
+    window.addEventListener("pagehide", function () {
+      if (
+        state.inlinePanel &&
+        state.inlinePanel.classList.contains("is-modern")
+      ) {
+        syncInlineBuffer(state.inlinePanel, { keepalive: true });
+      }
     });
   }
 

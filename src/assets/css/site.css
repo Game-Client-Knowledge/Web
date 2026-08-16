@@ -1660,19 +1660,15 @@ body.is-edit-mode .edit-mode-only {
   display: flex !important;
 }
 
-body.has-inline-editor [data-edit-current] {
+body.reader-edit-new.has-inline-editor .edit-mode-only {
   display: none !important;
 }
 
-body.reader-edit-new [data-edit-current] {
-  display: none !important;
-}
-
-body.is-edit-mode [data-editor-host] {
+body.reader-edit-old [data-editor-host] {
   position: relative;
 }
 
-body.is-edit-mode [data-editor-host]::before {
+body.reader-edit-old [data-editor-host]::before {
   position: absolute;
   z-index: 2;
   top: -10px;
@@ -1685,73 +1681,6 @@ body.is-edit-mode [data-editor-host]::before {
   content: "编辑模式";
   font-size: 10px;
   font-weight: 700;
-}
-
-.reader-preview-controls {
-  display: grid;
-  min-height: 54px;
-  margin: 2px 0 24px;
-  padding: 9px 10px;
-  background: #f8faf9;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  align-items: center;
-  gap: 12px;
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.reader-preview-context {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 10px;
-}
-
-.reader-preview-context > span {
-  display: inline-flex;
-  flex: 0 0 auto;
-  color: var(--teal-dark);
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-weight: 750;
-}
-
-.reader-preview-context code {
-  min-width: 0;
-  color: var(--ink-faint);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.reader-preview-actions {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.reader-preview-actions button {
-  min-height: 34px;
-  padding: 6px 9px;
-  font-size: 11px;
-}
-
-.reader-preview-actions button.is-active {
-  color: #7a5300;
-  background: var(--git-modified-soft);
-  border-color: #d8b43c;
-}
-
-.reader-preview-actions .reader-revert-button {
-  color: var(--git-deleted);
-}
-
-.reader-preview-controls > .account-feedback {
-  margin: 0;
-  grid-column: 1 / -1;
 }
 
 .inline-editor {
@@ -1842,11 +1771,16 @@ body.is-edit-mode [data-editor-host]::before {
 }
 
 .inline-editor.is-modern {
-  margin-bottom: 24px;
+  margin: 0;
   background: transparent;
   border: 0;
   border-radius: 0;
   overflow: visible;
+}
+
+.module-page-shell .inline-editor.is-modern {
+  padding: 24px 0 6px;
+  border-bottom: 1px solid var(--line);
 }
 
 .inline-editor.is-modern textarea {
@@ -1860,45 +1794,39 @@ body.is-edit-mode [data-editor-host]::before {
   line-height: 1.65;
 }
 
-.inline-editor.is-modern .inline-editor-toolbar {
-  min-height: 52px;
-  margin-bottom: 18px;
-  padding: 8px 10px;
-  background: #f8faf9;
-  border: 1px solid var(--line);
-  border-radius: 5px;
+.inline-editor.is-modern [data-visual-editor] {
+  min-height: 0;
+  background: transparent;
 }
 
 .inline-editor.is-modern .toastui-editor-defaultUI {
   background: transparent;
+  height: auto !important;
   overflow: visible;
 }
 
 .inline-editor.is-modern .toastui-editor-toolbar {
-  background: #f8faf9;
-  border: 1px solid var(--line);
-  border-radius: 5px 5px 0 0;
+  display: none !important;
 }
 
 .inline-editor.is-modern .toastui-editor-main,
 .inline-editor.is-modern .toastui-editor-ww-container {
+  height: auto !important;
+  min-height: 0;
   background: transparent;
   border: 0;
   overflow: visible;
 }
 
-.inline-editor.is-modern .toastui-editor-ww-container {
-  min-height: 560px;
-}
-
 .inline-editor.is-modern .toastui-editor-contents,
 .inline-editor.is-modern .ProseMirror {
-  min-height: 560px;
-  padding: 28px 0 44px;
+  min-height: 0;
+  padding: 0;
   color: #27312e;
-  background: #ffffff;
+  background: transparent;
   font-size: 16px;
   line-height: 1.86;
+  outline: 0;
   overflow-wrap: break-word;
 }
 
@@ -1974,9 +1902,26 @@ body.is-edit-mode [data-editor-host]::before {
   margin-top: 5px;
 }
 
+.inline-editor.is-modern .ProseMirror li > p {
+  margin-bottom: 0;
+}
+
 .inline-editor.is-modern .ProseMirror li::marker {
   color: var(--teal);
   font-weight: 700;
+}
+
+.inline-editor.is-modern .toastui-editor-contents ul > li::before {
+  background-color: var(--teal);
+}
+
+.inline-editor.is-modern .toastui-editor-contents ol > li::before {
+  color: var(--teal);
+  font-weight: 700;
+}
+
+.inline-editor.is-modern .toastui-editor-ww-code-block::after {
+  display: none;
 }
 
 .inline-editor.is-modern .ProseMirror strong {
@@ -2042,20 +1987,15 @@ body.is-edit-mode [data-editor-host]::before {
   :is(.article-header h1, .module-page-header h1)[contenteditable]:not(
     [contenteditable="false"]
   ) {
-  padding: 3px 6px;
-  margin-left: -7px;
-  border: 1px dashed #78a99c;
-  border-radius: 4px;
   outline: 0;
+  cursor: text;
 }
 
 .reader-edit-new
   :is(.article-header h1, .module-page-header h1)[contenteditable]:not(
     [contenteditable="false"]
   ):focus {
-  background: #f5faf8;
-  border-style: solid;
-  box-shadow: 0 0 0 3px rgba(22, 123, 109, 0.1);
+  outline: 0;
 }
 
 .inline-editor-preview {
@@ -2076,6 +2016,19 @@ body.is-edit-mode [data-editor-host]::before {
 .inline-editor-feedback.is-error {
   color: #9a3412;
   background: var(--orange-soft);
+}
+
+.inline-editor.is-modern .inline-editor-feedback {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .inline-editor-feedback.is-success {
@@ -4213,30 +4166,6 @@ body.has-comments-open .reader-comments {
     flex-wrap: wrap;
   }
 
-  .reader-preview-controls {
-    align-items: stretch;
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .reader-preview-context {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 3px;
-  }
-
-  .reader-preview-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .reader-preview-actions button {
-    width: 100%;
-  }
-
-  .reader-preview-actions .reader-revert-button {
-    grid-column: 1 / -1;
-  }
-
   .inline-editor-toolbar {
     align-items: stretch;
     flex-direction: column;
@@ -4255,7 +4184,7 @@ body.has-comments-open .reader-comments {
 
   .inline-editor.is-modern .toastui-editor-contents,
   .inline-editor.is-modern .ProseMirror {
-    padding: 22px 0 36px;
+    padding: 0;
     font-size: 15px;
     line-height: 1.82;
   }

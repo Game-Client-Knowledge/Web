@@ -73,6 +73,9 @@ async function canvasMetrics(page, selector) {
 }
 
 async function inspectPage(browser, scenario) {
+  let allowDraftWrites = true;
+  let draftAttempts = 0;
+  const draftWrites = [];
   const visualSettings = {
     ...defaultVisualSettings,
     ...(scenario.visualSettings || {})
@@ -84,6 +87,29 @@ async function inspectPage(browser, scenario) {
     reducedMotion: scenario.reducedMotion ? "reduce" : "no-preference"
   });
   await context.route("**/editor/api/bootstrap**", (route) => {
+    const session = scenario.readerEditor
+      ? {
+          authenticated: true,
+          csrf_token: "visual-check-csrf",
+          auth_provider: "local",
+          can_edit: true,
+          edit_policy: "local_authenticated",
+          user: {
+            id: 100,
+            email: "visual@example.test",
+            username: "visual-reader",
+            github_login: null,
+            github_email: null,
+            github_verified: false,
+            email_verified: true,
+            role: "user",
+            status: "active",
+            must_change_password: false,
+            email_notifications_enabled: true,
+            needs_onboarding: false
+          }
+        }
+      : { authenticated: false };
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -98,7 +124,7 @@ async function inspectPage(browser, scenario) {
           github_submission_enabled: true,
           ...visualSettings
         },
-        session: { authenticated: false },
+        session,
         drafts: [],
         active_draft_html: null
       })
@@ -111,6 +137,30 @@ async function inspectPage(browser, scenario) {
         revision: null,
         authors: [],
         comments: []
+      })
+    });
+  });
+  await context.route("**/editor/api/drafts", async (route) => {
+    if (route.request().method() !== "PUT") {
+      return route.fallback();
+    }
+    draftAttempts += 1;
+    if (!allowDraftWrites) {
+      return route.abort("internetdisconnected");
+    }
+    const payload = route.request().postDataJSON();
+    draftWrites.push(payload);
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: 1000,
+        path: payload.path,
+        operation: "upsert",
+        content: payload.content,
+        base_sha: payload.base_sha,
+        revision: draftWrites.length,
+        created_at: "2026-08-17T00:00:00Z",
+        updated_at: "2026-08-17T00:00:00Z"
       })
     });
   });
@@ -374,6 +424,155 @@ async function inspectPage(browser, scenario) {
     }
   }
 
+  if (scenario.readerEditor) {
+    const preview = await page.evaluate(() => {
+      const prose = document.querySelector("[data-editable-rendered] .prose");
+      const heading = prose && prose.querySelector("h2");
+      if (!prose || !heading) return null;
+      return {
+        fontSize: getComputedStyle(prose).fontSize,
+        lineHeight: getComputedStyle(prose).lineHeight,
+        headingSize: getComputedStyle(heading).fontSize,
+        headingTop: heading.getBoundingClientRect().top
+      };
+    });
+    await page.locator("[data-edit-mode-trigger]").click();
+    await page
+      .locator(".toastui-editor-ww-container .ProseMirror h2")
+      .first()
+      .waitFor({ state: "attached" });
+    const editing = await page.evaluate(() => {
+      const panel = document.querySelector(".inline-editor.is-modern");
+      const prose = panel?.querySelector(
+        ".toastui-editor-ww-container .ProseMirror"
+      );
+      const heading = prose?.querySelector("h2");
+      const toolbar = panel?.querySelector(".toastui-editor-toolbar");
+      if (!panel || !prose || !heading) return null;
+      return {
+        fontSize: getComputedStyle(prose).fontSize,
+        lineHeight: getComputedStyle(prose).lineHeight,
+        headingSize: getComputedStyle(heading).fontSize,
+        headingTop: heading.getBoundingClientRect().top,
+        inlineToolbar: panel.querySelectorAll(".inline-editor-toolbar").length,
+        saveButtons: panel.querySelectorAll("[data-inline-save]").length,
+        previewToolbar: document.querySelectorAll(".reader-preview-controls")
+          .length,
+        localEditButtons: document.querySelectorAll("[data-edit-current]")
+          .length,
+        toastToolbar: toolbar ? getComputedStyle(toolbar).display : "absent",
+        visibleButtons: Array.from(panel.querySelectorAll("button")).filter(
+          (button) => button.offsetWidth || button.offsetHeight
+        ).length,
+        overflow:
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth
+      };
+    });
+    assert(preview && editing, `${scenario.name}: reader editor did not mount`);
+    if (preview && editing) {
+      assert(
+        preview.fontSize === editing.fontSize &&
+          preview.lineHeight === editing.lineHeight &&
+          preview.headingSize === editing.headingSize,
+        `${scenario.name}: reader typography changed`
+      );
+      assert(
+        Math.abs(preview.headingTop - editing.headingTop) <= 2,
+        `${scenario.name}: reader content shifted vertically`
+      );
+      assert(
+        editing.inlineToolbar === 0 &&
+          editing.saveButtons === 0 &&
+          editing.previewToolbar === 0 &&
+          editing.localEditButtons === 0 &&
+          editing.visibleButtons === 0 &&
+          ["none", "absent"].includes(editing.toastToolbar),
+        `${scenario.name}: editor controls are visible`
+      );
+      assert(
+        editing.overflow === 0,
+        `${scenario.name}: editor caused horizontal overflow`
+      );
+    }
+    await page.screenshot({
+      path: path.join(outputDirectory, `${scenario.name}-editing.png`),
+      fullPage: false
+    });
+    if (scenario.readerAutosave) {
+      const heading = page
+        .locator(".toastui-editor-ww-container .ProseMirror h2")
+        .first();
+      await heading.click({ clickCount: 3 });
+      await page.keyboard.type("1.autosave-check");
+      await page.waitForTimeout(250);
+      const local = await page.evaluate(() => {
+        const item = Object.entries(localStorage).find(([key]) => {
+          return key.startsWith("gck-reader-buffer:v1:");
+        });
+        return {
+          sync: document.body.dataset.editorSyncState,
+          content: item ? JSON.parse(item[1]).content : ""
+        };
+      });
+      assert(
+        local.sync === "local" &&
+          local.content.includes("## 1.autosave-check") &&
+          !local.content.includes("## 1\\.autosave-check"),
+        `${scenario.name}: edit was not cached without heading escapes`
+      );
+      assert(
+        draftAttempts === 0,
+        `${scenario.name}: draft synced before the 30s interval`
+      );
+
+      allowDraftWrites = false;
+      await page.reload({ waitUntil: "networkidle" });
+      await page
+        .locator(".toastui-editor-ww-container .ProseMirror h2")
+        .first()
+        .waitFor({ state: "attached" });
+      const restored = await page.evaluate(() => {
+        return {
+          heading: document.querySelector(
+            ".toastui-editor-ww-container .ProseMirror h2"
+          )?.textContent,
+          sync: document.body.dataset.editorSyncState
+        };
+      });
+      assert(
+        restored.heading === "1.autosave-check" &&
+          restored.sync === "local",
+        `${scenario.name}: local edit was not restored after failed sync`
+      );
+
+      allowDraftWrites = true;
+      await page.waitForTimeout(31000);
+      const synchronized = await page.evaluate(() => {
+        return {
+          sync: document.body.dataset.editorSyncState,
+          buffers: Object.keys(localStorage).filter((key) => {
+            return key.startsWith("gck-reader-buffer:v1:");
+          }).length
+        };
+      });
+      assert(
+        draftWrites.length === 1 &&
+          draftWrites[0].content.includes("## 1.autosave-check") &&
+          !draftWrites[0].content.includes("## 1\\.autosave-check"),
+        `${scenario.name}: 30s draft sync is invalid`
+      );
+      assert(
+        synchronized.sync === "synced" && synchronized.buffers === 0,
+        `${scenario.name}: synchronized local buffer was not cleared`
+      );
+    }
+    assert(
+      runtimeErrors.length === 0,
+      `${scenario.name}: editor browser errors: ${runtimeErrors.join(" | ")}`
+    );
+  }
+
   if (scenario.knowledgeField) {
     const field = await page.locator("[data-knowledge-field]").evaluate(
       (canvas) => {
@@ -597,6 +796,21 @@ async function inspectPage(browser, scenario) {
       ambient: { type: "reader", style: "blueprint" },
       pointerEffect: false,
       reducedMotion: true
+    },
+    {
+      name: "reader-editor-desktop",
+      route: "/knowledge/ecs/01-fundamentals/",
+      viewport: { width: 1440, height: 1000 },
+      readerEditor: true,
+      readerAutosave: true,
+      visualSettings: { pointer_effect_enabled: false }
+    },
+    {
+      name: "reader-editor-mobile",
+      route: "/knowledge/ecs/01-fundamentals/",
+      viewport: { width: 390, height: 844 },
+      readerEditor: true,
+      visualSettings: { pointer_effect_enabled: false }
     },
     {
       name: "mermaid-desktop",
