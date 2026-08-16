@@ -667,6 +667,8 @@
       mount.hidden = true;
       textarea.hidden = false;
       textarea.value = content;
+      panel.originalContent = content;
+      panel.canonicalContent = content;
       return;
     }
     textarea.hidden = true;
@@ -688,10 +690,19 @@
       ],
       events: {
         change: function () {
-          scheduleLiveRender(host, state.inlineEditor.getMarkdown());
+          const serializedContent = state.inlineEditor.getMarkdown();
+          // #region debug-point E:reader-change
+          fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"E",location:"editor-integration.js:change",msg:"[DEBUG] Reader editor change serialization",data:{inputLength:content.length,outputLength:serializedContent.length,same:serializedContent===content},ts:Date.now()})}).catch(()=>{});
+          // #endregion
+          scheduleLiveRender(host, serializedContent);
         }
       }
     });
+    panel.originalContent = content;
+    panel.canonicalContent = state.inlineEditor.getMarkdown();
+    // #region debug-point C:reader-initial-serialization
+    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"C",location:"editor-integration.js:initializeVisualEditor",msg:"[DEBUG] Reader initial Markdown serialization",data:(()=>{const output=state.inlineEditor.getMarkdown();return{inputLength:content.length,outputLength:output.length,same:output===content,escapedHeadings:(output.match(/^## \\d+\\\\\\./gm)||[]).length,dashBullets:(output.match(/^- /gm)||[]).length,starBullets:(output.match(/^\\* /gm)||[]).length,compactTable:output.includes("|---|"),spacedTable:output.includes("| --- |")}})(),ts:Date.now()})}).catch(()=>{});
+    // #endregion
   }
 
   function inlineContent(panel) {
@@ -754,11 +765,25 @@
     const button = query("[data-inline-save]", panel);
     button.disabled = true;
     try {
+      const canonicalContent = inlineContent(panel);
+      const serializedContent =
+        state.inlineEditor &&
+        window.GCKMarkdown &&
+        panel.originalContent !== undefined
+          ? window.GCKMarkdown.preserveSourceFormatting(
+              panel.originalContent,
+              panel.canonicalContent,
+              canonicalContent
+            )
+          : canonicalContent;
+      // #region debug-point D:reader-save-payload
+      fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"D",location:"editor-integration.js:saveInlineEditor",msg:"[DEBUG] Reader draft save payload",data:{originalLength:panel.originalContent.length,canonicalLength:canonicalContent.length,outputLength:serializedContent.length,canonicalSame:canonicalContent===panel.canonicalContent,sourceSame:serializedContent===panel.originalContent,escapedHeadings:(serializedContent.match(/^## \\d+\\\\\\./gm)||[]).length,dashBullets:(serializedContent.match(/^- /gm)||[]).length,starBullets:(serializedContent.match(/^\\* /gm)||[]).length,compactTable:serializedContent.includes("|---|"),spacedTable:serializedContent.includes("| --- |")},ts:Date.now()})}).catch(()=>{});
+      // #endregion
       const saved = await api("/drafts", {
         method: "PUT",
         body: JSON.stringify({
           path: path,
-          content: inlineContent(panel),
+          content: serializedContent,
           base_sha: panel.dataset.baseSha || null,
           operation: "upsert"
         })
@@ -772,6 +797,8 @@
         state.drafts.push(saved);
       }
       panel.dataset.draftId = String(saved.id);
+      panel.originalContent = saved.content;
+      panel.canonicalContent = canonicalContent;
       if (path.toLowerCase().endsWith(".md")) {
         scheduleLiveRender(host, saved.content);
       }

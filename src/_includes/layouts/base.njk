@@ -346,6 +346,8 @@
     <script src="{{ '/assets/vendor/lucide.js' | assetUrl }}"></script>
     {% if pageKind == "document" or pageKind == "module" %}
       <script src="{{ '/assets/vendor/toastui-editor.js' | assetUrl }}"></script>
+      <script src="{{ '/assets/vendor/diff.js' | assetUrl }}"></script>
+      <script src="{{ '/assets/js/markdown-preserve.js' | assetUrl }}"></script>
     {% endif %}
     {% if
       (document and document.hasMermaid)

@@ -499,7 +499,18 @@ function showContentEditor(path, content) {
         ["code", "codeblock"]
       ]
     });
+    if (state.active) {
+      state.active.originalContent = content;
+      state.active.canonicalContent = state.visualEditor.getMarkdown();
+    }
+    // #region debug-point C:workspace-initial-serialization
+    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"C",location:"editor.js:showContentEditor",msg:"[DEBUG] Workspace initial Markdown serialization",data:(()=>{const output=state.visualEditor.getMarkdown();return{inputLength:content.length,outputLength:output.length,same:output===content,escapedHeadings:(output.match(/^## \\d+\\\\\\./gm)||[]).length,dashBullets:(output.match(/^- /gm)||[]).length,starBullets:(output.match(/^\\* /gm)||[]).length,compactTable:output.includes("|---|"),spacedTable:output.includes("| --- |")}})(),ts:Date.now()})}).catch(()=>{});
+    // #endregion
     return;
+  }
+  if (state.active) {
+    state.active.originalContent = content;
+    state.active.canonicalContent = content;
   }
   byId("visualEditor").hidden = true;
   byId("contentEditor").hidden = false;
@@ -639,11 +650,25 @@ async function saveActiveDraft() {
   if (!state.active) return;
   clearFeedback(byId("editorFeedback"));
   try {
+    const canonicalContent = editorContent();
+    const serializedContent =
+      state.visualEditor &&
+      window.GCKMarkdown &&
+      state.active.originalContent !== undefined
+        ? window.GCKMarkdown.preserveSourceFormatting(
+            state.active.originalContent,
+            state.active.canonicalContent,
+            canonicalContent
+          )
+        : canonicalContent;
+    // #region debug-point D:workspace-save-payload
+    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"D",location:"editor.js:saveActiveDraft",msg:"[DEBUG] Workspace draft save payload",data:{originalLength:state.active.originalContent.length,canonicalLength:canonicalContent.length,outputLength:serializedContent.length,canonicalSame:canonicalContent===state.active.canonicalContent,sourceSame:serializedContent===state.active.originalContent,escapedHeadings:(serializedContent.match(/^## \\d+\\\\\\./gm)||[]).length,dashBullets:(serializedContent.match(/^- /gm)||[]).length,starBullets:(serializedContent.match(/^\\* /gm)||[]).length,compactTable:serializedContent.includes("|---|"),spacedTable:serializedContent.includes("| --- |")},ts:Date.now()})}).catch(()=>{});
+    // #endregion
     const saved = await api("/drafts", {
       method: "PUT",
       body: JSON.stringify({
         path: byId("filePath").value,
-        content: editorContent(),
+        content: serializedContent,
         base_sha: state.active.baseSha,
         operation: "upsert"
       })
@@ -652,6 +677,8 @@ async function saveActiveDraft() {
     state.active.path = saved.path;
     state.active.content = saved.content;
     state.active.operation = saved.operation;
+    state.active.originalContent = saved.content;
+    state.active.canonicalContent = canonicalContent;
     feedback(byId("editorFeedback"), "草稿已保存到个人工作区", "success");
     await loadDrafts();
   } catch (error) {
@@ -900,6 +927,12 @@ byId("newTopicButton").addEventListener("click", () => {
   clearFeedback(byId("topicDialogFeedback"));
   byId("topicDialog").showModal();
 });
+// #region debug-point A:file-dialog-click
+byId("fileForm").addEventListener("click",(event)=>{const button=event.target.closest("button");if(button)fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"A",location:"editor.js:fileForm-click",msg:"[DEBUG] File dialog button clicked",data:{value:button.value,type:button.type,formValid:event.currentTarget.matches(":valid")},ts:Date.now()})}).catch(()=>{})});
+// #endregion
+// #region debug-point B:file-dialog-invalid
+byId("fileForm").addEventListener("invalid",(event)=>{fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"B",location:"editor.js:fileForm-invalid",msg:"[DEBUG] Native validation blocked file dialog",data:{field:event.target.name,validationMessage:event.target.validationMessage},ts:Date.now()})}).catch(()=>{})},true);
+// #endregion
 byId("resourceSearch").addEventListener("input", (event) => {
   state.resourceFilter = event.currentTarget.value;
   renderResources();
@@ -931,6 +964,9 @@ document.querySelectorAll("[data-workspace-view]").forEach((button) => {
 });
 
 byId("fileForm").addEventListener("submit", async (event) => {
+  // #region debug-point A:file-dialog-submit
+  fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"A",location:"editor.js:fileForm-submit",msg:"[DEBUG] File dialog submit handler entered",data:{submitterValue:event.submitter?.value,formValid:event.currentTarget.matches(":valid")},ts:Date.now()})}).catch(()=>{});
+  // #endregion
   event.preventDefault();
   if (event.submitter?.value === "cancel") {
     byId("fileDialog").close();

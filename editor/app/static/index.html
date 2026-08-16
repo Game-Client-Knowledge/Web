@@ -274,7 +274,7 @@
     <form id="fileForm" method="dialog" class="dialog-form">
       <header>
         <h2>新建内容文件</h2>
-        <button class="icon-button" value="cancel" aria-label="关闭" type="submit">×</button>
+        <button class="icon-button" value="cancel" aria-label="关闭" type="submit" formnovalidate>×</button>
       </header>
       <label>
         仓库路径
@@ -286,7 +286,7 @@
       </label>
       <div id="fileDialogFeedback" class="feedback" role="status" aria-live="polite"></div>
       <footer>
-        <button class="secondary-button" value="cancel" type="submit">取消</button>
+        <button class="secondary-button" value="cancel" type="submit" formnovalidate>取消</button>
         <button class="primary-button" value="default" type="submit">创建草稿</button>
       </footer>
     </form>
@@ -296,7 +296,7 @@
     <form id="topicForm" method="dialog" class="dialog-form">
       <header>
         <h2>新增专题或模块</h2>
-        <button class="icon-button" value="cancel" aria-label="关闭" type="submit">×</button>
+        <button class="icon-button" value="cancel" aria-label="关闭" type="submit" formnovalidate>×</button>
       </header>
       <label>
         内容类型
@@ -324,7 +324,7 @@
       </label>
       <div id="topicDialogFeedback" class="feedback" role="status" aria-live="polite"></div>
       <footer>
-        <button class="secondary-button" value="cancel" type="submit">取消</button>
+        <button class="secondary-button" value="cancel" type="submit" formnovalidate>取消</button>
         <button class="primary-button" value="default" type="submit">创建专题草稿</button>
       </footer>
     </form>
@@ -333,6 +333,7 @@
   <script src="/assets/vendor/lucide.js"></script>
   <script src="/assets/vendor/toastui-editor.js?v=3.2.2-gck1"></script>
   <script src="/assets/vendor/diff.js?v=8.0.4"></script>
+  <script src="/assets/js/markdown-preserve.js"></script>
   <script src="assets/editor.js"></script>
 </body>
 </html>

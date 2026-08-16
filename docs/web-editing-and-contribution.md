@@ -178,6 +178,10 @@ inside account settings.
 - Document pages load their `sourceRelative` file through the editor API.
 - Markdown files open in Toast UI's WYSIWYG mode. Toolbar and direct visual changes
   are serialized back to Markdown through `getMarkdown()`.
+- Existing Markdown uses a source-preserving three-way merge when saved. Toast UI's
+  initial canonical serialization is treated as a baseline, so only lines changed
+  by the user are applied to the original source; unrelated bullet, heading, table,
+  and escaping style stays untouched.
 - Source files continue to use a plain text editor.
 - Module pages edit the module `README.md`.
 - Module and topic controls prefill the correct content root and parent directory
