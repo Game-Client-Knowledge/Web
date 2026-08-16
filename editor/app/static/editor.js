@@ -272,12 +272,15 @@ function renderTreeNode(node, target, depth) {
     if (file.draft) {
       const badge = document.createElement("small");
       badge.className = "resource-change-badge";
-      badge.textContent =
+      const status =
         file.draft.operation === "delete"
           ? "D"
           : file.sha
             ? "M"
             : "A";
+      badge.dataset.status = status;
+      badge.textContent = status;
+      button.dataset.status = status;
       button.append(badge);
     }
     button.addEventListener("click", () => openResource(file.path));

@@ -224,6 +224,35 @@
       : draft.path.split("/").pop();
   }
 
+  function draftStatus(draft) {
+    return draft.operation === "delete" ? "D" : draft.base_sha ? "M" : "A";
+  }
+
+  function showDraftBadge(host, draft) {
+    const header = query(".article-header, .module-page-header", host);
+    if (!header) {
+      return;
+    }
+    const status = draftStatus(draft);
+    let badge = query("[data-draft-badge]", header);
+    if (!badge) {
+      badge = document.createElement("p");
+      badge.dataset.draftBadge = "";
+      header.append(badge);
+    }
+    badge.className =
+      "draft-page-badge " +
+      (status === "A"
+        ? "is-add"
+        : status === "M"
+          ? "is-modify"
+          : "is-delete");
+    badge.dataset.status = status;
+    badge.textContent =
+      (status === "A" ? "新增" : status === "M" ? "已修改" : "已删除") +
+      " · 个人未提交草稿";
+  }
+
   function addDraftNavigation() {
     queryAll("[data-draft-navigation]").forEach(function (element) {
       element.remove();
@@ -257,9 +286,11 @@
       title.textContent = "个人草稿";
       const list = document.createElement("ol");
       relevant.forEach(function (draft) {
+        const status = draftStatus(draft);
         const item = document.createElement("li");
         const link = document.createElement("a");
         link.href = draftLink(draft.path);
+        link.dataset.status = status;
         link.classList.toggle(
           "is-deleted-draft",
           draft.operation === "delete"
@@ -271,6 +302,11 @@
         const label = document.createElement("span");
         label.textContent = draftTitle(draft);
         link.append(label);
+        const change = document.createElement("small");
+        change.className = "draft-change-badge";
+        change.dataset.status = status;
+        change.textContent = status;
+        link.append(change);
         item.append(link);
         list.append(item);
       });
@@ -290,16 +326,18 @@
         '<i data-lucide="git-branch" aria-hidden="true"></i><strong>个人未提交内容</strong>';
       const list = document.createElement("div");
       relevant.forEach(function (draft) {
+        const status = draftStatus(draft);
         const link = document.createElement("a");
         link.className = "draft-content-link";
+        link.dataset.status = status;
         link.classList.toggle(
           "is-deleted-draft",
           draft.operation === "delete"
         );
         link.href = draftLink(draft.path);
         const change = document.createElement("span");
-        change.textContent =
-          draft.operation === "delete" ? "D" : draft.base_sha ? "M" : "A";
+        change.dataset.status = status;
+        change.textContent = status;
         const copy = document.createElement("span");
         const strong = document.createElement("strong");
         strong.textContent = draftTitle(draft);
@@ -322,6 +360,7 @@
     }
     const notice = document.createElement("section");
     notice.className = "deleted-draft-notice";
+    notice.dataset.status = "D";
     const copy = document.createElement("div");
     copy.innerHTML =
       '<i data-lucide="file-x-2" aria-hidden="true"></i>' +
@@ -338,17 +377,7 @@
     notice.append(copy, undo);
     rendered.replaceChildren(notice);
     rendered.dataset.draftOverlay = "true";
-    const header = query(".article-header, .module-page-header", host);
-    if (header) {
-      let badge = query("[data-draft-badge]", header);
-      if (!badge) {
-        badge = document.createElement("p");
-        badge.dataset.draftBadge = "";
-        header.append(badge);
-      }
-      badge.className = "draft-page-badge is-delete";
-      badge.textContent = "已删除 · 个人未提交草稿";
-    }
+    showDraftBadge(host, draft);
     refreshIcons(notice);
   }
 
@@ -381,18 +410,7 @@
           })
         ).html;
       renderMarkdownIntoHost(host, html);
-      const header = query(".article-header, .module-page-header", host);
-      if (header) {
-        let badge = query("[data-draft-badge]", header);
-        if (!badge) {
-          badge = document.createElement("p");
-          badge.className = "draft-page-badge";
-          badge.dataset.draftBadge = "";
-          header.append(badge);
-        }
-        badge.textContent =
-          (draft.base_sha ? "已修改" : "新增") + " · 个人未提交草稿";
-      }
+      showDraftBadge(host, draft);
     } catch {
       // Invalid drafts stay available in the workspace for correction.
     }
@@ -422,6 +440,14 @@
     state.drafts = payload.drafts || [];
     updateAccountView();
     await applyDraftsToReader(payload.active_draft_html);
+    if (
+      state.editMode &&
+      state.session.authenticated &&
+      state.session.can_edit &&
+      !state.session.user.must_change_password
+    ) {
+      await openCurrentEditor();
+    }
   }
 
   function openAccount() {
@@ -479,6 +505,23 @@
     }
   }
 
+  async function openCurrentEditor() {
+    const host = query("[data-editor-host]");
+    if (!host || state.inlinePanel) {
+      return;
+    }
+    const sourcePath =
+      host.dataset.editorSource ||
+      (config.editorContext && config.editorContext.sourcePath);
+    const draft = state.drafts.find(function (item) {
+      return item.path === sourcePath;
+    });
+    if (draft && draft.operation === "delete") {
+      return;
+    }
+    await openInlineEditor(host);
+  }
+
   function setInlineFeedback(panel, message, kind) {
     const target = query("[data-inline-feedback]", panel);
     target.textContent = message;
@@ -491,6 +534,7 @@
     const panel = document.createElement("section");
     panel.className = "inline-editor";
     panel.dataset.inlineEditor = "";
+    document.body.classList.add("has-inline-editor");
 
     const toolbar = document.createElement("div");
     toolbar.className = "inline-editor-toolbar";
@@ -555,6 +599,7 @@
     window.clearTimeout(state.renderTimer);
     state.inlinePanel.remove();
     state.inlinePanel = null;
+    document.body.classList.remove("has-inline-editor");
   }
 
   function renderMarkdownIntoHost(host, html) {
@@ -638,12 +683,14 @@
     return query("[data-inline-input]", panel).value;
   }
 
-  async function openInlineEditor(button) {
+  async function openInlineEditor(target) {
     if (!ensureEditorAccess()) {
       return;
     }
     applyEditMode(true);
-    const host = button.closest("[data-editor-host]");
+    const host = target.matches("[data-editor-host]")
+      ? target
+      : target.closest("[data-editor-host]");
     const sourcePath =
       host && (host.dataset.editorSource || config.editorContext.sourcePath);
     if (!host || !sourcePath) {
@@ -716,6 +763,8 @@
         "success"
       );
       updateAccountView();
+      addDraftNavigation();
+      showDraftBadge(host, saved);
     } catch (error) {
       setInlineFeedback(panel, error.message, "error");
     } finally {
@@ -913,7 +962,7 @@
         feedback(target, error.message);
       }
     });
-    query("[data-edit-mode-trigger]").addEventListener("click", function () {
+    query("[data-edit-mode-trigger]").addEventListener("click", async function () {
       if (!ensureEditorAccess()) {
         return;
       }
@@ -922,6 +971,9 @@
         closeInlineEditor();
       }
       applyEditMode(next);
+      if (next) {
+        await openCurrentEditor();
+      }
     });
     query("[data-account-logout]").addEventListener("click", async function () {
       try {

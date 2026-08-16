@@ -14,6 +14,12 @@
   --orange-soft: #fbece4;
   --gold: #9a6a09;
   --gold-soft: #f8efd2;
+  --git-added: #1a7f37;
+  --git-added-soft: #dafbe1;
+  --git-modified: #9a6700;
+  --git-modified-soft: #fff8c5;
+  --git-deleted: #cf222e;
+  --git-deleted-soft: #ffebe9;
   --focus: #168a79;
   --header-height: 64px;
   --content-width: 1240px;
@@ -1332,6 +1338,10 @@ body.is-edit-mode .edit-mode-only {
   display: flex !important;
 }
 
+body.has-inline-editor [data-edit-current] {
+  display: none !important;
+}
+
 body.is-edit-mode [data-editor-host] {
   position: relative;
 }
@@ -2316,26 +2326,36 @@ body.is-edit-mode [data-editor-host]::before {
   display: inline-flex;
   margin: 16px 0 0;
   padding: 4px 8px;
-  color: var(--teal-dark);
-  background: var(--teal-soft);
-  border: 1px solid #c7e1da;
+  border: 1px solid;
   border-radius: 3px;
   font-size: 10px;
   font-weight: 700;
 }
 
+.draft-page-badge.is-add {
+  color: var(--git-added);
+  background: var(--git-added-soft);
+  border-color: #82c891;
+}
+
+.draft-page-badge.is-modify {
+  color: var(--git-modified);
+  background: var(--git-modified-soft);
+  border-color: #d4a72c;
+}
+
 .draft-page-badge.is-delete {
-  color: #9a3412;
-  background: var(--orange-soft);
-  border-color: #e6b9a7;
+  color: var(--git-deleted);
+  background: var(--git-deleted-soft);
+  border-color: #ff8182;
 }
 
 .deleted-draft-notice {
   display: flex;
   min-height: 180px;
   padding: 24px;
-  background: var(--orange-soft);
-  border: 1px solid #e6b9a7;
+  background: var(--git-deleted-soft);
+  border: 1px solid #ff8182;
   border-radius: 5px;
   align-items: center;
   justify-content: space-between;
@@ -2351,7 +2371,7 @@ body.is-edit-mode [data-editor-host]::before {
 .deleted-draft-notice svg {
   width: 30px;
   height: 30px;
-  color: var(--orange);
+  color: var(--git-deleted);
   flex: 0 0 auto;
 }
 
@@ -2367,8 +2387,11 @@ body.is-edit-mode [data-editor-host]::before {
 }
 
 .is-deleted-draft {
+  color: var(--git-deleted) !important;
+}
+
+.is-deleted-draft > span:not([data-status]) {
   text-decoration: line-through;
-  opacity: 0.72;
 }
 
 .draft-rendered-content {
@@ -2380,6 +2403,44 @@ body.is-edit-mode [data-editor-host]::before {
   margin-top: 18px;
   padding-top: 14px;
   border-top: 1px solid var(--line-strong);
+}
+
+.draft-navigation li a[data-status] {
+  grid-template-columns: 14px minmax(0, 1fr) 22px;
+}
+
+.draft-change-badge,
+.draft-content-link > span:first-child {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  background: #ffffff;
+  border: 1px solid;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 800;
+  place-items: center;
+}
+
+.draft-change-badge[data-status="A"],
+.draft-content-link > span[data-status="A"] {
+  color: var(--git-added);
+  background: var(--git-added-soft);
+  border-color: #82c891;
+}
+
+.draft-change-badge[data-status="M"],
+.draft-content-link > span[data-status="M"] {
+  color: var(--git-modified);
+  background: var(--git-modified-soft);
+  border-color: #d4a72c;
+}
+
+.draft-change-badge[data-status="D"],
+.draft-content-link > span[data-status="D"] {
+  color: var(--git-deleted);
+  background: var(--git-deleted-soft);
+  border-color: #ff8182;
 }
 
 .draft-content-list {
@@ -2406,8 +2467,8 @@ body.is-edit-mode [data-editor-host]::before {
   min-height: 48px;
   padding: 8px 10px;
   color: var(--ink);
-  background: var(--teal-soft);
-  border: 1px solid #d2e7e1;
+  background: #ffffff;
+  border: 1px solid var(--line);
   border-radius: 4px;
   align-items: center;
   gap: 9px;
@@ -2415,16 +2476,16 @@ body.is-edit-mode [data-editor-host]::before {
   text-decoration: none;
 }
 
-.draft-content-link > span:first-child {
-  display: grid;
-  width: 22px;
-  height: 22px;
-  color: var(--teal-dark);
-  background: #ffffff;
-  border-radius: 3px;
-  font-size: 9px;
-  font-weight: 800;
-  place-items: center;
+.draft-content-link[data-status="A"] {
+  border-left: 3px solid var(--git-added);
+}
+
+.draft-content-link[data-status="M"] {
+  border-left: 3px solid var(--git-modified);
+}
+
+.draft-content-link[data-status="D"] {
+  border-left: 3px solid var(--git-deleted);
 }
 
 .draft-content-link > span:last-child {

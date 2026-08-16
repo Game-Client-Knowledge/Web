@@ -169,8 +169,11 @@ Each user can keep at most 50 drafts.
 ### Reader edit mode
 
 The static reader keeps rendered content as the default view. Once an authenticated
-user presses the dedicated header edit button, contextual controls become visible.
-The same button exits edit mode; edit mode is not hidden inside account settings.
+user presses the dedicated header edit button, the current document opens directly
+in the inline editor and contextual controls become visible. The mode persists
+across reader navigation, so each editable destination opens without a second
+per-page click. The same header button exits edit mode; edit mode is not hidden
+inside account settings.
 
 - Document pages load their `sourceRelative` file through the editor API.
 - Markdown files open in Toast UI's WYSIWYG mode. Toolbar and direct visual changes
@@ -186,6 +189,10 @@ draft HTML on the static reader, so modified content appears immediately on relo
 New draft files are injected into module/topic navigation and open through a
 same-page `?draft=<path>` preview until their pull request is merged and the static
 site is rebuilt.
+
+Draft status is consistent across reader navigation, module change lists, page
+badges, and the full workspace: added files use green `A`, modified files use
+yellow `M`, and deleted files use red `D`.
 
 ### Full workspace
 
