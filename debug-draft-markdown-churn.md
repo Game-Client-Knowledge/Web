@@ -75,4 +75,13 @@ Implementation:
   Toast UI's initial canonical form, and the edited canonical form.
 - Unchanged visual documents save the original source exactly.
 
-Awaiting production deployment and user confirmation.
+Production verification:
+
+- Web and editor release: `34a06dd`.
+- Content release: `d7cc50d`.
+- Production serves `markdown-preserve.js` and all cancel controls include
+  `formnovalidate`.
+- Production visual regression: 8 desktop/mobile scenarios, 0 errors.
+- Editor service status: `active`.
+
+Awaiting user confirmation before removing instrumentation and debug artifacts.
