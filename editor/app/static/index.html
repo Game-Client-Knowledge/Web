@@ -193,8 +193,16 @@
               </div>
               <div class="toolbar-buttons">
                 <button id="previewButton" class="secondary-button" type="button">预览</button>
-                <button id="deleteDraftButton" class="danger-button" type="button">删除草稿</button>
+                <button id="discardDraftButton" class="secondary-button" type="button">撤销更改</button>
+                <button id="markDeleteButton" class="danger-button" type="button">删除文件</button>
                 <button id="saveDraftButton" class="primary-button" type="button">保存草稿</button>
+              </div>
+            </div>
+            <div id="deletionNotice" class="deletion-notice" hidden>
+              <i data-lucide="file-x-2" aria-hidden="true"></i>
+              <div>
+                <strong>此文件已标记删除</strong>
+                <span>提交 Draft PR 后，该文件会从内容仓库移除。</span>
               </div>
             </div>
             <div class="editor-surface">

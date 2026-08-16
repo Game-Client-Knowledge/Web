@@ -224,6 +224,17 @@ def validate_markdown(path: str, content: str) -> list[str]:
     return errors
 
 
+def render_markdown_preview(content: str) -> str:
+    rendered = MARKDOWN.render(content)
+    return bleach.clean(
+        rendered,
+        tags=ALLOWED_TAGS,
+        attributes={"a": ["href", "title", "rel"]},
+        protocols={"https", "http", "mailto"},
+        strip=True,
+    )
+
+
 def deliver_notification(
     db_path: Path,
     settings: Settings,
@@ -463,6 +474,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def browser_return_url(path: str | None) -> str:
         return f"{site_origin}{path}" if path else f"{settings.base_url}/"
 
+    def config_payload() -> dict[str, Any]:
+        return {
+            "registration_enabled": (
+                db.setting("registration_enabled", "1") == "1"
+            ),
+            "github_oauth_enabled": settings.github_oauth_enabled,
+            "github_submission_enabled": settings.github_submission_enabled,
+            "edit_policy": db.setting(
+                "edit_policy", settings.default_edit_policy
+            ),
+            "repository": settings.github_repo,
+        }
+
+    def session_payload(row: dict[str, Any] | None) -> dict[str, Any]:
+        if not row:
+            return {"authenticated": False}
+        user = public_user(row)
+        policy = db.setting("edit_policy", settings.default_edit_policy)
+        return {
+            "authenticated": True,
+            "user": user,
+            "csrf_token": row["csrf_token"],
+            "auth_provider": row["auth_provider"],
+            "can_edit": can_edit(user, policy),
+            "edit_policy": policy,
+        }
+
+    def user_drafts(user_id: int) -> list[dict[str, Any]]:
+        with db.connect() as connection:
+            return [
+                dict(row)
+                for row in connection.execute(
+                    """
+                    SELECT id, path, operation, content, base_sha, revision,
+                           created_at, updated_at
+                    FROM drafts WHERE user_id = ?
+                    ORDER BY updated_at DESC
+                    """,
+                    (user_id,),
+                ).fetchall()
+            ]
+
     @app.get("/")
     async def editor_page():
         return FileResponse(STATIC_DIR / "index.html")
@@ -480,32 +533,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/config")
     async def config() -> dict[str, Any]:
-        return {
-            "registration_enabled": (
-                db.setting("registration_enabled", "1") == "1"
-            ),
-            "github_oauth_enabled": settings.github_oauth_enabled,
-            "github_submission_enabled": settings.github_submission_enabled,
-            "edit_policy": db.setting(
-                "edit_policy", settings.default_edit_policy
-            ),
-            "repository": settings.github_repo,
-        }
+        return config_payload()
 
     @app.get("/api/session")
     async def session(request: Request) -> dict[str, Any]:
+        return session_payload(read_session(request))
+
+    @app.get("/api/bootstrap")
+    async def bootstrap(
+        request: Request,
+        path: str | None = None,
+    ) -> dict[str, Any]:
         row = read_session(request)
-        if not row:
-            return {"authenticated": False}
-        user = public_user(row)
-        policy = db.setting("edit_policy", settings.default_edit_policy)
+        session_data = session_payload(row)
+        drafts: list[dict[str, Any]] = []
+        active_draft = None
+        if row and not row["must_change_password"]:
+            policy = session_data["edit_policy"]
+            user = session_data["user"]
+            if can_edit(user, policy):
+                drafts = user_drafts(row["id"])
+                if path:
+                    try:
+                        normalized_path = validate_content_path(path)
+                    except ValueError:
+                        normalized_path = ""
+                    active_draft = next(
+                        (
+                            draft
+                            for draft in drafts
+                            if draft["path"] == normalized_path
+                        ),
+                        None,
+                    )
         return {
-            "authenticated": True,
-            "user": user,
-            "csrf_token": row["csrf_token"],
-            "auth_provider": row["auth_provider"],
-            "can_edit": can_edit(user, policy),
-            "edit_policy": policy,
+            "config": config_payload(),
+            "session": session_data,
+            "drafts": drafts,
+            "active_draft_html": (
+                render_markdown_preview(active_draft["content"])
+                if active_draft
+                and active_draft["operation"] == "upsert"
+                and active_draft["path"].endswith(".md")
+                else None
+            ),
         }
 
     @app.post("/api/auth/register")
@@ -1017,17 +1088,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def list_drafts(
         user: dict[str, Any] = Depends(require_editor),
     ) -> dict[str, Any]:
-        with db.connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT id, path, operation, content, base_sha, revision,
-                       created_at, updated_at
-                FROM drafts WHERE user_id = ?
-                ORDER BY updated_at DESC
-                """,
-                (user["id"],),
-            ).fetchall()
-        return {"items": [dict(row) for row in rows]}
+        return {"items": user_drafts(user["id"])}
 
     @app.put("/api/drafts")
     async def save_draft(
@@ -1043,6 +1104,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if payload.operation not in {"upsert", "delete"}:
             raise HTTPException(status_code=422, detail="草稿操作无效")
+        if payload.operation == "delete" and not payload.base_sha:
+            raise HTTPException(
+                status_code=422,
+                detail="只能删除 main 分支中已存在的文件",
+            )
         if len(payload.content.encode("utf-8")) > MAX_DRAFT_BYTES:
             raise HTTPException(status_code=413, detail="单个草稿超过大小限制")
         errors = (
@@ -1083,7 +1149,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     user["id"],
                     path,
                     payload.operation,
-                    payload.content,
+                    "" if payload.operation == "delete" else payload.content,
                     payload.base_sha,
                     now,
                     now,
@@ -1200,15 +1266,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         user: dict[str, Any] = Depends(require_editor),
     ) -> dict[str, str]:
         del user
-        rendered = MARKDOWN.render(payload.content)
-        cleaned = bleach.clean(
-            rendered,
-            tags=ALLOWED_TAGS,
-            attributes={"a": ["href", "title", "rel"]},
-            protocols={"https", "http", "mailto"},
-            strip=True,
-        )
-        return {"html": cleaned}
+        return {"html": render_markdown_preview(payload.content)}
 
     @app.post("/api/submit")
     async def submit(

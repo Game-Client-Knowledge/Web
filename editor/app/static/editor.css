@@ -725,6 +725,13 @@ a[aria-disabled="true"] {
   max-height: 610px;
 }
 
+.change-row {
+  display: grid;
+  border-bottom: 1px solid var(--line);
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 30px;
+}
+
 .change-item {
   display: grid;
   width: 100%;
@@ -732,7 +739,7 @@ a[aria-disabled="true"] {
   padding: 7px 3px;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 0;
   align-items: center;
   gap: 2px 7px;
   grid-template-columns: 18px minmax(0, 1fr);
@@ -771,6 +778,28 @@ a[aria-disabled="true"] {
 
 .change-item:hover {
   background: #e9eeeb;
+}
+
+.change-discard {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--ink-faint);
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  place-items: center;
+}
+
+.change-discard:hover {
+  color: var(--orange);
+  background: var(--orange-soft);
+}
+
+.change-discard svg {
+  width: 13px;
+  height: 13px;
 }
 
 .submit-section {
@@ -829,6 +858,40 @@ a[aria-disabled="true"] {
 
 .editor-surface {
   min-height: 540px;
+}
+
+.deletion-notice {
+  display: flex;
+  min-height: 540px;
+  padding: 40px;
+  color: var(--ink-soft);
+  background: var(--orange-soft);
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: left;
+}
+
+.deletion-notice > svg {
+  width: 34px;
+  height: 34px;
+  color: var(--orange);
+  flex: 0 0 auto;
+}
+
+.deletion-notice strong,
+.deletion-notice span {
+  display: block;
+}
+
+.deletion-notice strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.deletion-notice span {
+  margin-top: 4px;
+  font-size: 12px;
 }
 
 #visualEditor {

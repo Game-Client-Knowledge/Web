@@ -101,24 +101,26 @@ function applyConfig() {
 }
 
 async function loadSession() {
-  state.config = await api("/config");
+  const bootstrap = await api("/bootstrap");
+  state.config = bootstrap.config;
   applyConfig();
-  const session = await api("/session");
+  const session = bootstrap.session;
   state.session = session;
   if (!session.authenticated) {
     showView("auth");
     return;
   }
   state.csrf = session.csrf_token;
+  state.drafts = bootstrap.drafts || [];
   if (session.user.must_change_password) {
     showView("password");
     return;
   }
   showView("workspace");
-  await initializeWorkspace();
+  await initializeWorkspace(true);
 }
 
-async function initializeWorkspace() {
+async function initializeWorkspace(draftsReady = false) {
   const { user, can_edit: canEdit, edit_policy: policy } = state.session;
   byId("accountSummary").textContent =
     `${user.username} · ${user.email}` +
@@ -147,12 +149,19 @@ async function initializeWorkspace() {
   document
     .querySelectorAll(
       "#newFileButton, #newTopicButton, #saveDraftButton, " +
-        "#deleteDraftButton, #submitAllButton"
+        "#discardDraftButton, #markDeleteButton, #submitAllButton"
     )
     .forEach((element) => {
       element.disabled = !canEdit;
     });
-  await Promise.all([loadDrafts(), loadRepository(), loadSubmissions()]);
+  if (draftsReady) {
+    renderResources();
+  }
+  await Promise.all([
+    draftsReady ? Promise.resolve() : loadDrafts(),
+    loadRepository(),
+    loadSubmissions()
+  ]);
   const requestedFile = new URLSearchParams(location.search).get("file");
   if (requestedFile) {
     await openResource(requestedFile);
@@ -282,6 +291,8 @@ function renderChanges() {
   byId("changeCount").textContent = String(state.drafts.length);
   byId("draftCount").textContent = `${state.drafts.length} 个草稿`;
   for (const draft of state.drafts) {
+    const row = document.createElement("div");
+    row.className = "change-row";
     const button = document.createElement("button");
     button.className = "change-item";
     button.type = "button";
@@ -295,7 +306,15 @@ function renderChanges() {
     meta.textContent = draft.path;
     button.append(change, label, meta);
     button.addEventListener("click", () => openDraft(draft));
-    list.append(button);
+    const discard = document.createElement("button");
+    discard.className = "change-discard";
+    discard.type = "button";
+    discard.title = "撤销此更改";
+    discard.setAttribute("aria-label", `撤销 ${draft.path} 的更改`);
+    discard.append(icon("undo-2"));
+    discard.addEventListener("click", () => discardDraft(draft));
+    row.append(button, discard);
+    list.append(row);
   }
   if (!state.drafts.length) {
     const empty = document.createElement("p");
@@ -335,6 +354,8 @@ function destroyVisualEditor() {
 function showContentEditor(path, content) {
   destroyVisualEditor();
   state.previewing = false;
+  byId("deletionNotice").hidden = true;
+  byId("visualEditor").closest(".editor-surface").hidden = false;
   byId("previewPane").hidden = true;
   const markdown = path.toLowerCase().endsWith(".md");
   if (markdown && window.toastui?.Editor) {
@@ -384,6 +405,21 @@ function openDraft(draft) {
   byId("activeEditor").hidden = false;
   byId("filePath").value = draft.path;
   byId("filePath").readOnly = true;
+  byId("discardDraftButton").hidden = !draft.base_sha;
+  byId("markDeleteButton").hidden = draft.operation === "delete";
+  byId("markDeleteButton").textContent = draft.base_sha
+    ? "删除文件"
+    : "删除新增文件";
+  byId("saveDraftButton").hidden = draft.operation === "delete";
+  if (draft.operation === "delete") {
+    destroyVisualEditor();
+    byId("visualEditor").closest(".editor-surface").hidden = true;
+    byId("deletionNotice").hidden = false;
+    byId("previewButton").hidden = true;
+    clearFeedback(byId("editorFeedback"));
+    renderResources();
+    return;
+  }
   showContentEditor(draft.path, draft.content);
   clearFeedback(byId("editorFeedback"));
   renderResources();
@@ -445,6 +481,10 @@ async function openResource(path) {
     byId("activeEditor").hidden = false;
     byId("filePath").value = file.path;
     byId("filePath").readOnly = true;
+    byId("discardDraftButton").hidden = true;
+    byId("markDeleteButton").hidden = false;
+    byId("markDeleteButton").textContent = "删除文件";
+    byId("saveDraftButton").hidden = false;
     showContentEditor(file.path, file.content);
     clearFeedback(byId("editorFeedback"));
     renderResources();
@@ -482,24 +522,76 @@ async function saveActiveDraft() {
   }
 }
 
-async function deleteActiveDraft() {
-  if (!state.active) return;
+async function discardDraft(draft, confirmChange = true) {
   if (
-    state.active.draftId &&
-    !window.confirm(`删除草稿 ${state.active.path}？`)
+    confirmChange &&
+    !window.confirm(`撤销 ${draft.path} 的未提交更改？`)
   ) {
     return;
   }
   try {
-    if (state.active.draftId) {
-      await api(`/drafts/${state.active.draftId}`, { method: "DELETE" });
-    }
-    state.active = null;
-    destroyVisualEditor();
-    byId("activeEditor").hidden = true;
-    byId("emptyEditor").hidden = false;
-    resetEmptyEditor();
+    await api(`/drafts/${draft.id}`, { method: "DELETE" });
     await loadDrafts();
+    if (state.active?.path === draft.path) {
+      const restoreRemote = Boolean(draft.base_sha);
+      state.active = null;
+      destroyVisualEditor();
+      byId("activeEditor").hidden = true;
+      byId("emptyEditor").hidden = false;
+      resetEmptyEditor();
+      if (restoreRemote) {
+        await openResource(draft.path);
+      }
+    }
+  } catch (error) {
+    feedback(byId("editorFeedback"), error.message);
+  }
+}
+
+async function discardActiveDraft() {
+  if (!state.active?.draftId) return;
+  const draft = state.drafts.find((item) => item.id === state.active.draftId);
+  if (draft) {
+    await discardDraft(draft);
+  }
+}
+
+async function markActiveFileDeleted() {
+  if (!state.active) return;
+  const currentDraft = state.drafts.find(
+    (item) => item.path === state.active.path
+  );
+  if (!state.active.baseSha) {
+    if (currentDraft) {
+      await discardDraft(currentDraft, false);
+    } else {
+      state.active = null;
+      destroyVisualEditor();
+      byId("activeEditor").hidden = true;
+      byId("emptyEditor").hidden = false;
+      resetEmptyEditor();
+    }
+    return;
+  }
+  if (
+    !window.confirm(
+      `将 ${state.active.path} 标记为删除？提交后它会从仓库中移除。`
+    )
+  ) {
+    return;
+  }
+  try {
+    const deleted = await api("/drafts", {
+      method: "PUT",
+      body: JSON.stringify({
+        path: state.active.path,
+        content: "",
+        base_sha: state.active.baseSha,
+        operation: "delete"
+      })
+    });
+    await loadDrafts();
+    openDraft(deleted);
   } catch (error) {
     feedback(byId("editorFeedback"), error.message);
   }
@@ -621,7 +713,8 @@ byId("passwordForm").addEventListener("submit", async (event) => {
 
 byId("logoutButton").addEventListener("click", logout);
 byId("saveDraftButton").addEventListener("click", saveActiveDraft);
-byId("deleteDraftButton").addEventListener("click", deleteActiveDraft);
+byId("discardDraftButton").addEventListener("click", discardActiveDraft);
+byId("markDeleteButton").addEventListener("click", markActiveFileDeleted);
 byId("previewButton").addEventListener("click", togglePreview);
 byId("newFileButton").addEventListener("click", () => {
   clearFeedback(byId("fileDialogFeedback"));
@@ -678,6 +771,10 @@ byId("fileForm").addEventListener("submit", async (event) => {
   byId("activeEditor").hidden = false;
   byId("filePath").value = state.active.path;
   byId("filePath").readOnly = false;
+  byId("discardDraftButton").hidden = true;
+  byId("markDeleteButton").hidden = false;
+  byId("markDeleteButton").textContent = "删除新增文件";
+  byId("saveDraftButton").hidden = false;
   showContentEditor(state.active.path, state.active.content);
 });
 

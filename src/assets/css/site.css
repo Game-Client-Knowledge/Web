@@ -212,7 +212,7 @@ svg {
 
 .account-trigger {
   display: inline-flex;
-  min-width: 78px;
+  width: 112px;
   height: 38px;
   padding: 0 10px;
   color: #c4d0cc;
@@ -223,6 +223,13 @@ svg {
   justify-content: center;
   gap: 7px;
   font-size: 12px;
+}
+
+.account-trigger span {
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .edit-mode-trigger {
@@ -260,6 +267,29 @@ svg {
 
 .account-trigger.is-authenticated {
   border-color: rgba(156, 224, 205, 0.46);
+}
+
+.account-trigger:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+body[data-editor-state="loading"] .account-trigger svg {
+  animation: editor-state-spin 900ms linear infinite;
+}
+
+body[data-editor-state="loading"] [data-account-label] {
+  display: inline-block;
+  width: 38px;
+  color: transparent;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 2px;
+}
+
+@keyframes editor-state-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .icon-button {
@@ -626,7 +656,8 @@ svg {
 }
 
 .primary-button,
-.secondary-button {
+.secondary-button,
+.danger-button {
   display: inline-flex;
   min-height: 42px;
   padding: 9px 14px;
@@ -659,6 +690,18 @@ svg {
 .secondary-button:hover {
   color: var(--teal-dark);
   border-color: var(--teal);
+}
+
+.danger-button {
+  color: #9a3412;
+  background: #ffffff;
+  border: 1px solid #e6b9a7;
+}
+
+.danger-button:hover {
+  color: #7c2d12;
+  background: var(--orange-soft);
+  border-color: #d99c84;
 }
 
 .module-page-shell {
@@ -2281,6 +2324,53 @@ body.is-edit-mode [data-editor-host]::before {
   font-weight: 700;
 }
 
+.draft-page-badge.is-delete {
+  color: #9a3412;
+  background: var(--orange-soft);
+  border-color: #e6b9a7;
+}
+
+.deleted-draft-notice {
+  display: flex;
+  min-height: 180px;
+  padding: 24px;
+  background: var(--orange-soft);
+  border: 1px solid #e6b9a7;
+  border-radius: 5px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.deleted-draft-notice > div {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.deleted-draft-notice svg {
+  width: 30px;
+  height: 30px;
+  color: var(--orange);
+  flex: 0 0 auto;
+}
+
+.deleted-draft-notice strong,
+.deleted-draft-notice span {
+  display: block;
+}
+
+.deleted-draft-notice span {
+  margin-top: 4px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.is-deleted-draft {
+  text-decoration: line-through;
+  opacity: 0.72;
+}
+
 .draft-rendered-content {
   padding-left: 12px;
   border-left: 3px solid var(--teal);
@@ -2797,6 +2887,11 @@ body.is-edit-mode [data-editor-host]::before {
   .inline-editor-preview {
     min-height: 430px;
     padding: 16px;
+  }
+
+  .deleted-draft-notice {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .module-editor-actions .secondary-button {

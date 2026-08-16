@@ -144,6 +144,93 @@ def test_csrf_is_required_for_draft_mutation(client: TestClient) -> None:
     assert draft.status_code == 403
 
 
+def test_bootstrap_returns_session_drafts_and_active_preview(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "bootstrap@example.test",
+            "username": "bootstrap-user",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    saved = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": "knowledge/cpp/bootstrap/README.md",
+            "content": "# Bootstrap\n\nImmediate draft content.\n",
+            "operation": "upsert",
+        },
+    )
+    assert saved.status_code == 200
+
+    response = client.get(
+        "/api/bootstrap",
+        params={"path": "knowledge/cpp/bootstrap/README.md"},
+    )
+    payload = response.json()
+    assert payload["session"]["user"]["username"] == "bootstrap-user"
+    assert payload["config"]["edit_policy"] == "local_authenticated"
+    assert [item["path"] for item in payload["drafts"]] == [
+        "knowledge/cpp/bootstrap/README.md"
+    ]
+    assert "Immediate draft content." in payload["active_draft_html"]
+
+
+def test_file_delete_and_discard_change(client: TestClient) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "delete@example.test",
+            "username": "delete-user",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+
+    rejected = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": "knowledge/cpp/delete/README.md",
+            "content": "",
+            "operation": "delete",
+        },
+    )
+    assert rejected.status_code == 422
+
+    deleted = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": "knowledge/cpp/delete/README.md",
+            "content": "ignored",
+            "base_sha": "blob-sha",
+            "operation": "delete",
+        },
+    )
+    assert deleted.status_code == 200, deleted.text
+    draft = deleted.json()
+    assert draft["operation"] == "delete"
+    assert draft["content"] == ""
+
+    bootstrap = client.get(
+        "/api/bootstrap",
+        params={"path": draft["path"]},
+    ).json()
+    assert bootstrap["active_draft_html"] is None
+
+    discarded = client.delete(
+        f"/api/drafts/{draft['id']}",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert discarded.status_code == 204
+    assert client.get("/api/drafts").json()["items"] == []
+
+
 def test_admin_can_switch_to_github_required_policy(client: TestClient) -> None:
     payload = login(client, "sourcecode", TEST_BOOTSTRAP_PASSWORD)
     csrf = payload["csrf_token"]
@@ -277,6 +364,62 @@ def test_local_submission_uses_user_author_and_expected_main(
         "email": "web-editor+2@users.noreply.chenyurui.top",
     }
     assert call["expected_parent_sha"] == "main-commit-sha"
+
+
+def test_submission_preserves_file_delete_operation(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "delete-submit@example.test",
+            "username": "delete-submit",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    path = "knowledge/cpp/obsolete/README.md"
+    deleted = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": path,
+            "content": "",
+            "base_sha": "blob-sha",
+            "operation": "delete",
+        },
+    )
+    assert deleted.status_code == 200
+
+    github = client.app.state.github
+    github.main_reference = AsyncMock(
+        return_value={"object": {"sha": "main-commit-sha"}}
+    )
+    github.repository_tree = AsyncMock(
+        return_value=[{"path": path, "sha": "blob-sha", "type": "blob"}]
+    )
+    github.submit = AsyncMock(
+        return_value=SubmissionResult(
+            branch="web/delete-submit/remove-obsolete",
+            commit_sha="commit-sha",
+            pr_number=43,
+            pr_url="https://github.example/pr/43",
+        )
+    )
+
+    response = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "custom_head": "remove-obsolete",
+            "title": "docs: remove obsolete topic",
+            "description": "",
+        },
+    )
+    assert response.status_code == 200, response.text
+    changes = github.submit.await_args.kwargs["changes"]
+    assert changes[0]["path"] == path
+    assert changes[0]["operation"] == "delete"
 
 
 def test_admin_can_verify_local_email(client: TestClient) -> None:

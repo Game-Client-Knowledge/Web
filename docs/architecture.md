@@ -126,6 +126,11 @@ authentication.
 The separate `/editor/` workspace provides the complete repository tree, aggregate
 change review, and the only branch/commit/pull-request submission action.
 
+Reader authentication and draft state are loaded through one head-started bootstrap
+request. Static content is never blocked by that request; account controls keep
+stable loading dimensions until the response atomically applies identity and draft
+overlays.
+
 ## Alternatives considered
 
 ### Docusaurus or VitePress

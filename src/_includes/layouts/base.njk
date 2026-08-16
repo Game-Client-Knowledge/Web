@@ -15,8 +15,30 @@
       <link rel="stylesheet" href="{{ '/assets/vendor/toastui-editor.css' | assetUrl }}">
     {% endif %}
     <link rel="icon" href="{{ '/assets/images/favicon.svg' | assetUrl }}" type="image/svg+xml">
+    <script>
+      (function () {
+        var editorApi = {{ (site.editorUrl ~ 'api') | json | safe }};
+        var staticSource = {% if document %}{{ document.sourceRelative | json | safe }}{% elif module %}{{ module.sourceRelative | json | safe }}{% else %}""{% endif %};
+        var draftPath = new URLSearchParams(window.location.search).get("draft");
+        var sourcePath = draftPath || staticSource;
+        var query = sourcePath
+          ? "?path=" + encodeURIComponent(sourcePath)
+          : "";
+        window.GCK_EDITOR_BOOTSTRAP = fetch(
+          editorApi + "/bootstrap" + query,
+          { credentials: "same-origin" }
+        ).then(function (response) {
+          if (!response.ok) {
+            throw new Error("编辑状态加载失败");
+          }
+          return response.json();
+        }).catch(function (error) {
+          return { bootstrap_error: error.message };
+        });
+      })();
+    </script>
   </head>
-  <body class="page-{{ pageKind or 'default' }}">
+  <body class="page-{{ pageKind or 'default' }}" data-editor-state="loading">
     <a class="skip-link" href="#main-content">跳到正文</a>
 
     <header class="site-header">
@@ -74,6 +96,7 @@
             data-edit-mode-trigger
             aria-label="进入编辑模式"
             title="编辑模式"
+            disabled
           >
             <i data-lucide="square-pen" aria-hidden="true"></i>
             <span data-edit-mode-label>编辑</span>
@@ -84,9 +107,11 @@
             data-account-trigger
             aria-label="登录或打开个人设置"
             title="个人设置"
+            aria-busy="true"
+            disabled
           >
             <i data-lucide="circle-user-round" aria-hidden="true"></i>
-            <span data-account-label>登录</span>
+            <span data-account-label>同步中</span>
           </button>
           <button
             class="icon-button mobile-menu-trigger"

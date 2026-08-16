@@ -157,6 +157,8 @@ Users can:
 - Browse the complete repository as a collapsible directory tree in `/editor/`.
 - Review all changed files separately from the repository tree.
 - Preview sanitized Markdown.
+- Mark an existing repository file for deletion (`D`).
+- Discard an `A`, `M`, or `D` draft without changing GitHub.
 - Save or delete a private draft.
 - Submit all current drafts together.
 
@@ -193,6 +195,25 @@ Changes use Git-style `A`, `M`, and `D` markers instead of a second file tree.
 Selecting a remote file fetches and decodes its GitHub Contents API payload;
 selecting a changed file opens the draft. Markdown files use the same visual editor
 as the reader. The right panel remains the only submission surface.
+
+Deleting an existing file creates a `delete` draft with the file's current blob
+SHA. Discarding that draft restores the `main` version. Deleting an unsubmitted new
+file simply discards its `A` draft.
+
+## Reader Bootstrap
+
+Static pages start one `/editor/api/bootstrap` request from the document head. The
+single response contains:
+
+- Runtime integration configuration.
+- Authenticated session summary and CSRF token.
+- The current user's complete draft list.
+- Sanitized HTML for the current page's active Markdown draft.
+
+This replaces the previous serial `/config`, `/session`, `/drafts`, and `/preview`
+waterfall. While the request is pending, the public static article remains fully
+visible and the fixed-size account control shows a neutral synchronization
+placeholder, preventing false logged-out state and header layout shifts.
 
 ## Submission Workflow
 

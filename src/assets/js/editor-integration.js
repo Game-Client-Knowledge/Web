@@ -105,11 +105,16 @@
 
   function updateAccountView() {
     const trigger = query("[data-account-trigger]");
+    const editButton = query("[data-edit-mode-trigger]");
     const label = query("[data-account-label]");
     const guest = query("[data-account-guest]");
     const profile = query("[data-account-user]");
     const githubLogin = query("[data-account-github-login]");
     const registerTab = query('[data-account-tab="register"]');
+    document.body.dataset.editorState = "ready";
+    trigger.disabled = false;
+    trigger.removeAttribute("aria-busy");
+    editButton.disabled = false;
 
     if (state.config) {
       registerTab.disabled = !state.config.registration_enabled;
@@ -169,10 +174,6 @@
       bind.title = "需要先配置 GitHub OAuth";
     }
 
-    const editButton = query("[data-edit-mode-trigger]");
-    editButton.disabled =
-      !state.session.can_edit || user.must_change_password;
-
     if (user.must_change_password) {
       feedback(
         query("[data-account-feedback]"),
@@ -194,6 +195,15 @@
     } catch {
       state.drafts = [];
     }
+  }
+
+  async function discardDraft(draft) {
+    await api("/drafts/" + draft.id, { method: "DELETE" });
+    state.drafts = state.drafts.filter(function (item) {
+      return item.id !== draft.id;
+    });
+    updateAccountView();
+    addDraftNavigation();
   }
 
   function requestedDraftPath() {
@@ -250,6 +260,10 @@
         const item = document.createElement("li");
         const link = document.createElement("a");
         link.href = draftLink(draft.path);
+        link.classList.toggle(
+          "is-deleted-draft",
+          draft.operation === "delete"
+        );
         const icon = document.createElement("i");
         icon.dataset.lucide = "file-diff";
         icon.setAttribute("aria-hidden", "true");
@@ -278,9 +292,14 @@
       relevant.forEach(function (draft) {
         const link = document.createElement("a");
         link.className = "draft-content-link";
+        link.classList.toggle(
+          "is-deleted-draft",
+          draft.operation === "delete"
+        );
         link.href = draftLink(draft.path);
         const change = document.createElement("span");
-        change.textContent = draft.base_sha ? "M" : "A";
+        change.textContent =
+          draft.operation === "delete" ? "D" : draft.base_sha ? "M" : "A";
         const copy = document.createElement("span");
         const strong = document.createElement("strong");
         strong.textContent = draftTitle(draft);
@@ -296,7 +315,44 @@
     }
   }
 
-  async function applyDraftsToReader() {
+  function showDeletedDraft(host, draft) {
+    const rendered = query("[data-editable-rendered]", host);
+    if (!rendered) {
+      return;
+    }
+    const notice = document.createElement("section");
+    notice.className = "deleted-draft-notice";
+    const copy = document.createElement("div");
+    copy.innerHTML =
+      '<i data-lucide="file-x-2" aria-hidden="true"></i>' +
+      "<div><strong>此文件已标记删除</strong>" +
+      "<span>提交 Draft PR 后，该文件会从内容仓库移除。</span></div>";
+    const undo = document.createElement("button");
+    undo.className = "secondary-button";
+    undo.type = "button";
+    undo.textContent = "撤销删除";
+    undo.addEventListener("click", async function () {
+      await discardDraft(draft);
+      window.location.reload();
+    });
+    notice.append(copy, undo);
+    rendered.replaceChildren(notice);
+    rendered.dataset.draftOverlay = "true";
+    const header = query(".article-header, .module-page-header", host);
+    if (header) {
+      let badge = query("[data-draft-badge]", header);
+      if (!badge) {
+        badge = document.createElement("p");
+        badge.dataset.draftBadge = "";
+        header.append(badge);
+      }
+      badge.className = "draft-page-badge is-delete";
+      badge.textContent = "已删除 · 个人未提交草稿";
+    }
+    refreshIcons(notice);
+  }
+
+  async function applyDraftsToReader(activeDraftHtml) {
     addDraftNavigation();
     const host = query("[data-editor-host]");
     if (!host) {
@@ -311,12 +367,20 @@
       return;
     }
     host.dataset.editorSource = draft.path;
+    if (draft.operation === "delete") {
+      showDeletedDraft(host, draft);
+      return;
+    }
     try {
-      const result = await api("/preview", {
-        method: "POST",
-        body: JSON.stringify({ content: draft.content })
-      });
-      renderMarkdownIntoHost(host, result.html);
+      const html =
+        activeDraftHtml ||
+        (
+          await api("/preview", {
+            method: "POST",
+            body: JSON.stringify({ content: draft.content })
+          })
+        ).html;
+      renderMarkdownIntoHost(host, html);
       const header = query(".article-header, .module-page-header", host);
       if (header) {
         let badge = query("[data-draft-badge]", header);
@@ -335,14 +399,29 @@
   }
 
   async function loadIdentity() {
-    state.config = await api("/config");
-    state.session = await api("/session");
+    const sourcePath =
+      requestedDraftPath() ||
+      (config.editorContext && config.editorContext.sourcePath) ||
+      "";
+    const bootstrapPath =
+      "/bootstrap" +
+      (sourcePath ? "?path=" + encodeURIComponent(sourcePath) : "");
+    const bootstrap =
+      window.GCK_EDITOR_BOOTSTRAP ||
+      api(bootstrapPath);
+    let payload = await bootstrap;
+    if (payload.bootstrap_error) {
+      payload = await api(bootstrapPath);
+    }
+    window.GCK_EDITOR_BOOTSTRAP = null;
+    state.config = payload.config;
+    state.session = payload.session;
     state.csrf = state.session.authenticated
       ? state.session.csrf_token
       : "";
-    await loadDrafts();
+    state.drafts = payload.drafts || [];
     updateAccountView();
-    await applyDraftsToReader();
+    await applyDraftsToReader(payload.active_draft_html);
   }
 
   function openAccount() {
@@ -421,6 +500,11 @@
     const actions = document.createElement("div");
     actions.className = "inline-editor-actions";
 
+    const remove = document.createElement("button");
+    remove.className = "danger-button";
+    remove.type = "button";
+    remove.dataset.inlineDelete = "";
+    remove.textContent = "删除文件";
     const close = document.createElement("button");
     close.className = "secondary-button";
     close.type = "button";
@@ -430,7 +514,7 @@
     save.className = "primary-button";
     save.dataset.inlineSave = "";
     save.textContent = "保存草稿";
-    actions.append(close, save);
+    actions.append(remove, close, save);
     toolbar.append(path, actions);
 
     const visualEditor = document.createElement("div");
@@ -580,6 +664,8 @@
           );
       panel.dataset.baseSha = source.base_sha || source.sha || "";
       panel.dataset.draftId = draft ? String(draft.id) : "";
+      query("[data-inline-delete]", panel).textContent =
+        panel.dataset.baseSha ? "删除文件" : "删除新增文件";
       if (sourcePath.toLowerCase().endsWith(".md")) {
         initializeVisualEditor(panel, host, source.content);
       } else {
@@ -634,6 +720,53 @@
       setInlineFeedback(panel, error.message, "error");
     } finally {
       button.disabled = false;
+    }
+  }
+
+  async function deleteInlineFile(panel) {
+    const host = panel.closest("[data-editor-host]");
+    const path = host.dataset.editorSource;
+    const existing = state.drafts.find(function (item) {
+      return item.path === path;
+    });
+    const remoteSha = panel.dataset.baseSha || null;
+    const message = remoteSha
+      ? "将此文件标记为删除？提交 Draft PR 后它会从仓库中移除。"
+      : "删除这个尚未提交的新文件？";
+    if (!window.confirm(message)) {
+      return;
+    }
+    try {
+      if (!remoteSha) {
+        if (existing) {
+          await discardDraft(existing);
+        }
+        window.location.href = "/" + path.split("/")[0] + "/";
+        return;
+      }
+      const deleted = await api("/drafts", {
+        method: "PUT",
+        body: JSON.stringify({
+          path: path,
+          content: "",
+          base_sha: remoteSha,
+          operation: "delete"
+        })
+      });
+      const index = state.drafts.findIndex(function (item) {
+        return item.path === path;
+      });
+      if (index >= 0) {
+        state.drafts[index] = deleted;
+      } else {
+        state.drafts.push(deleted);
+      }
+      closeInlineEditor();
+      showDeletedDraft(host, deleted);
+      updateAccountView();
+      addDraftNavigation();
+    } catch (error) {
+      setInlineFeedback(panel, error.message, "error");
     }
   }
 
@@ -827,6 +960,8 @@
         closeInlineEditor();
       } else if (event.target.closest("[data-inline-save]")) {
         saveInlineEditor(panel);
+      } else if (event.target.closest("[data-inline-delete]")) {
+        deleteInlineFile(panel);
       }
     });
     queryAll("[data-close-content-create]").forEach(function (button) {
