@@ -151,6 +151,16 @@ async function inspectPage(browser, scenario) {
       viewport: { width: 390, height: 844 }
     },
     {
+      name: "contribute-desktop",
+      route: "/contribute/",
+      viewport: { width: 1440, height: 1000 }
+    },
+    {
+      name: "contribute-mobile",
+      route: "/contribute/",
+      viewport: { width: 390, height: 844 }
+    },
+    {
       name: "article-tablet",
       route: "/interviews/mihoyo/2026-autumn-early-game-client-source-code/04-third-round-answers/",
       viewport: { width: 1024, height: 900 }

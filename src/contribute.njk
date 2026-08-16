@@ -1,0 +1,61 @@
+---
+layout: layouts/base.njk
+title: 内容更新规范
+description: 知识、面经和代码示例的目录、Markdown 与提交约定。
+pageKind: contribute
+permalink: contribute/index.html
+---
+
+{% if catalog.contribution %}
+  <div class="guide-shell">
+    <header class="guide-header">
+      <nav class="breadcrumbs" aria-label="面包屑">
+        <a href="{{ '/' | withBase }}">首页</a>
+        <i data-lucide="chevron-right" aria-hidden="true"></i>
+        <span>更新规范</span>
+      </nav>
+
+      <div class="guide-title-row">
+        <span class="guide-icon">
+          <i data-lucide="notebook-tabs" aria-hidden="true"></i>
+        </span>
+        <div>
+          <p class="eyebrow">Content contribution guide</p>
+          <h1>内容更新规范</h1>
+          <p>{{ catalog.contribution.description }}</p>
+        </div>
+      </div>
+    </header>
+
+    <div class="guide-layout">
+      <article class="prose guide-prose">
+        {{ catalog.contribution.body | renderMarkdown(catalog.contribution.sourceRelative) | safe }}
+      </article>
+
+      <aside class="guide-aside" aria-label="规范导航">
+        <p>本页目录</p>
+        <ol>
+          {% for heading in catalog.contribution.headings %}
+            <li class="toc-level-{{ heading.level }}">
+              <a href="#{{ heading.id }}">{{ heading.text }}</a>
+            </li>
+          {% endfor %}
+        </ol>
+        <a
+          class="secondary-button guide-source-link"
+          href="{{ site.repositoryUrl }}/blob/main/CONTRIBUTING.md"
+          rel="noreferrer"
+        >
+          <i data-lucide="square-arrow-out-up-right" aria-hidden="true"></i>
+          查看规范源文件
+        </a>
+      </aside>
+    </div>
+  </div>
+{% else %}
+  <section class="not-found">
+    <span>!</span>
+    <h1>更新规范暂不可用</h1>
+    <p>内容仓库中缺少 `CONTRIBUTING.md`。</p>
+  </section>
+{% endif %}

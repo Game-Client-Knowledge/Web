@@ -128,6 +128,9 @@
     if (item.moduleKey === "interviews") {
       return "面经";
     }
+    if (item.moduleKey === "contribute") {
+      return "规范";
+    }
     return "知识";
   }
 

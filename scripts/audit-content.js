@@ -123,6 +123,10 @@ for (const requiredDirectory of ["knowledge", "interviews", "examples"]) {
   }
 }
 
+if (!fs.existsSync(path.join(root, "CONTRIBUTING.md"))) {
+  errors.push("缺少内容更新规范：CONTRIBUTING.md");
+}
+
 const files = walk(root);
 const markdownFiles = files.filter((file) => path.extname(file) === ".md");
 markdownFiles.forEach(validateMarkdown);

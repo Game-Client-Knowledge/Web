@@ -784,6 +784,101 @@ svg {
   border-radius: var(--radius);
 }
 
+.guide-shell {
+  width: min(100% - 40px, 1080px);
+  min-height: calc(100vh - var(--header-height));
+  margin: 0 auto;
+  padding: 34px 0 76px;
+}
+
+.guide-header {
+  padding-bottom: 30px;
+  border-bottom: 1px solid var(--line);
+}
+
+.guide-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.guide-icon {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+  border-radius: 6px;
+  place-items: center;
+}
+
+.guide-icon svg {
+  width: 27px;
+  height: 27px;
+}
+
+.guide-title-row h1 {
+  margin: 0 0 8px;
+  font-size: 36px;
+  line-height: 1.2;
+}
+
+.guide-title-row p:last-child {
+  max-width: 720px;
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.guide-layout {
+  display: grid;
+  padding-top: 38px;
+  align-items: start;
+  gap: 72px;
+  grid-template-columns: minmax(0, 760px) minmax(180px, 1fr);
+}
+
+.guide-aside {
+  position: sticky;
+  top: calc(var(--header-height) + 28px);
+}
+
+.guide-aside > p {
+  margin: 0 0 10px;
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.guide-aside ol {
+  margin: 0 0 22px;
+  padding: 0 0 0 13px;
+  border-left: 1px solid var(--line);
+  list-style: none;
+}
+
+.guide-aside li + li {
+  margin-top: 8px;
+}
+
+.guide-aside a:not(.secondary-button) {
+  display: block;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.45;
+  text-decoration: none;
+}
+
+.guide-aside a:not(.secondary-button):hover {
+  color: var(--teal-dark);
+}
+
+.guide-source-link {
+  width: 100%;
+  font-size: 12px;
+}
+
 .reading-layout {
   display: grid;
   width: 100%;
@@ -1637,6 +1732,11 @@ svg {
     grid-template-columns: minmax(0, 0.8fr) minmax(300px, 1.2fr);
   }
 
+  .guide-layout {
+    gap: 36px;
+    grid-template-columns: minmax(0, 1fr) 190px;
+  }
+
   .reading-layout {
     display: block;
   }
@@ -1828,6 +1928,36 @@ svg {
   .module-page-shell {
     width: calc(100% - 32px);
     padding-top: 24px;
+  }
+
+  .guide-shell {
+    width: calc(100% - 32px);
+    padding-top: 24px;
+  }
+
+  .guide-title-row .guide-icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  .guide-title-row h1 {
+    font-size: 29px;
+  }
+
+  .guide-layout {
+    display: block;
+    padding-top: 30px;
+  }
+
+  .guide-aside {
+    position: static;
+    margin-top: 38px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+  }
+
+  .guide-aside ol {
+    column-count: 1;
   }
 
   .module-title-row .module-icon {
