@@ -33,8 +33,17 @@ async function api(path, options = {}) {
   }
   if (!response.ok) {
     const detail = payload?.detail;
-    const message = Array.isArray(detail) ? detail.join("；") : detail;
-    throw new Error(message || `请求失败（HTTP ${response.status}）`);
+    const message = Array.isArray(detail)
+      ? detail.map((item) => item.msg || String(item)).join("；")
+      : typeof detail === "object"
+        ? detail.message
+        : detail;
+    const error = new Error(
+      message || `请求失败（HTTP ${response.status}）`
+    );
+    error.status = response.status;
+    error.detail = detail;
+    throw error;
   }
   return payload;
 }
@@ -1071,21 +1080,56 @@ byId("submitForm").custom_head.addEventListener("input", (event) => {
 
 byId("submitForm").addEventListener("submit", async (event) => {
   event.preventDefault();
+  const form = event.currentTarget;
   clearFeedback(byId("submitFeedback"));
   const button = byId("submitAllButton");
   button.disabled = true;
   button.textContent = "正在创建分支和 PR";
   try {
-    const result = await api("/submit", {
-      method: "POST",
-      body: JSON.stringify(formPayload(event.currentTarget))
-    });
+    const submitChanges = (overwrite) =>
+      api("/submit", {
+        method: "POST",
+        body: JSON.stringify({
+          ...formPayload(form),
+          overwrite
+        })
+      });
+    let result;
+    try {
+      result = await submitChanges(false);
+    } catch (error) {
+      const conflict =
+        error.status === 409 &&
+        error.detail?.code === "branch_conflict";
+      if (!conflict || !error.detail.can_overwrite) {
+        throw error;
+      }
+      const confirmed = window.confirm(
+        `${error.detail.message}\n\n${error.detail.branch}\n\n` +
+          "覆盖会更新该分支，并复用仍处于打开状态的 Draft PR。"
+      );
+      if (!confirmed) {
+        feedback(
+          byId("submitFeedback"),
+          "已取消覆盖，请修改提交头后重试。",
+          "warning"
+        );
+        return;
+      }
+      button.textContent = "正在覆盖分支和更新 PR";
+      result = await submitChanges(true);
+    }
     const link = document.createElement("a");
     link.href = result.pr_url;
     link.rel = "noreferrer";
     link.textContent = `Draft PR #${result.pr_number}`;
     const box = byId("submitFeedback");
-    box.replaceChildren(document.createTextNode("提交成功："), link);
+    box.replaceChildren(
+      document.createTextNode(
+        result.overwritten ? "覆盖成功：" : "提交成功："
+      ),
+      link
+    );
     box.className = "feedback is-visible success";
     state.active = null;
     destroyVisualEditor();

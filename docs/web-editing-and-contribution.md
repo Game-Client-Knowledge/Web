@@ -266,19 +266,22 @@ web/sourcecode/cpp-polymorphism
 Submission performs these steps:
 
 1. Load all drafts belonging to the current user.
-2. Resolve and retain the current `main` commit SHA.
-3. Compare every edited file's blob SHA with that snapshot.
-4. Reject new files that now exist or deleted files that no longer exist.
-5. Create blobs and one Git tree.
-6. Recheck that `main` still has the retained SHA.
-7. Create one commit and temporary branch.
-8. Create a draft pull request targeting `main`.
-9. Remove the user's drafts only after pull request creation succeeds.
-10. Record the result and notify every active administrator.
+2. Check local submission ownership and the GitHub branch ref for a head conflict.
+3. Ask for explicit overwrite confirmation only for the current user's branch.
+4. Resolve and retain the current `main` commit SHA.
+5. Compare every edited file's blob SHA with that snapshot.
+6. Reject new files that now exist or deleted files that no longer exist.
+7. Create blobs and one Git tree.
+8. Recheck that `main` still has the retained SHA.
+9. Create a commit and create or update the temporary branch.
+10. Reuse an open Draft PR for an overwritten branch, or create a new Draft PR.
+11. Remove the user's drafts only after pull request handling succeeds.
+12. Record the result and notify every active administrator.
 
 If pull request creation fails after branch creation, the service attempts to remove
 the temporary branch. A failed submission record can be retried with the same
-custom head.
+custom head. See [Submission Head Conflicts](submission-head-conflicts.md) for
+normalization, ownership checks, structured 409 responses, and overwrite behavior.
 
 ## Administration
 

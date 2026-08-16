@@ -23,6 +23,12 @@ class GitHubError(RuntimeError):
         self.status_code = status_code
 
 
+class BranchConflictError(GitHubError):
+    def __init__(self, branch: str) -> None:
+        super().__init__(f"分支 {branch} 已存在", 409)
+        self.branch = branch
+
+
 @dataclass(frozen=True)
 class SubmissionResult:
     branch: str
@@ -151,6 +157,22 @@ class GitHubClient:
             "html_url": payload.get("html_url"),
         }
 
+    async def branch_exists(
+        self,
+        branch: str,
+        token: str,
+    ) -> bool:
+        response = await self._request(
+            "GET",
+            (
+                f"/repos/{self.settings.github_repo}/git/ref/heads/"
+                f"{quote(branch, safe='/')}"
+            ),
+            token=token,
+            expected=(200, 404),
+        )
+        return response.status_code == 200
+
     async def user_profile(self, token: str) -> dict[str, Any]:
         response = await self._request("GET", "/user", token=token)
         return response.json()
@@ -220,17 +242,19 @@ class GitHubClient:
         author: dict[str, str] | None,
         actor_label: str,
         expected_parent_sha: str,
+        overwrite: bool = False,
     ) -> SubmissionResult:
         repo_path = f"/repos/{self.settings.github_repo}"
 
         existing = await self._request(
             "GET",
-            f"{repo_path}/git/ref/heads/{branch}",
+            f"{repo_path}/git/ref/heads/{quote(branch, safe='/')}",
             token=token,
             expected=(200, 404),
         )
-        if existing.status_code == 200:
-            raise GitHubError(f"分支 {branch} 已存在，请更换提交头", 409)
+        branch_exists = existing.status_code == 200
+        if branch_exists and not overwrite:
+            raise BranchConflictError(branch)
 
         main_ref = await self.main_reference(token)
         parent_sha = main_ref["object"]["sha"]
@@ -296,13 +320,24 @@ class GitHubClient:
         )
         commit_sha = commit.json()["sha"]
 
-        await self._request(
-            "POST",
-            f"{repo_path}/git/refs",
-            token=token,
-            expected=(201,),
-            json={"ref": f"refs/heads/{branch}", "sha": commit_sha},
-        )
+        if branch_exists:
+            await self._request(
+                "PATCH",
+                (
+                    f"{repo_path}/git/refs/heads/"
+                    f"{quote(branch, safe='/')}"
+                ),
+                token=token,
+                json={"sha": commit_sha, "force": True},
+            )
+        else:
+            await self._request(
+                "POST",
+                f"{repo_path}/git/refs",
+                token=token,
+                expected=(201,),
+                json={"ref": f"refs/heads/{branch}", "sha": commit_sha},
+            )
 
         pr_body = (
             f"{description.strip()}\n\n"
@@ -310,31 +345,56 @@ class GitHubClient:
             f"Submitted from Game Client Knowledge Web Editor by {actor_label}.\n"
             f"Branch: `{branch}`"
         ).strip()
-        try:
-            pull = await self._request(
-                "POST",
+        pull = None
+        if overwrite:
+            open_pulls = await self._request(
+                "GET",
                 f"{repo_path}/pulls",
                 token=token,
-                expected=(201,),
-                json={
-                    "title": title,
-                    "body": pr_body,
-                    "head": branch,
-                    "base": "main",
-                    "draft": True,
+                params={
+                    "head": f"{self.settings.github_owner}:{branch}",
+                    "state": "open",
                 },
             )
-        except GitHubError:
-            try:
-                await self._request(
-                    "DELETE",
-                    f"{repo_path}/git/refs/heads/{branch}",
+            matches = open_pulls.json()
+            if matches:
+                pull_number = int(matches[0]["number"])
+                pull = await self._request(
+                    "PATCH",
+                    f"{repo_path}/pulls/{pull_number}",
                     token=token,
-                    expected=(204,),
+                    json={"title": title, "body": pr_body},
+                )
+        if pull is None:
+            try:
+                pull = await self._request(
+                    "POST",
+                    f"{repo_path}/pulls",
+                    token=token,
+                    expected=(201,),
+                    json={
+                        "title": title,
+                        "body": pr_body,
+                        "head": branch,
+                        "base": "main",
+                        "draft": True,
+                    },
                 )
             except GitHubError:
-                pass
-            raise
+                if not branch_exists:
+                    try:
+                        await self._request(
+                            "DELETE",
+                            (
+                                f"{repo_path}/git/refs/heads/"
+                                f"{quote(branch, safe='/')}"
+                            ),
+                            token=token,
+                            expected=(204,),
+                        )
+                    except GitHubError:
+                        pass
+                raise
         payload = pull.json()
         return SubmissionResult(
             branch=branch,

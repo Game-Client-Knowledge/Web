@@ -49,6 +49,7 @@ def client(tmp_path: Path) -> TestClient:
     settings = make_settings(tmp_path)
     app = create_app(settings)
     app.state.github.repository_tree = AsyncMock(return_value=[])
+    app.state.github.branch_exists = AsyncMock(return_value=False)
     with TestClient(app, base_url="http://testserver") as test_client:
         yield test_client
 
@@ -56,6 +57,7 @@ def client(tmp_path: Path) -> TestClient:
 @pytest.fixture()
 def oauth_client(tmp_path: Path) -> TestClient:
     app = create_app(make_settings(tmp_path, oauth=True))
+    app.state.github.branch_exists = AsyncMock(return_value=False)
     with TestClient(app, base_url="http://testserver") as test_client:
         yield test_client
 
@@ -539,6 +541,147 @@ def test_local_submission_uses_user_author_and_expected_main(
         "email": "web-editor+2@users.noreply.chenyurui.top",
     }
     assert call["expected_parent_sha"] == "main-commit-sha"
+
+
+def test_same_user_can_confirm_submission_branch_overwrite(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "overwrite@example.test",
+            "username": "overwrite-user",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    github = client.app.state.github
+    github.main_reference = AsyncMock(
+        return_value={"object": {"sha": "main-commit-sha"}}
+    )
+    github.repository_tree = AsyncMock(return_value=[])
+    github.submit = AsyncMock(
+        return_value=SubmissionResult(
+            branch="web/overwrite-user/reusable-head",
+            commit_sha="first-commit",
+            pr_number=51,
+            pr_url="https://github.example/pr/51",
+        )
+    )
+
+    first_draft = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": "knowledge/cpp/overwrite-first.md",
+            "content": "# First\n",
+            "operation": "upsert",
+        },
+    )
+    assert first_draft.status_code == 200
+    first_submit = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "custom_head": "reusable-head",
+            "title": "docs: first submission",
+            "description": "",
+        },
+    )
+    assert first_submit.status_code == 200, first_submit.text
+
+    second_draft = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": "knowledge/cpp/overwrite-second.md",
+            "content": "# Second\n",
+            "operation": "upsert",
+        },
+    )
+    assert second_draft.status_code == 200
+    conflict = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "custom_head": "reusable-head",
+            "title": "docs: replacement submission",
+            "description": "",
+        },
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"] == {
+        "code": "branch_conflict",
+        "message": "该提交头已经使用，是否覆盖原分支和 Draft PR？",
+        "branch": "web/overwrite-user/reusable-head",
+        "can_overwrite": True,
+    }
+    assert github.submit.await_count == 1
+
+    github.branch_exists = AsyncMock(return_value=True)
+    github.submit.return_value = SubmissionResult(
+        branch="web/overwrite-user/reusable-head",
+        commit_sha="replacement-commit",
+        pr_number=51,
+        pr_url="https://github.example/pr/51",
+    )
+    overwritten = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "custom_head": "reusable-head",
+            "title": "docs: replacement submission",
+            "description": "",
+            "overwrite": True,
+        },
+    )
+    assert overwritten.status_code == 200, overwritten.text
+    assert overwritten.json()["overwritten"] is True
+    assert overwritten.json()["pr_number"] == 51
+    assert github.submit.await_args.kwargs["overwrite"] is True
+    assert client.get("/api/drafts").json()["items"] == []
+
+
+def test_unknown_remote_branch_cannot_be_overwritten(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "remote-conflict@example.test",
+            "username": "remote-conflict",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    draft = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": "knowledge/cpp/remote-conflict.md",
+            "content": "# Remote conflict\n",
+            "operation": "upsert",
+        },
+    )
+    assert draft.status_code == 200
+
+    github = client.app.state.github
+    github.branch_exists = AsyncMock(return_value=True)
+    github.submit = AsyncMock()
+    conflict = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "custom_head": "occupied",
+            "title": "docs: remote conflict",
+            "description": "",
+        },
+    )
+    assert conflict.status_code == 409
+    detail = conflict.json()["detail"]
+    assert detail["code"] == "branch_conflict"
+    assert detail["can_overwrite"] is False
+    github.submit.assert_not_awaited()
 
 
 def test_submission_preserves_file_delete_operation(

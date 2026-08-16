@@ -31,7 +31,12 @@ from pydantic import BaseModel, Field
 
 from .config import Settings
 from .database import Database, utc_now
-from .github import MAX_EDITABLE_FILE_BYTES, GitHubClient, GitHubError
+from .github import (
+    MAX_EDITABLE_FILE_BYTES,
+    BranchConflictError,
+    GitHubClient,
+    GitHubError,
+)
 from .mailer import send_email
 from .security import (
     TokenCipher,
@@ -103,6 +108,7 @@ class SubmitRequest(BaseModel):
     custom_head: str = Field(min_length=1, max_length=80)
     title: str = Field(min_length=1, max_length=180)
     description: str = Field(default="", max_length=5000)
+    overwrite: bool = False
 
 
 class AdminApplicationRequest(BaseModel):
@@ -1352,8 +1358,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     (user["id"],),
                 ).fetchall()
             ]
+            previous = connection.execute(
+                """
+                SELECT id, user_id, status, pr_number, pr_url
+                FROM submissions
+                WHERE branch_name = ?
+                """,
+                (branch,),
+            ).fetchone()
         if not drafts:
             raise HTTPException(status_code=422, detail="没有可提交的草稿")
+        if previous and previous["user_id"] != user["id"]:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "branch_conflict",
+                    "message": "该提交头与其他用户的分支冲突，请更换提交头",
+                    "branch": branch,
+                    "can_overwrite": False,
+                },
+            )
+        if previous and previous["status"] != "failed" and not payload.overwrite:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "branch_conflict",
+                    "message": "该提交头已经使用，是否覆盖原分支和 Draft PR？",
+                    "branch": branch,
+                    "can_overwrite": True,
+                },
+            )
+        if payload.overwrite and not previous:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "branch_conflict",
+                    "message": "无法确认该分支属于当前用户，不能覆盖",
+                    "branch": branch,
+                    "can_overwrite": False,
+                },
+            )
 
         encrypted = user["github_token_encrypted"]
         if user["github_verified"] and encrypted:
@@ -1410,6 +1454,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 f"{verification}"
             )
 
+        remote_branch_exists = await github.branch_exists(
+            branch,
+            submit_token,
+        )
+        if remote_branch_exists and not previous:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "branch_conflict",
+                    "message": "GitHub 已存在同名分支，但无法确认归属，请更换提交头",
+                    "branch": branch,
+                    "can_overwrite": False,
+                },
+            )
+        if remote_branch_exists and not payload.overwrite:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "branch_conflict",
+                    "message": "GitHub 已存在该提交头，是否覆盖原分支？",
+                    "branch": branch,
+                    "can_overwrite": True,
+                },
+            )
+
         # #region debug-point D:submit-start
         exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'post-fix','hypothesisId':'D','location':'main.py:submit','msg':'[DEBUG] Submission started','data':{'userId':user['id'],'authProvider':user['auth_provider'],'tokenSource':token_source,'draftCount':len(drafts),'branch':branch},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
         # #endregion
@@ -1442,24 +1511,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
 
         now = utc_now()
+        created_submission = previous is None
         with db.connect() as connection:
-            previous = connection.execute(
-                """
-                SELECT id, user_id, status FROM submissions
-                WHERE branch_name = ?
-                """,
-                (branch,),
-            ).fetchone()
-            if previous and previous["user_id"] != user["id"]:
-                raise HTTPException(
-                    status_code=409,
-                    detail="该分支名与其他用户冲突，请更换提交头",
-                )
-            if previous and previous["status"] != "failed":
-                raise HTTPException(
-                    status_code=409,
-                    detail="该提交头已经使用，请更换提交头",
-                )
             if previous:
                 submission_id = previous["id"]
                 connection.execute(
@@ -1467,7 +1520,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     UPDATE submissions
                     SET auth_provider = ?, title = ?, description = ?,
                         status = 'creating', commit_sha = NULL,
-                        pr_number = NULL, pr_url = NULL,
                         error_message = NULL, updated_at = ?
                     WHERE id = ?
                     """,
@@ -1510,7 +1562,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 author=author,
                 actor_label=actor,
                 expected_parent_sha=base_commit_sha,
+                overwrite=payload.overwrite,
             )
+        except BranchConflictError as exc:
+            can_overwrite = bool(
+                previous and previous["user_id"] == user["id"]
+            )
+            with db.connect() as connection:
+                if created_submission:
+                    connection.execute(
+                        "DELETE FROM submissions WHERE id = ?",
+                        (submission_id,),
+                    )
+                else:
+                    connection.execute(
+                        """
+                        UPDATE submissions
+                        SET status = 'failed', error_message = ?, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (str(exc), utc_now(), submission_id),
+                    )
+            db.audit(
+                "submission.branch_conflict",
+                request_ip(request),
+                user_id=user["id"],
+                target=branch,
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "branch_conflict",
+                    "message": (
+                        "GitHub 已存在该提交头，是否覆盖原分支？"
+                        if can_overwrite
+                        else "GitHub 已存在同名分支，请更换提交头"
+                    ),
+                    "branch": branch,
+                    "can_overwrite": can_overwrite,
+                },
+            ) from exc
         except GitHubError as exc:
             # #region debug-point D:submit-failed
             exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'post-fix','hypothesisId':'D','location':'main.py:submit-except','msg':'[DEBUG] Submission failed','data':{'statusCode':exc.status_code,'error':str(exc)[:500],'branch':branch},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
@@ -1554,7 +1645,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         db.audit(
-            "submission.created",
+            (
+                "submission.overwritten"
+                if payload.overwrite
+                else "submission.created"
+            ),
             request_ip(request),
             user_id=user["id"],
             target=result.pr_url,
@@ -1577,6 +1672,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "commit_sha": result.commit_sha,
             "pr_number": result.pr_number,
             "pr_url": result.pr_url,
+            "overwritten": payload.overwrite,
         }
 
     @app.get("/api/submissions")
