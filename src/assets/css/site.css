@@ -51,7 +51,9 @@ body.has-sidebar-open {
 }
 
 button,
-input {
+input,
+textarea,
+select {
   color: inherit;
   font: inherit;
   letter-spacing: 0;
@@ -202,6 +204,31 @@ svg {
   margin-left: auto;
   align-items: center;
   gap: 8px;
+}
+
+.account-trigger {
+  display: inline-flex;
+  min-width: 78px;
+  height: 38px;
+  padding: 0 10px;
+  color: #c4d0cc;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 12px;
+}
+
+.account-trigger:hover,
+.account-trigger.is-authenticated {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.account-trigger.is-authenticated {
+  border-color: rgba(156, 224, 205, 0.46);
 }
 
 .icon-button {
@@ -730,7 +757,7 @@ svg {
   color: var(--teal-dark);
 }
 
-.module-unit-summary > p:last-child {
+.module-unit-summary > p:not(.unit-meta) {
   margin: 0;
   color: var(--ink-soft);
   font-size: 14px;
@@ -1179,6 +1206,154 @@ svg {
 .article-actions a:hover,
 .article-actions button:hover {
   color: var(--teal-dark);
+}
+
+.reader-context-actions,
+.module-editor-actions,
+.unit-editor-actions {
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reader-context-actions {
+  margin-top: 14px;
+}
+
+.reader-context-actions .secondary-button,
+.module-editor-actions .secondary-button {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.module-editor-actions {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.unit-editor-actions {
+  margin-top: 12px;
+}
+
+.unit-editor-actions button {
+  display: inline-flex;
+  min-height: 30px;
+  padding: 4px 8px;
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+  border: 1px solid #c7e1da;
+  border-radius: 3px;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+}
+
+.edit-mode-only {
+  display: none !important;
+}
+
+body.is-edit-mode .edit-mode-only {
+  display: flex !important;
+}
+
+body.is-edit-mode [data-editor-host] {
+  position: relative;
+}
+
+body.is-edit-mode [data-editor-host]::before {
+  position: absolute;
+  z-index: 2;
+  top: -10px;
+  right: 0;
+  padding: 3px 8px;
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+  border: 1px solid #c7e1da;
+  border-radius: 3px;
+  content: "编辑模式";
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.inline-editor {
+  margin: 0 0 34px;
+  background: #fbfcfb;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.inline-editor-toolbar {
+  display: flex;
+  min-height: 58px;
+  padding: 10px 12px;
+  background: var(--canvas);
+  border-bottom: 1px solid var(--line);
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inline-editor-path {
+  min-width: 0;
+  color: var(--ink-soft);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.inline-editor-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 7px;
+}
+
+.inline-editor-actions button {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.inline-editor textarea {
+  display: block;
+  width: 100%;
+  min-height: 560px;
+  padding: 22px;
+  color: var(--ink);
+  background: #ffffff;
+  border: 0;
+  outline: 0;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.75;
+  resize: vertical;
+}
+
+.inline-editor-preview {
+  min-height: 560px;
+  padding: 26px;
+  background: #ffffff;
+}
+
+.inline-editor-feedback {
+  min-height: 34px;
+  padding: 8px 12px;
+  color: var(--ink-faint);
+  background: var(--canvas);
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+}
+
+.inline-editor-feedback.is-error {
+  color: #9a3412;
+  background: var(--orange-soft);
+}
+
+.inline-editor-feedback.is-success {
+  color: var(--teal-dark);
+  background: var(--teal-soft);
 }
 
 .article-toc {
@@ -1753,6 +1928,283 @@ svg {
   font-size: 13px;
 }
 
+.account-dialog,
+.content-create-dialog {
+  width: min(460px, calc(100% - 28px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  box-shadow: var(--shadow);
+  overflow: auto;
+}
+
+.account-dialog::backdrop,
+.content-create-dialog::backdrop {
+  background: rgba(15, 24, 21, 0.62);
+}
+
+.account-panel,
+.content-create-form {
+  padding: 24px;
+}
+
+.account-panel-header,
+.content-create-form > header {
+  display: flex;
+  margin-bottom: 20px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.account-panel-header h2,
+.content-create-form h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.account-panel-header .icon-button,
+.content-create-form .icon-button {
+  flex: 0 0 auto;
+  color: var(--ink-faint);
+  border-color: var(--line);
+}
+
+.account-tabs {
+  display: flex;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.account-tabs button {
+  min-height: 38px;
+  padding: 6px 13px;
+  color: var(--ink-faint);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.account-tabs button.is-active {
+  color: var(--teal-dark);
+  border-bottom-color: var(--teal);
+}
+
+.account-form,
+.content-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.account-form label,
+.content-create-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.account-form input,
+.content-create-form input,
+.content-create-form textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 11px;
+  color: var(--ink);
+  background: #fbfcfb;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  outline: 0;
+  font-weight: 400;
+}
+
+.content-create-form textarea {
+  resize: vertical;
+}
+
+.account-form input:focus,
+.content-create-form input:focus,
+.content-create-form textarea:focus {
+  background: #ffffff;
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(22, 123, 109, 0.09);
+}
+
+.account-divider {
+  display: flex;
+  margin: 18px 0;
+  color: var(--ink-faint);
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+}
+
+.account-divider::before,
+.account-divider::after {
+  height: 1px;
+  background: var(--line);
+  content: "";
+  flex: 1;
+}
+
+.github-login-button {
+  display: flex;
+  min-height: 42px;
+  color: #ffffff;
+  background: #24292f;
+  border-radius: 4px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.github-login-button:hover {
+  color: #ffffff;
+  background: #14171a;
+}
+
+.github-login-button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.account-policy {
+  margin: 11px 0 0;
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
+.account-identity {
+  display: flex;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+  align-items: center;
+  gap: 12px;
+}
+
+.account-avatar {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+  border: 1px solid #c7e1da;
+  border-radius: 50%;
+  font-weight: 800;
+  place-items: center;
+}
+
+.account-identity > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.account-identity strong {
+  font-size: 14px;
+}
+
+.account-identity span:last-child {
+  color: var(--ink-faint);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.account-status-list {
+  margin: 14px 0;
+}
+
+.account-status-list > div {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 12px;
+}
+
+.account-status-list dt {
+  color: var(--ink-faint);
+}
+
+.account-status-list dd {
+  margin: 0;
+  font-weight: 650;
+  text-align: right;
+}
+
+.account-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.account-actions .secondary-button {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.quiet-command {
+  min-height: 38px;
+  color: var(--ink-faint);
+  background: transparent;
+  border: 0;
+  font-size: 12px;
+}
+
+.quiet-command:hover {
+  color: var(--orange);
+}
+
+.account-feedback {
+  display: none;
+  margin-top: 14px;
+  padding: 9px 10px;
+  color: #9a3412;
+  background: var(--orange-soft);
+  border-left: 3px solid var(--orange);
+  font-size: 11px;
+}
+
+.account-feedback.is-visible {
+  display: block;
+}
+
+.account-feedback.is-success {
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+  border-left-color: var(--teal);
+}
+
+.content-create-form > header {
+  margin-bottom: 4px;
+}
+
+.content-create-form > header p:last-child {
+  margin: 5px 0 0;
+  color: var(--ink-faint);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+}
+
+.content-create-form footer {
+  display: flex;
+  padding-top: 4px;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .not-found {
   display: flex;
   min-height: calc(100vh - var(--header-height) - 92px);
@@ -1969,6 +2421,16 @@ svg {
     display: none;
   }
 
+  .account-trigger {
+    width: 38px;
+    min-width: 38px;
+    padding: 0;
+  }
+
+  .account-trigger span {
+    display: none;
+  }
+
   .site-footer,
   .site-footer > div {
     align-items: flex-start;
@@ -2158,6 +2620,31 @@ svg {
     font-size: 15px;
   }
 
+  .article-actions {
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .inline-editor-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .inline-editor-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .inline-editor textarea,
+  .inline-editor-preview {
+    min-height: 430px;
+    padding: 16px;
+  }
+
+  .module-editor-actions .secondary-button {
+    flex: 1 1 130px;
+  }
+
   .prose {
     font-size: 15px;
     line-height: 1.82;
@@ -2204,6 +2691,17 @@ svg {
 
   .search-panel {
     max-height: calc(100vh - 16px);
+  }
+
+  .account-dialog,
+  .content-create-dialog {
+    width: calc(100% - 16px);
+    max-height: calc(100vh - 16px);
+  }
+
+  .account-panel,
+  .content-create-form {
+    padding: 20px 18px;
   }
 
   .not-found > div {

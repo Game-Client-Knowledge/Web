@@ -4,6 +4,7 @@ import base64
 import binascii
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -99,7 +100,10 @@ class GitHubClient:
     async def repository_file(self, path: str) -> dict[str, Any]:
         response = await self._request(
             "GET",
-            f"/repos/{self.settings.github_repo}/contents/{path}",
+            (
+                f"/repos/{self.settings.github_repo}/contents/"
+                f"{quote(path, safe='/')}"
+            ),
             token=self.settings.github_bot_token or None,
             params={"ref": "main"},
         )
@@ -107,8 +111,9 @@ class GitHubClient:
         if int(payload.get("size", 0)) > MAX_EDITABLE_FILE_BYTES:
             raise GitHubError("文件超过在线编辑大小限制", 413)
         try:
+            encoded = "".join(str(payload.get("content", "")).split())
             content = base64.b64decode(
-                payload.get("content", ""),
+                encoded,
                 validate=True,
             ).decode("utf-8")
         except (binascii.Error, UnicodeDecodeError) as exc:

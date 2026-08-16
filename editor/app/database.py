@@ -46,6 +46,10 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS oauth_states (
     state_hash TEXT PRIMARY KEY,
     code_verifier TEXT NOT NULL,
+    purpose TEXT NOT NULL DEFAULT 'login'
+        CHECK(purpose IN ('login', 'bind')),
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    return_to TEXT,
     expires_at TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
@@ -172,6 +176,34 @@ class Database:
                     WHERE github_verified = 1 OR role = 'admin'
                     """
                 )
+            oauth_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(oauth_states)"
+                ).fetchall()
+            }
+            for statement in [
+                (
+                    "purpose",
+                    """
+                    ALTER TABLE oauth_states
+                    ADD COLUMN purpose TEXT NOT NULL DEFAULT 'login'
+                    """,
+                ),
+                (
+                    "user_id",
+                    """
+                    ALTER TABLE oauth_states
+                    ADD COLUMN user_id INTEGER REFERENCES users(id)
+                    """,
+                ),
+                (
+                    "return_to",
+                    "ALTER TABLE oauth_states ADD COLUMN return_to TEXT",
+                ),
+            ]:
+                if statement[0] not in oauth_columns:
+                    connection.execute(statement[1])
             now = utc_now()
             connection.execute(
                 """

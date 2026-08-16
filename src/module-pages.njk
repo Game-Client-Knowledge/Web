@@ -12,7 +12,11 @@ eleventyComputed:
   pageKind: "module"
 ---
 
-<div class="module-page-shell">
+<div
+  class="module-page-shell"
+  data-editor-host
+  data-editor-source="{{ module.sourceRelative }}"
+>
   <header class="module-page-header module-{{ module.accent }}">
     <nav class="breadcrumbs" aria-label="面包屑">
       <a href="{{ '/' | withBase }}">首页</a>
@@ -29,13 +33,41 @@ eleventyComputed:
         <p>{{ module.description }}</p>
       </div>
     </div>
+    <div class="module-editor-actions edit-mode-only" data-edit-mode-only>
+      <button class="secondary-button" type="button" data-edit-current>
+        <i data-lucide="square-pen" aria-hidden="true"></i>
+        编辑模块说明
+      </button>
+      <button
+        class="secondary-button"
+        type="button"
+        data-create-context="module"
+        data-create-root="{{ module.key }}"
+        data-create-parent="{{ module.key }}"
+      >
+        <i data-lucide="folder-plus" aria-hidden="true"></i>
+        新建子模块
+      </button>
+      <button
+        class="secondary-button"
+        type="button"
+        data-create-context="file"
+        data-create-root="{{ module.key }}"
+        data-create-parent="{{ module.key }}"
+      >
+        <i data-lucide="file-plus-2" aria-hidden="true"></i>
+        新建文件
+      </button>
+    </div>
   </header>
 
-  {% if module.body %}
-    <div class="module-introduction prose compact-prose">
-      {{ module.body | renderMarkdown(module.sourceRelative) | safe }}
-    </div>
-  {% endif %}
+  <div data-editable-rendered>
+    {% if module.body %}
+      <div class="module-introduction prose compact-prose">
+        {{ module.body | renderMarkdown(module.sourceRelative) | safe }}
+      </div>
+    {% endif %}
+  </div>
 
   <section class="module-directory" aria-labelledby="{{ module.key }}-directory">
     <div class="section-heading">
@@ -65,6 +97,30 @@ eleventyComputed:
             </p>
             <h3><a href="{{ unit.route | withBase }}">{{ unit.title }}</a></h3>
             <p>{{ unit.description }}</p>
+            <div class="unit-editor-actions edit-mode-only" data-edit-mode-only>
+              <button
+                type="button"
+                data-create-context="module"
+                data-create-root="{{ module.key }}"
+                data-create-parent="{{ unit.id }}"
+                aria-label="在 {{ unit.title }} 下新建子模块"
+                title="新建子模块"
+              >
+                <i data-lucide="folder-plus" aria-hidden="true"></i>
+                子模块
+              </button>
+              <button
+                type="button"
+                data-create-context="file"
+                data-create-root="{{ module.key }}"
+                data-create-parent="{{ unit.id }}"
+                aria-label="在 {{ unit.title }} 下新建文件"
+                title="新建文件"
+              >
+                <i data-lucide="file-plus-2" aria-hidden="true"></i>
+                文件
+              </button>
+            </div>
           </div>
           <ol class="module-unit-documents">
             {% for item in unit.documents %}

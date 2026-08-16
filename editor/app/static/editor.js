@@ -5,7 +5,8 @@ const state = {
   drafts: [],
   repository: [],
   active: null,
-  previewing: false
+  previewing: false,
+  resourceFilter: ""
 };
 
 const byId = (id) => document.getElementById(id);
@@ -82,7 +83,9 @@ function applyConfig() {
   registerTab.disabled = !state.config.registration_enabled;
   const githubLogin = byId("githubLogin");
   if (state.config.github_oauth_enabled) {
-    githubLogin.href = "api/auth/github";
+    githubLogin.href =
+      "api/auth/github?mode=login&return_to=" +
+      encodeURIComponent("/editor/");
     githubLogin.removeAttribute("aria-disabled");
     githubLogin.textContent = "使用 GitHub 登录";
   } else {
@@ -126,6 +129,20 @@ async function initializeWorkspace() {
   byId("adminApplicationSection").hidden = user.role === "admin";
   byId("editBlocked").hidden = canEdit;
   byId("branchPreview").textContent = `web/${slugify(user.username)}/update`;
+  const bindButton = byId("githubBindingButton");
+  const unlinkButton = byId("githubUnlinkButton");
+  bindButton.hidden = Boolean(user.github_login);
+  unlinkButton.hidden = !user.github_login;
+  if (state.config.github_oauth_enabled) {
+    bindButton.href =
+      "api/auth/github?mode=bind&return_to=" +
+      encodeURIComponent("/editor/");
+    bindButton.removeAttribute("aria-disabled");
+  } else {
+    bindButton.removeAttribute("href");
+    bindButton.setAttribute("aria-disabled", "true");
+    bindButton.title = "需要先配置 GitHub OAuth";
+  }
   document
     .querySelectorAll(
       "#newFileButton, #newTopicButton, #saveDraftButton, " +
@@ -134,45 +151,169 @@ async function initializeWorkspace() {
     .forEach((element) => {
       element.disabled = !canEdit;
     });
-  await Promise.all([loadDrafts(), loadSubmissions()]);
+  await Promise.all([loadDrafts(), loadRepository(), loadSubmissions()]);
+  const requestedFile = new URLSearchParams(location.search).get("file");
+  if (requestedFile) {
+    await openResource(requestedFile);
+  }
 }
 
 async function loadDrafts() {
   if (!state.session?.can_edit) {
     state.drafts = [];
-    renderDrafts();
+    renderResources();
     return;
   }
   const payload = await api("/drafts");
   state.drafts = payload.items;
-  renderDrafts();
+  renderResources();
 }
 
-function renderDrafts() {
-  const list = byId("draftList");
+function resourceEntries() {
+  const entries = new Map();
+  for (const item of state.repository) {
+    entries.set(item.path, {
+      path: item.path,
+      sha: item.sha,
+      size: item.size,
+      draft: null
+    });
+  }
+  for (const draft of state.drafts) {
+    const existing = entries.get(draft.path) || {
+      path: draft.path,
+      sha: null,
+      size: draft.content.length,
+      draft: null
+    };
+    existing.draft = draft;
+    entries.set(draft.path, existing);
+  }
+  return Array.from(entries.values()).sort((left, right) =>
+    left.path.localeCompare(right.path, "zh-CN", { numeric: true })
+  );
+}
+
+function buildResourceTree(entries) {
+  const root = { folders: new Map(), files: [] };
+  for (const entry of entries) {
+    const parts = entry.path.split("/");
+    const filename = parts.pop();
+    let node = root;
+    for (const part of parts) {
+      if (!node.folders.has(part)) {
+        node.folders.set(part, { folders: new Map(), files: [] });
+      }
+      node = node.folders.get(part);
+    }
+    node.files.push({ ...entry, filename });
+  }
+  return root;
+}
+
+function icon(name) {
+  const element = document.createElement("i");
+  element.dataset.lucide = name;
+  element.setAttribute("aria-hidden", "true");
+  return element;
+}
+
+function refreshIcons(root) {
+  if (window.lucide) {
+    window.lucide.createIcons({
+      attrs: { "stroke-width": 1.8 },
+      root: root || document
+    });
+  }
+}
+
+function renderTreeNode(node, target, depth) {
+  for (const [name, child] of Array.from(node.folders.entries()).sort()) {
+    const details = document.createElement("details");
+    details.className = "resource-folder";
+    details.open = depth < 2 || Boolean(state.resourceFilter);
+    const summary = document.createElement("summary");
+    summary.append(icon("folder"), document.createTextNode(name));
+    const count = document.createElement("small");
+    count.textContent = String(child.files.length + child.folders.size);
+    summary.append(count);
+    details.append(summary);
+    const children = document.createElement("div");
+    children.className = "resource-folder-children";
+    renderTreeNode(child, children, depth + 1);
+    details.append(children);
+    target.append(details);
+  }
+  for (const file of node.files) {
+    const button = document.createElement("button");
+    button.className = "resource-file";
+    button.type = "button";
+    button.title = file.path;
+    button.dataset.path = file.path;
+    if (state.active?.path === file.path) {
+      button.classList.add("is-active");
+    }
+    button.append(
+      icon(file.filename.endsWith(".md") ? "file-text" : "file-code-2")
+    );
+    const label = document.createElement("span");
+    label.textContent = file.filename;
+    button.append(label);
+    if (file.draft) {
+      const badge = document.createElement("small");
+      badge.className = "resource-change-badge";
+      badge.textContent = file.sha ? "M" : "A";
+      button.append(badge);
+    }
+    button.addEventListener("click", () => openResource(file.path));
+    target.append(button);
+  }
+}
+
+function renderChanges() {
+  const list = byId("changeList");
   list.replaceChildren();
+  byId("changeCount").textContent = String(state.drafts.length);
   byId("draftCount").textContent = `${state.drafts.length} 个草稿`;
   for (const draft of state.drafts) {
     const button = document.createElement("button");
-    button.className = "file-item";
-    if (state.active?.draftId === draft.id) {
-      button.classList.add("is-active");
-    }
+    button.className = "change-item";
     button.type = "button";
+    const change = document.createElement("small");
+    change.textContent = draft.base_sha ? "M" : "A";
     const label = document.createElement("span");
-    label.textContent = draft.path;
+    label.textContent = draft.path.split("/").pop();
     const meta = document.createElement("small");
-    meta.textContent = `v${draft.revision}`;
-    button.append(label, meta);
+    meta.textContent = draft.path;
+    button.append(change, label, meta);
     button.addEventListener("click", () => openDraft(draft));
     list.append(button);
   }
   if (!state.drafts.length) {
     const empty = document.createElement("p");
     empty.className = "form-hint";
-    empty.textContent = "尚无草稿";
+    empty.textContent = "尚无未提交更改";
     list.append(empty);
   }
+}
+
+function renderResources() {
+  const target = byId("resourceTree");
+  target.replaceChildren();
+  const filter = state.resourceFilter.trim().toLowerCase();
+  const entries = resourceEntries().filter(
+    (item) => !filter || item.path.toLowerCase().includes(filter)
+  );
+  if (!entries.length) {
+    const empty = document.createElement("p");
+    empty.className = "form-hint";
+    empty.textContent = filter ? "没有匹配的目录或文件" : "仓库中暂无可编辑文件";
+    target.append(empty);
+  } else {
+    renderTreeNode(buildResourceTree(entries), target, 0);
+  }
+  renderChanges();
+  refreshIcons(target);
 }
 
 function openDraft(draft) {
@@ -190,60 +331,86 @@ function openDraft(draft) {
   byId("contentEditor").value = draft.content;
   byId("contentEditor").hidden = false;
   byId("previewPane").hidden = true;
+  byId("previewButton").hidden =
+    !draft.path.toLowerCase().endsWith(".md");
   byId("previewButton").textContent = "预览";
   clearFeedback(byId("editorFeedback"));
-  renderDrafts();
+  renderResources();
 }
 
-async function loadRepository() {
-  if (state.repository.length) {
-    renderRepository();
+function showEditorLoading(path) {
+  byId("emptyEditor").hidden = false;
+  byId("activeEditor").hidden = true;
+  byId("emptyEditor").replaceChildren();
+  const title = document.createElement("strong");
+  title.textContent = "正在加载文件";
+  const copy = document.createElement("span");
+  copy.textContent = path;
+  byId("emptyEditor").append(title, copy);
+}
+
+function resetEmptyEditor() {
+  byId("emptyEditor").replaceChildren();
+  const title = document.createElement("strong");
+  title.textContent = "选择文件开始编辑";
+  const copy = document.createElement("span");
+  copy.textContent = "也可以新建文件或创建专题目录。";
+  byId("emptyEditor").append(title, copy);
+}
+
+async function loadRepository(force = false) {
+  if (state.repository.length && !force) {
+    renderResources();
     return;
   }
-  const list = byId("repositoryList");
-  list.textContent = "正在读取仓库目录…";
+  byId("resourceTree").textContent = "正在读取仓库目录…";
   try {
     const payload = await api("/repository/tree");
     state.repository = payload.items;
-    renderRepository();
+    renderResources();
   } catch (error) {
-    list.textContent = error.message;
+    byId("resourceTree").textContent = error.message;
   }
 }
 
-function renderRepository() {
-  const list = byId("repositoryList");
-  list.replaceChildren();
-  for (const item of state.repository) {
-    const button = document.createElement("button");
-    button.className = "file-item";
-    button.type = "button";
-    const label = document.createElement("span");
-    label.textContent = item.path;
-    button.append(label);
-    button.addEventListener("click", async () => {
-      try {
-        const file = await api(`/repository/file?path=${encodeURIComponent(item.path)}`);
-        state.active = {
-          draftId: null,
-          path: file.path,
-          baseSha: file.sha,
-          content: file.content
-        };
-        byId("emptyEditor").hidden = true;
-        byId("activeEditor").hidden = false;
-        byId("filePath").value = file.path;
-        byId("filePath").readOnly = true;
-        byId("contentEditor").value = file.content;
-        byId("contentEditor").hidden = false;
-        byId("previewPane").hidden = true;
-        state.previewing = false;
-        clearFeedback(byId("editorFeedback"));
-      } catch (error) {
-        feedback(byId("editorFeedback"), error.message);
-      }
-    });
-    list.append(button);
+async function openResource(path) {
+  const draft = state.drafts.find((item) => item.path === path);
+  if (draft) {
+    openDraft(draft);
+    return;
+  }
+  showEditorLoading(path);
+  try {
+    const file = await api(
+      `/repository/file?path=${encodeURIComponent(path)}`
+    );
+    state.active = {
+      draftId: null,
+      path: file.path,
+      baseSha: file.sha,
+      content: file.content
+    };
+    byId("emptyEditor").hidden = true;
+    byId("activeEditor").hidden = false;
+    byId("filePath").value = file.path;
+    byId("filePath").readOnly = true;
+    byId("contentEditor").value = file.content;
+    byId("contentEditor").hidden = false;
+    byId("previewPane").hidden = true;
+    byId("previewButton").hidden =
+      !file.path.toLowerCase().endsWith(".md");
+    byId("previewButton").textContent = "预览";
+    state.previewing = false;
+    clearFeedback(byId("editorFeedback"));
+    renderResources();
+  } catch (error) {
+    byId("emptyEditor").replaceChildren();
+    const title = document.createElement("strong");
+    title.textContent = "文件加载失败";
+    const copy = document.createElement("span");
+    copy.textContent = error.message;
+    byId("emptyEditor").append(title, copy);
+    byId("emptyEditor").hidden = false;
   }
 }
 
@@ -285,6 +452,7 @@ async function deleteActiveDraft() {
     state.active = null;
     byId("activeEditor").hidden = true;
     byId("emptyEditor").hidden = false;
+    resetEmptyEditor();
     await loadDrafts();
   } catch (error) {
     feedback(byId("editorFeedback"), error.message);
@@ -409,19 +577,29 @@ byId("logoutButton").addEventListener("click", logout);
 byId("saveDraftButton").addEventListener("click", saveActiveDraft);
 byId("deleteDraftButton").addEventListener("click", deleteActiveDraft);
 byId("previewButton").addEventListener("click", togglePreview);
-byId("newFileButton").addEventListener("click", () => byId("fileDialog").showModal());
-byId("newTopicButton").addEventListener("click", () => byId("topicDialog").showModal());
-
-document.querySelectorAll("[data-side-tab]").forEach((button) => {
-  button.addEventListener("click", () => {
-    const tab = button.dataset.sideTab;
-    document.querySelectorAll("[data-side-tab]").forEach((item) => {
-      item.classList.toggle("is-active", item === button);
-    });
-    byId("draftList").hidden = tab !== "drafts";
-    byId("repositoryList").hidden = tab !== "repository";
-    if (tab === "repository") loadRepository();
-  });
+byId("newFileButton").addEventListener("click", () => {
+  clearFeedback(byId("fileDialogFeedback"));
+  byId("fileDialog").showModal();
+});
+byId("newTopicButton").addEventListener("click", () => {
+  clearFeedback(byId("topicDialogFeedback"));
+  byId("topicDialog").showModal();
+});
+byId("resourceSearch").addEventListener("input", (event) => {
+  state.resourceFilter = event.currentTarget.value;
+  renderResources();
+});
+byId("refreshRepositoryButton").addEventListener("click", async () => {
+  state.repository = [];
+  await Promise.all([loadRepository(true), loadDrafts()]);
+});
+byId("githubUnlinkButton").addEventListener("click", async () => {
+  try {
+    await api("/auth/github/unlink", { method: "POST" });
+    location.reload();
+  } catch (error) {
+    feedback(byId("editorFeedback"), error.message);
+  }
 });
 
 byId("fileForm").addEventListener("submit", async (event) => {
@@ -430,6 +608,7 @@ byId("fileForm").addEventListener("submit", async (event) => {
     byId("fileDialog").close();
     return;
   }
+  clearFeedback(byId("fileDialogFeedback"));
   const payload = formPayload(event.currentTarget);
   state.active = {
     draftId: null,
@@ -445,6 +624,8 @@ byId("fileForm").addEventListener("submit", async (event) => {
   byId("contentEditor").value = state.active.content;
   byId("contentEditor").hidden = false;
   byId("previewPane").hidden = true;
+  byId("previewButton").hidden =
+    !state.active.path.toLowerCase().endsWith(".md");
 });
 
 byId("topicForm").addEventListener("submit", async (event) => {
@@ -453,6 +634,7 @@ byId("topicForm").addEventListener("submit", async (event) => {
     byId("topicDialog").close();
     return;
   }
+  clearFeedback(byId("topicDialogFeedback"));
   try {
     const result = await api("/topics", {
       method: "POST",
@@ -463,7 +645,7 @@ byId("topicForm").addEventListener("submit", async (event) => {
     await loadDrafts();
     openDraft(result);
   } catch (error) {
-    alert(error.message);
+    feedback(byId("topicDialogFeedback"), error.message);
   }
 });
 
@@ -494,6 +676,7 @@ byId("submitForm").addEventListener("submit", async (event) => {
     state.active = null;
     byId("activeEditor").hidden = true;
     byId("emptyEditor").hidden = false;
+    resetEmptyEditor();
     await Promise.all([loadDrafts(), loadSubmissions()]);
   } catch (error) {
     feedback(byId("submitFeedback"), error.message);
@@ -521,3 +704,5 @@ loadSession().catch((error) => {
   showView("auth");
   feedback(byId("authFeedback"), error.message);
 });
+
+refreshIcons();

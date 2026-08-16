@@ -115,6 +115,19 @@ GitHub OAuth uses this callback:
 https://knowledge.chenyurui.top/editor/api/auth/github/callback
 ```
 
+Create an OAuth App under the GitHub organization or the owning GitHub account:
+
+```text
+Application name:
+Game Client Knowledge Editor
+
+Homepage URL:
+https://knowledge.chenyurui.top
+
+Authorization callback URL:
+https://knowledge.chenyurui.top/editor/api/auth/github/callback
+```
+
 Set:
 
 ```text
@@ -123,7 +136,18 @@ EDITOR_GITHUB_CLIENT_SECRET
 EDITOR_ENCRYPTION_KEY
 ```
 
-Restart the service after changing environment secrets.
+Restart the service after changing environment secrets. Until both OAuth values
+are present, GitHub login and account binding are intentionally shown as
+unconfigured; the existing Bot token cannot substitute for an OAuth Client ID and
+Client Secret.
+
+Verify:
+
+```bash
+curl -fsS https://knowledge.chenyurui.top/editor/api/config
+```
+
+`github_oauth_enabled` must be `true` before GitHub login or binding can start.
 
 ## SMTP Configuration
 

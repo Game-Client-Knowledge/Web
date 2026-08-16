@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import bleach
 from fastapi import (
@@ -161,6 +161,7 @@ def public_user(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
         "email": row["email"],
         "username": row["username"],
         "github_login": row["github_login"],
+        "github_email": row["github_email"],
         "github_verified": bool(row["github_verified"]),
         "email_verified": bool(row["email_verified"]),
         "role": row["role"],
@@ -175,6 +176,21 @@ def can_edit(user: dict[str, Any], policy: str) -> bool:
     if policy == "local_authenticated":
         return True
     return bool(user["github_verified"])
+
+
+def safe_return_path(value: str | None) -> str | None:
+    if not value:
+        return None
+    path = value.strip()
+    if (
+        not path.startswith("/")
+        or path.startswith("//")
+        or "\\" in path
+        or len(path) > 500
+        or any(ord(character) < 32 for character in path)
+    ):
+        return None
+    return path
 
 
 def validate_markdown(path: str, content: str) -> list[str]:
@@ -439,6 +455,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             body,
         )
 
+    base_url_parts = urlsplit(settings.base_url)
+    site_origin = (
+        f"{base_url_parts.scheme}://{base_url_parts.netloc}"
+    )
+
+    def browser_return_url(path: str | None) -> str:
+        return f"{site_origin}{path}" if path else f"{settings.base_url}/"
+
     @app.get("/")
     async def editor_page():
         return FileResponse(STATIC_DIR / "index.html")
@@ -630,9 +654,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/api/auth/github")
-    async def github_login(request: Request):
+    async def github_login(
+        request: Request,
+        mode: str = "login",
+        return_to: str | None = None,
+    ):
         if not settings.github_oauth_enabled:
             raise HTTPException(status_code=503, detail="GitHub OAuth 尚未配置")
+        if mode not in {"login", "bind"}:
+            raise HTTPException(status_code=422, detail="GitHub 认证模式无效")
+        binding_user = (
+            require_ready_user(request)
+            if mode == "bind"
+            else None
+        )
+        return_path = safe_return_path(return_to)
         state = random_token()
         verifier = random_token()
         challenge = base64.urlsafe_b64encode(
@@ -642,12 +678,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with db.connect() as connection:
             connection.execute(
                 """
-                INSERT INTO oauth_states(state_hash, code_verifier, expires_at, created_at)
-                VALUES(?, ?, ?, ?)
+                INSERT INTO oauth_states(
+                    state_hash, code_verifier, purpose, user_id,
+                    return_to, expires_at, created_at
+                )
+                VALUES(?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     token_hash(state),
                     verifier,
+                    mode,
+                    binding_user["id"] if binding_user else None,
+                    return_path,
                     (now + timedelta(minutes=10)).isoformat(),
                     now.isoformat(),
                 ),
@@ -710,6 +752,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         if not oauth:
             raise HTTPException(status_code=400, detail="OAuth state 已失效")
+        binding_user = None
+        if oauth["purpose"] == "bind":
+            binding_user = read_session(request)
+            if (
+                not binding_user
+                or binding_user["must_change_password"]
+                or binding_user["id"] != oauth["user_id"]
+            ):
+                raise HTTPException(
+                    status_code=401,
+                    detail="发起绑定的登录会话已失效",
+                )
 
         token = await github.exchange_oauth_code(code, oauth["code_verifier"])
         profile = await github.user_profile(token)
@@ -735,19 +789,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         now = utc_now()
 
         with db.connect() as connection:
-            row = connection.execute(
-                """
-                SELECT * FROM users
-                WHERE github_id = ? OR lower(email) = lower(?)
-                """,
-                (github_id, email),
-            ).fetchone()
-            if row:
+            if binding_user:
+                owner = connection.execute(
+                    """
+                    SELECT id FROM users
+                    WHERE (github_id = ? OR lower(github_login) = lower(?))
+                      AND id != ?
+                    """,
+                    (github_id, github_login, binding_user["id"]),
+                ).fetchone()
+                if owner:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="该 GitHub 账号已绑定其他用户",
+                    )
+                target = connection.execute(
+                    "SELECT * FROM users WHERE id = ? AND status = 'active'",
+                    (binding_user["id"],),
+                ).fetchone()
+                if not target:
+                    raise HTTPException(status_code=404, detail="用户不存在")
+                if target["github_id"] not in {None, github_id}:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="当前账号已绑定其他 GitHub 账号，请先解绑",
+                    )
                 connection.execute(
                     """
                     UPDATE users
                     SET github_id = ?, github_login = ?, github_email = ?,
-                        github_verified = 1, email_verified = 1,
+                        github_verified = 1,
+                        email_verified = CASE
+                            WHEN lower(email) = lower(?) THEN 1
+                            ELSE email_verified
+                        END,
                         github_token_encrypted = ?, updated_at = ?
                     WHERE id = ?
                     """,
@@ -755,68 +830,151 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         github_id,
                         github_login,
                         email,
+                        email,
                         encrypted_token,
                         now,
-                        row["id"],
+                        binding_user["id"],
                     ),
                 )
-                user_id = row["id"]
+                user_id = binding_user["id"]
+                row = connection.execute(
+                    "SELECT * FROM users WHERE id = ?",
+                    (user_id,),
+                ).fetchone()
             else:
-                candidate = github_username
-                suffix = 1
-                while connection.execute(
-                    "SELECT 1 FROM users WHERE lower(username) = lower(?)",
-                    (candidate,),
-                ).fetchone():
-                    suffix += 1
-                    candidate = f"{github_username[:27]}-{suffix}"
-                cursor = connection.execute(
+                github_owner = connection.execute(
+                    "SELECT * FROM users WHERE github_id = ?",
+                    (github_id,),
+                ).fetchone()
+                email_owner = connection.execute(
                     """
-                    INSERT INTO users(
-                        email, username, github_id, github_login,
-                        github_email, github_verified, email_verified,
-                        github_token_encrypted, created_at, updated_at
-                    )
-                    VALUES(?, ?, ?, ?, ?, 1, 1, ?, ?, ?)
+                    SELECT * FROM users WHERE lower(email) = lower(?)
                     """,
-                    (
-                        email,
-                        candidate,
-                        github_id,
-                        github_login,
-                        email,
-                        encrypted_token,
-                        now,
-                        now,
-                    ),
-                )
-                user_id = cursor.lastrowid
-            row = connection.execute(
-                "SELECT * FROM users WHERE id = ?", (user_id,)
-            ).fetchone()
-            raw, csrf = create_session(connection, user_id, "github")
+                    (email,),
+                ).fetchone()
+                if (
+                    github_owner
+                    and email_owner
+                    and github_owner["id"] != email_owner["id"]
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="GitHub 身份与邮箱分别属于不同账号，请联系管理员",
+                    )
+                row = github_owner or email_owner
+                if row and row["github_id"] not in {None, github_id}:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="该邮箱账号已绑定其他 GitHub 身份",
+                    )
+                if row:
+                    connection.execute(
+                        """
+                        UPDATE users
+                        SET github_id = ?, github_login = ?, github_email = ?,
+                            github_verified = 1, email_verified = 1,
+                            github_token_encrypted = ?, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            github_id,
+                            github_login,
+                            email,
+                            encrypted_token,
+                            now,
+                            row["id"],
+                        ),
+                    )
+                    user_id = row["id"]
+                else:
+                    candidate = github_username
+                    suffix = 1
+                    while connection.execute(
+                        "SELECT 1 FROM users WHERE lower(username) = lower(?)",
+                        (candidate,),
+                    ).fetchone():
+                        suffix += 1
+                        candidate = f"{github_username[:27]}-{suffix}"
+                    cursor = connection.execute(
+                        """
+                        INSERT INTO users(
+                            email, username, github_id, github_login,
+                            github_email, github_verified, email_verified,
+                            github_token_encrypted, created_at, updated_at
+                        )
+                        VALUES(?, ?, ?, ?, ?, 1, 1, ?, ?, ?)
+                        """,
+                        (
+                            email,
+                            candidate,
+                            github_id,
+                            github_login,
+                            email,
+                            encrypted_token,
+                            now,
+                            now,
+                        ),
+                    )
+                    user_id = cursor.lastrowid
+                row = connection.execute(
+                    "SELECT * FROM users WHERE id = ?", (user_id,)
+                ).fetchone()
+                raw, csrf = create_session(connection, user_id, "github")
 
         db.audit(
-            "auth.github",
+            "auth.github_bound" if binding_user else "auth.github",
             request_ip(request),
             user_id=user_id,
             target=github_login,
         )
-        response = RedirectResponse(f"{settings.base_url}/")
-        response.set_cookie(
-            SESSION_COOKIE,
-            raw,
-            max_age=settings.session_hours * 3600,
-            secure=settings.cookie_secure,
-            httponly=True,
-            samesite="lax",
-            path=settings.cookie_path,
+        response = RedirectResponse(
+            browser_return_url(oauth["return_to"])
         )
+        if not binding_user:
+            response.set_cookie(
+                SESSION_COOKIE,
+                raw,
+                max_age=settings.session_hours * 3600,
+                secure=settings.cookie_secure,
+                httponly=True,
+                samesite="lax",
+                path=settings.cookie_path,
+            )
         response.delete_cookie(
             OAUTH_STATE_COOKIE,
             path=settings.cookie_path,
         )
         return response
+
+    @app.post("/api/auth/github/unlink")
+    async def github_unlink(
+        request: Request,
+        x_csrf_token: str | None = Header(default=None),
+        user: dict[str, Any] = Depends(require_ready_user),
+    ) -> dict[str, bool]:
+        verify_csrf(user, x_csrf_token)
+        if not user["password_hash"]:
+            raise HTTPException(
+                status_code=409,
+                detail="GitHub 是当前账号唯一登录方式，不能解绑",
+            )
+        with db.connect() as connection:
+            connection.execute(
+                """
+                UPDATE users
+                SET github_id = NULL, github_login = NULL,
+                    github_email = NULL, github_verified = 0,
+                    github_token_encrypted = NULL, updated_at = ?
+                WHERE id = ?
+                """,
+                (utc_now(), user["id"]),
+            )
+        db.audit(
+            "auth.github_unlinked",
+            request_ip(request),
+            user_id=user["id"],
+        )
+        return {"ok": True}
 
     @app.get("/api/repository/tree")
     async def repository_tree(

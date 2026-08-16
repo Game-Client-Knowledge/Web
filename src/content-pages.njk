@@ -72,7 +72,11 @@ eleventyComputed:
       本专题目录
     </button>
 
-    <article class="article">
+    <article
+      class="article"
+      data-editor-host
+      data-editor-source="{{ document.sourceRelative }}"
+    >
       <header class="article-header">
         <nav class="breadcrumbs" aria-label="面包屑">
           <a href="{{ currentModule.route | withBase }}">{{ currentModule.title }}</a>
@@ -93,36 +97,64 @@ eleventyComputed:
         <h1>{{ document.title }}</h1>
         <p class="article-description">{{ document.description }}</p>
         <div class="article-actions">
-          <a
-            href="{{ catalog.repositoryUrl }}/blob/main/{{ document.sourceRelative }}"
-            rel="noreferrer"
-          >
+          <button type="button" data-edit-current>
             <i data-lucide="square-pen" aria-hidden="true"></i>
             编辑此页
-          </a>
+          </button>
           <button type="button" data-copy-link>
             <i data-lucide="link" aria-hidden="true"></i>
             复制链接
           </button>
+          <a
+            href="{{ catalog.repositoryUrl }}/blob/main/{{ document.sourceRelative }}"
+            rel="noreferrer"
+          >
+            <i data-lucide="github" aria-hidden="true"></i>
+            源文件
+          </a>
+        </div>
+        <div class="reader-context-actions edit-mode-only" data-edit-mode-only>
+          <button
+            class="secondary-button"
+            type="button"
+            data-create-context="module"
+            data-create-root="{{ document.moduleKey }}"
+            data-create-parent="{{ currentUnit.id }}"
+          >
+            <i data-lucide="folder-plus" aria-hidden="true"></i>
+            新建子模块
+          </button>
+          <button
+            class="secondary-button"
+            type="button"
+            data-create-context="file"
+            data-create-root="{{ document.moduleKey }}"
+            data-create-parent="{{ currentUnit.id }}"
+          >
+            <i data-lucide="file-plus-2" aria-hidden="true"></i>
+            新建文件
+          </button>
         </div>
       </header>
 
-      {% if document.kind == "markdown" %}
-        <div class="prose">
-          {{ document.body | renderMarkdown(document.sourceRelative) | safe }}
-        </div>
-      {% else %}
-        <div class="source-viewer">
-          <div class="source-viewer-bar">
-            <span>{{ document.sourceRelative }}</span>
-            <button type="button" data-copy-source>
-              <i data-lucide="copy" aria-hidden="true"></i>
-              复制源码
-            </button>
+      <div data-editable-rendered>
+        {% if document.kind == "markdown" %}
+          <div class="prose">
+            {{ document.body | renderMarkdown(document.sourceRelative) | safe }}
           </div>
-          <pre class="language-{{ document.language }}"><code class="language-{{ document.language }}" data-source-code>{{ document.source | highlightCode(document.language) | safe }}</code></pre>
-        </div>
-      {% endif %}
+        {% else %}
+          <div class="source-viewer">
+            <div class="source-viewer-bar">
+              <span>{{ document.sourceRelative }}</span>
+              <button type="button" data-copy-source>
+                <i data-lucide="copy" aria-hidden="true"></i>
+                复制源码
+              </button>
+            </div>
+            <pre class="language-{{ document.language }}"><code class="language-{{ document.language }}" data-source-code>{{ document.source | highlightCode(document.language) | safe }}</code></pre>
+          </div>
+        {% endif %}
+      </div>
 
       <nav class="article-pagination" aria-label="上一篇和下一篇">
         {% if document.previous %}

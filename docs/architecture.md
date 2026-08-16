@@ -116,6 +116,13 @@ Search is loaded only when opened. The generated index uses weighted substring
 matching across title, unit, description, and full text, which handles Chinese
 queries without depending on whitespace tokenization.
 
+Authenticated editing is layered on top of the static reader rather than replacing
+it. The header calls the same-origin `/editor/api/` service for session state. Edit
+mode uses each generated page's source metadata to load and save private drafts,
+while rendered reading remains available without JavaScript or authentication.
+The separate `/editor/` workspace provides the complete repository tree, aggregate
+change review, and the only branch/commit/pull-request submission action.
+
 ## Alternatives considered
 
 ### Docusaurus or VitePress

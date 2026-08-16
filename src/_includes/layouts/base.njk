@@ -66,6 +66,16 @@
             <i data-lucide="github" aria-hidden="true"></i>
           </a>
           <button
+            class="account-trigger"
+            type="button"
+            data-account-trigger
+            aria-label="登录或打开个人设置"
+            title="个人设置"
+          >
+            <i data-lucide="circle-user-round" aria-hidden="true"></i>
+            <span data-account-label>登录</span>
+          </button>
+          <button
             class="icon-button mobile-menu-trigger"
             type="button"
             data-toggle-menu
@@ -141,10 +151,162 @@
       </div>
     </dialog>
 
+    <dialog class="account-dialog" data-account-dialog>
+      <div class="account-panel">
+        <header class="account-panel-header">
+          <div>
+            <p class="eyebrow">Account</p>
+            <h2 data-account-title>登录与个人设置</h2>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            data-close-account
+            aria-label="关闭个人设置"
+            title="关闭"
+          >
+            <i data-lucide="x" aria-hidden="true"></i>
+          </button>
+        </header>
+
+        <section data-account-guest>
+          <div class="account-tabs" role="tablist" aria-label="账号操作">
+            <button class="is-active" type="button" data-account-tab="login">登录</button>
+            <button type="button" data-account-tab="register">注册</button>
+          </div>
+          <form class="account-form" data-account-login-form>
+            <label>
+              邮箱或用户名
+              <input name="identifier" autocomplete="username" required maxlength="254">
+            </label>
+            <label>
+              密码
+              <input name="password" type="password" autocomplete="current-password" required maxlength="256">
+            </label>
+            <button class="primary-button" type="submit">登录</button>
+          </form>
+          <form class="account-form" data-account-register-form hidden>
+            <label>
+              邮箱
+              <input name="email" type="email" autocomplete="email" required maxlength="254">
+            </label>
+            <label>
+              用户名
+              <input name="username" autocomplete="username" required maxlength="32">
+            </label>
+            <label>
+              密码
+              <input name="password" type="password" autocomplete="new-password" minlength="8" required maxlength="256">
+            </label>
+            <button class="primary-button" type="submit">创建账号</button>
+          </form>
+          <div class="account-divider"><span>或</span></div>
+          <a class="github-login-button" data-account-github-login href="{{ site.editorUrl }}api/auth/github">
+            <i data-lucide="github" aria-hidden="true"></i>
+            使用 GitHub 登录
+          </a>
+          <p class="account-policy" data-account-policy></p>
+        </section>
+
+        <section class="account-profile" data-account-user hidden>
+          <div class="account-identity">
+            <span class="account-avatar" data-account-avatar>U</span>
+            <div>
+              <strong data-account-username></strong>
+              <span data-account-email></span>
+            </div>
+          </div>
+          <dl class="account-status-list">
+            <div>
+              <dt>GitHub</dt>
+              <dd data-account-github-status>未绑定</dd>
+            </div>
+            <div>
+              <dt>草稿</dt>
+              <dd data-account-draft-count>0 个</dd>
+            </div>
+          </dl>
+          <div class="account-actions">
+            <button class="secondary-button" type="button" data-toggle-edit-mode>
+              <i data-lucide="square-pen" aria-hidden="true"></i>
+              开启编辑模式
+            </button>
+            <a class="secondary-button" href="{{ site.editorUrl }}">
+              <i data-lucide="folder-tree" aria-hidden="true"></i>
+              打开编辑工作台
+            </a>
+            <a class="secondary-button" data-account-bind-github href="{{ site.editorUrl }}api/auth/github?mode=bind">
+              <i data-lucide="github" aria-hidden="true"></i>
+              绑定 GitHub
+            </a>
+            <button class="secondary-button" type="button" data-account-unlink-github hidden>
+              <i data-lucide="unlink" aria-hidden="true"></i>
+              解绑 GitHub
+            </button>
+            <a class="secondary-button" data-account-admin href="{{ site.editorUrl }}admin" hidden>
+              <i data-lucide="shield-check" aria-hidden="true"></i>
+              管理后台
+            </a>
+            <button class="quiet-command" type="button" data-account-logout>退出登录</button>
+          </div>
+        </section>
+        <div class="account-feedback" data-account-feedback role="status" aria-live="polite"></div>
+      </div>
+    </dialog>
+
+    <dialog class="content-create-dialog" data-content-create-dialog>
+      <form class="content-create-form" data-content-create-form>
+        <header>
+          <div>
+            <p class="eyebrow">Create content</p>
+            <h2 data-create-dialog-title>新建内容</h2>
+            <p data-create-location></p>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            data-close-content-create
+            aria-label="关闭"
+            title="关闭"
+          >
+            <i data-lucide="x" aria-hidden="true"></i>
+          </button>
+        </header>
+        <input name="root" type="hidden">
+        <input name="parent" type="hidden">
+        <input name="kind" type="hidden">
+        <label>
+          目录或文件名
+          <input name="slug" placeholder="polymorphism" required maxlength="80">
+        </label>
+        <label>
+          展示标题
+          <input name="title" placeholder="C++ 多态" required maxlength="120">
+        </label>
+        <label data-create-description-field>
+          简介
+          <textarea name="description" rows="3" maxlength="500"></textarea>
+        </label>
+        <footer>
+          <button class="secondary-button" type="button" data-close-content-create>取消</button>
+          <button class="primary-button" type="submit">创建草稿</button>
+        </footer>
+        <div class="account-feedback" data-create-feedback role="status" aria-live="polite"></div>
+      </form>
+    </dialog>
+
     <script>
       window.GCK_CONFIG = {
         basePath: {{ site.basePath | json | safe }},
-        searchIndex: {{ (('/search-index.json' | withBase) + '?v=' + site.searchVersion) | json | safe }}
+        searchIndex: {{ (('/search-index.json' | withBase) + '?v=' + site.searchVersion) | json | safe }},
+        editorUrl: {{ site.editorUrl | json | safe }},
+        editorApi: {{ (site.editorUrl ~ 'api') | json | safe }},
+        editorContext: {
+          pageKind: {{ (pageKind or "default") | json | safe }},
+          sourcePath: {% if document %}{{ document.sourceRelative | json | safe }}{% elif module %}{{ module.sourceRelative | json | safe }}{% else %}null{% endif %},
+          sourceDirectory: {% if document %}{{ document.sourceDirectory | json | safe }}{% elif module %}{{ module.key | json | safe }}{% else %}null{% endif %},
+          root: {% if document %}{{ document.moduleKey | json | safe }}{% elif module %}{{ module.key | json | safe }}{% else %}null{% endif %}
+        }
       };
     </script>
     <script src="{{ '/assets/vendor/lucide.js' | assetUrl }}"></script>
@@ -157,5 +319,6 @@
     {% endif %}
     <script src="{{ '/assets/js/site.js' | assetUrl }}"></script>
     <script src="{{ '/assets/js/search.js' | assetUrl }}"></script>
+    <script src="{{ '/assets/js/editor-integration.js' | assetUrl }}"></script>
   </body>
 </html>

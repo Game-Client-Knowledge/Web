@@ -118,6 +118,12 @@
         <div class="workspace-status">
           <span id="policyBadge" class="status-badge"></span>
           <span id="draftCount">0 个草稿</span>
+          <a id="githubBindingButton" class="secondary-button compact-button" href="api/auth/github?mode=bind" hidden>
+            绑定 GitHub
+          </a>
+          <button id="githubUnlinkButton" class="secondary-button compact-button" type="button" hidden>
+            解绑 GitHub
+          </button>
         </div>
       </header>
 
@@ -127,16 +133,27 @@
 
       <div class="workspace-grid">
         <aside class="workspace-sidebar">
-          <div class="sidebar-tabs">
-            <button class="is-active" type="button" data-side-tab="drafts">我的草稿</button>
-            <button type="button" data-side-tab="repository">仓库文件</button>
+          <div class="explorer-heading">
+            <div>
+              <strong>资源管理器</strong>
+              <span>main 与个人草稿</span>
+            </div>
+            <button id="refreshRepositoryButton" class="icon-button" type="button" aria-label="刷新资源" title="刷新资源">
+              <i data-lucide="refresh-cw" aria-hidden="true"></i>
+            </button>
           </div>
+          <input id="resourceSearch" class="resource-search" type="search" placeholder="筛选目录或文件">
           <div class="sidebar-actions">
-            <button id="newFileButton" class="secondary-button" type="button">新建文件</button>
-            <button id="newTopicButton" class="secondary-button" type="button">新增专题</button>
+            <button id="newFileButton" class="secondary-button" type="button">
+              <i data-lucide="file-plus-2" aria-hidden="true"></i>
+              新建文件
+            </button>
+            <button id="newTopicButton" class="secondary-button" type="button">
+              <i data-lucide="folder-plus" aria-hidden="true"></i>
+              新增专题
+            </button>
           </div>
-          <div id="draftList" class="file-list"></div>
-          <div id="repositoryList" class="file-list" hidden></div>
+          <div id="resourceTree" class="resource-tree" aria-label="内容仓库目录"></div>
         </aside>
 
         <section class="editor-panel">
@@ -166,6 +183,15 @@
         </section>
 
         <aside class="submit-panel">
+          <section class="change-review">
+            <div class="change-review-heading">
+              <h2>全部更改</h2>
+              <span id="changeCount">0</span>
+            </div>
+            <div id="changeList" class="change-list"></div>
+          </section>
+
+          <section class="submit-section">
           <h2>统一提交</h2>
           <p>当前账号的全部草稿将组成一个 commit 和一个 Draft PR。</p>
           <form id="submitForm" class="stack-form compact">
@@ -187,6 +213,7 @@
             <button id="submitAllButton" class="primary-button" type="submit">提交全部更改</button>
           </form>
           <div id="submitFeedback" class="feedback" role="status" aria-live="polite"></div>
+          </section>
 
           <section class="submission-history">
             <h3>最近提交</h3>
@@ -223,6 +250,7 @@
         一级标题
         <input name="title" placeholder="C++ 多态" required maxlength="120">
       </label>
+      <div id="fileDialogFeedback" class="feedback" role="status" aria-live="polite"></div>
       <footer>
         <button class="secondary-button" value="cancel" type="submit">取消</button>
         <button class="primary-button" value="default" type="submit">创建草稿</button>
@@ -260,6 +288,7 @@
         一句话说明
         <textarea name="description" rows="3" maxlength="500"></textarea>
       </label>
+      <div id="topicDialogFeedback" class="feedback" role="status" aria-live="polite"></div>
       <footer>
         <button class="secondary-button" value="cancel" type="submit">取消</button>
         <button class="primary-button" value="default" type="submit">创建专题草稿</button>
@@ -267,6 +296,7 @@
     </form>
   </dialog>
 
+  <script src="/assets/vendor/lucide.js"></script>
   <script src="assets/editor.js"></script>
 </body>
 </html>

@@ -6,7 +6,9 @@ The web editor adds authenticated content authoring without coupling content
 storage to the static website repository.
 
 - Reading remains public and static.
-- The editor is served at `/editor/`.
+- The main reader exposes login, personal settings, and an authenticated edit mode.
+- The full workspace remains available at `/editor/` for repository browsing,
+  change review, and submission.
 - Content changes target
   `Game-Client-Knowledge/Game-Client-Knowledge`.
 - The editor never writes directly to `main`.
@@ -30,9 +32,17 @@ When it submits:
 
 ### GitHub account
 
-GitHub OAuth requests the user's profile and verified email addresses. A verified
-email links the GitHub identity to an existing local account or creates a new
-account. OAuth tokens are encrypted at rest and never enter browser JavaScript.
+GitHub OAuth supports two explicit operations:
+
+- **Login:** resolve an existing immutable GitHub ID first, then a matching verified
+  email, or create a new account.
+- **Bind:** attach the authorized GitHub ID to the currently authenticated local
+  account without changing its primary email.
+
+The bind flow rejects identities already owned by another user and refuses to
+replace a different existing binding. OAuth tokens are encrypted at rest and never
+enter browser JavaScript. A local account can unlink GitHub only when it retains a
+password login method.
 
 When a GitHub-authenticated session submits:
 
@@ -67,9 +77,9 @@ flowchart LR
     GitHub[GitHub REST API]
     SMTP[SMTP server]
 
-    Browser -->|Public pages| Nginx
+    Browser -->|Public pages and edit UI| Nginx
     Nginx --> Static
-    Browser -->|/editor/*| Nginx
+    Browser -->|/editor/api/* and /editor/*| Nginx
     Nginx --> API
     API --> DB
     API --> GitHub
@@ -110,6 +120,8 @@ GitHub OAuth uses:
 
 - A single-use, expiring `state`.
 - A short-lived `HttpOnly` browser cookie bound to that `state`.
+- A persisted purpose (`login` or `bind`), initiating user ID, and validated
+  same-origin return path.
 - PKCE challenge and verifier.
 - A server-side code exchange.
 - A verified GitHub email.
@@ -138,14 +150,40 @@ larger than 512 KiB are rejected.
 
 Users can:
 
-- Create a Markdown file.
-- Create a topic directory through its `README.md`.
-- Load and edit an existing repository file.
+- Log in and manage their account from the reader header.
+- Enable edit mode while staying on a rendered article.
+- Load the current source file, edit it inline, preview it, and save a draft.
+- Create a child module or file from module and topic context controls.
+- Browse the complete repository as a collapsible directory tree in `/editor/`.
+- Review all changed files separately from the repository tree.
 - Preview sanitized Markdown.
 - Save or delete a private draft.
 - Submit all current drafts together.
 
 Each user can keep at most 50 drafts.
+
+## Editing Surfaces
+
+### Reader edit mode
+
+The static reader keeps rendered content as the default view. Once an authenticated
+user enables edit mode, contextual controls become visible:
+
+- Document pages load their `sourceRelative` file through the editor API.
+- Module pages edit the module `README.md`.
+- Module and topic controls prefill the correct content root and parent directory
+  when creating child modules or files.
+
+Saving updates only the user's server-side draft. It does not regenerate the
+current static page and does not write to GitHub.
+
+### Full workspace
+
+`/editor/` merges the remote `main` tree and the user's draft paths into one
+hierarchical resource explorer. Added and modified files carry change markers.
+Selecting a remote file fetches and decodes its GitHub Contents API payload;
+selecting a changed file opens the draft. The right panel lists all pending changes
+and remains the only submission surface.
 
 ## Submission Workflow
 

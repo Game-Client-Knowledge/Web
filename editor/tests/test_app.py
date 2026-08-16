@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlparse
@@ -347,3 +349,132 @@ def test_github_oauth_state_is_bound_to_browser(
     session = oauth_client.get("/api/session").json()
     assert session["user"]["github_verified"] is True
     assert session["user"]["email_verified"] is True
+
+
+def test_local_account_can_explicitly_bind_and_unlink_github(
+    oauth_client: TestClient,
+) -> None:
+    registered = oauth_client.post(
+        "/api/auth/register",
+        json={
+            "email": "local@example.test",
+            "username": "local-user",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    github = oauth_client.app.state.github
+    github.exchange_oauth_code = AsyncMock(return_value="github-token")
+    github.user_profile = AsyncMock(
+        return_value={"id": 9876, "login": "bound-user"}
+    )
+    github.user_emails = AsyncMock(
+        return_value=[
+            {
+                "email": "github@example.test",
+                "verified": True,
+                "primary": True,
+            }
+        ]
+    )
+
+    start = oauth_client.get(
+        "/api/auth/github",
+        params={
+            "mode": "bind",
+            "return_to": "/knowledge/cpp/",
+        },
+        follow_redirects=False,
+    )
+    state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
+    callback = oauth_client.get(
+        "/api/auth/github/callback",
+        params={"code": "bind-code", "state": state},
+        follow_redirects=False,
+    )
+    assert callback.status_code == 307
+    assert callback.headers["location"] == "https://example.test/knowledge/cpp/"
+
+    session = oauth_client.get("/api/session").json()
+    assert session["user"]["email"] == "local@example.test"
+    assert session["user"]["email_verified"] is False
+    assert session["user"]["github_login"] == "bound-user"
+    assert session["user"]["github_email"] == "github@example.test"
+    assert session["user"]["github_verified"] is True
+
+    unlinked = oauth_client.post(
+        "/api/auth/github/unlink",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert unlinked.status_code == 200
+    session = oauth_client.get("/api/session").json()
+    assert session["user"]["github_login"] is None
+    assert session["user"]["github_verified"] is False
+
+
+def test_github_bind_rejects_unsafe_return_path(
+    oauth_client: TestClient,
+) -> None:
+    oauth_client.post(
+        "/api/auth/register",
+        json={
+            "email": "return@example.test",
+            "username": "return-user",
+            "password": "local-password-123",
+        },
+    )
+    github = oauth_client.app.state.github
+    github.exchange_oauth_code = AsyncMock(return_value="github-token")
+    github.user_profile = AsyncMock(
+        return_value={"id": 6789, "login": "return-github"}
+    )
+    github.user_emails = AsyncMock(
+        return_value=[
+            {
+                "email": "return-github@example.test",
+                "verified": True,
+                "primary": True,
+            }
+        ]
+    )
+    start = oauth_client.get(
+        "/api/auth/github",
+        params={"mode": "bind", "return_to": "/\\attacker.example/path"},
+        follow_redirects=False,
+    )
+    state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
+    callback = oauth_client.get(
+        "/api/auth/github/callback",
+        params={"code": "bind-code", "state": state},
+        follow_redirects=False,
+    )
+    assert callback.headers["location"] == "https://example.test/editor/"
+
+
+def test_existing_oauth_state_table_is_migrated(tmp_path: Path) -> None:
+    database_path = tmp_path / "legacy.db"
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        """
+        CREATE TABLE oauth_states (
+            state_hash TEXT PRIMARY KEY,
+            code_verifier TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    create_app(replace(make_settings(tmp_path), db_path=database_path))
+
+    connection = sqlite3.connect(database_path)
+    columns = {
+        row[1]
+        for row in connection.execute(
+            "PRAGMA table_info(oauth_states)"
+        ).fetchall()
+    }
+    connection.close()
+    assert {"purpose", "user_id", "return_to"} <= columns
