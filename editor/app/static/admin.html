@@ -40,7 +40,7 @@
 
     <section class="admin-section">
       <div class="section-title">
-        <div><h2>编辑策略</h2><p>控制普通账号能否进入编辑工作区。</p></div>
+        <div><h2>编辑策略</h2><p>控制编辑准入、阅读器模式和客户端 Diff。</p></div>
       </div>
       <form id="settingsForm" class="settings-form">
         <label>
@@ -63,6 +63,17 @@
             max="365"
             required
           >
+        </label>
+        <label>
+          阅读器编辑模式
+          <select name="reader_edit_mode">
+            <option value="new">New · 同构预览编辑</option>
+            <option value="old">Old · 当前内联编辑器</option>
+          </select>
+        </label>
+        <label class="check-label">
+          <input name="reader_diff_enabled" type="checkbox">
+          客户端显示行级 Diff 开关
         </label>
         <button class="primary-button" type="submit">保存策略</button>
       </form>

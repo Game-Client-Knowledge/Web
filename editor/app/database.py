@@ -326,6 +326,22 @@ class Database:
                 """,
                 (str(settings.pr_auto_close_days), now),
             )
+            connection.execute(
+                """
+                INSERT INTO settings(key, value, updated_at)
+                VALUES('reader_edit_mode', 'new', ?)
+                ON CONFLICT(key) DO NOTHING
+                """,
+                (now,),
+            )
+            connection.execute(
+                """
+                INSERT INTO settings(key, value, updated_at)
+                VALUES('reader_diff_enabled', '1', ?)
+                ON CONFLICT(key) DO NOTHING
+                """,
+                (now,),
+            )
 
             count = connection.execute(
                 "SELECT COUNT(*) AS count FROM users"

@@ -144,6 +144,8 @@ class SettingsRequest(BaseModel):
     edit_policy: str
     registration_enabled: bool
     pr_auto_close_days: int = Field(ge=0, le=365)
+    reader_edit_mode: str = "new"
+    reader_diff_enabled: bool = True
 
 
 class SmtpSettingsRequest(BaseModel):
@@ -273,7 +275,14 @@ def validate_markdown(path: str, content: str) -> list[str]:
 
 
 def render_markdown_preview(content: str) -> str:
-    rendered = MARKDOWN.render(content)
+    preview_content = re.sub(
+        r"\A---\r?\n.*?\r?\n---(?:\r?\n|$)",
+        "",
+        content,
+        count=1,
+        flags=re.DOTALL,
+    )
+    rendered = MARKDOWN.render(preview_content)
     return bleach.clean(
         rendered,
         tags=ALLOWED_TAGS,
@@ -574,6 +583,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "github_submission_enabled": settings.github_submission_enabled,
             "edit_policy": db.setting(
                 "edit_policy", settings.default_edit_policy
+            ),
+            "reader_edit_mode": db.setting("reader_edit_mode", "new"),
+            "reader_diff_enabled": (
+                db.setting("reader_diff_enabled", "1") == "1"
             ),
             "repository": settings.github_repo,
         }
@@ -2201,6 +2214,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     db.setting("registration_enabled", "1") == "1"
                 ),
                 "pr_auto_close_days": auto_close_days(db, settings),
+                "reader_edit_mode": db.setting("reader_edit_mode", "new"),
+                "reader_diff_enabled": (
+                    db.setting("reader_diff_enabled", "1") == "1"
+                ),
                 "smtp_enabled": smtp.smtp_enabled,
                 "github_oauth_enabled": settings.github_oauth_enabled,
                 "github_submission_enabled": settings.github_submission_enabled,
@@ -2297,6 +2314,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "github_verified",
         }:
             raise HTTPException(status_code=422, detail="编辑策略无效")
+        if payload.reader_edit_mode not in {"old", "new"}:
+            raise HTTPException(status_code=422, detail="阅读器编辑模式无效")
         now = utc_now()
         with db.connect() as connection:
             for key, value in {
@@ -2305,6 +2324,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "1" if payload.registration_enabled else "0"
                 ),
                 "pr_auto_close_days": str(payload.pr_auto_close_days),
+                "reader_edit_mode": payload.reader_edit_mode,
+                "reader_diff_enabled": (
+                    "1" if payload.reader_diff_enabled else "0"
+                ),
             }.items():
                 connection.execute(
                     """
@@ -2327,6 +2350,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "edit_policy": payload.edit_policy,
             "registration_enabled": payload.registration_enabled,
             "pr_auto_close_days": payload.pr_auto_close_days,
+            "reader_edit_mode": payload.reader_edit_mode,
+            "reader_diff_enabled": payload.reader_diff_enabled,
         }
 
     @app.post("/api/admin/submissions/sync")

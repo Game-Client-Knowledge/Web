@@ -13,6 +13,7 @@
     inlinePanel: null,
     inlineEditor: null,
     renderTimer: null,
+    previewControls: null,
     onboardingStep: 0,
     onboardingSaving: false
   };
@@ -219,6 +220,7 @@
     });
     updateAccountView();
     addDraftNavigation();
+    updateReaderPreviewControls();
   }
 
   function requestedDraftPath() {
@@ -408,11 +410,13 @@
       return item.path === sourcePath;
     });
     if (!draft) {
+      updateReaderPreviewControls();
       return;
     }
     host.dataset.editorSource = draft.path;
     if (draft.operation === "delete") {
       showDeletedDraft(host, draft);
+      updateReaderPreviewControls();
       return;
     }
     try {
@@ -426,6 +430,7 @@
         ).html;
       renderMarkdownIntoHost(host, html);
       showDraftBadge(host, draft);
+      updateReaderPreviewControls();
     } catch {
       // Invalid drafts stay available in the workspace for correction.
     }
@@ -463,6 +468,7 @@
     const onboardingOpen = openOnboardingIfNeeded();
     if (
       !onboardingOpen &&
+      readerEditMode() === "old" &&
       state.editMode &&
       state.session.authenticated &&
       state.session.can_edit &&
@@ -571,9 +577,247 @@
     return true;
   }
 
+  function readerEditMode() {
+    return state.config && state.config.reader_edit_mode === "new"
+      ? "new"
+      : "old";
+  }
+
+  function currentReaderHost() {
+    return query("[data-editor-host]");
+  }
+
+  function currentReaderPath(host) {
+    const target = host || currentReaderHost();
+    return (
+      (target && target.dataset.editorSource) ||
+      (config.editorContext && config.editorContext.sourcePath) ||
+      ""
+    );
+  }
+
+  function currentReaderDraft(host) {
+    const path = currentReaderPath(host);
+    return state.drafts.find(function (draft) {
+      return draft.path === path;
+    });
+  }
+
+  function resetReaderDiff(controls) {
+    const target = controls || state.previewControls;
+    if (!target || !target.diffActive) {
+      return;
+    }
+    const host = target.closest("[data-editor-host]");
+    const rendered = query("[data-editable-rendered]", host);
+    if (rendered && target.previewNodes) {
+      rendered.replaceChildren(...target.previewNodes);
+    }
+    target.diffActive = false;
+    target.previewNodes = null;
+    const button = query("[data-reader-diff]", target);
+    if (button) {
+      button.setAttribute("aria-pressed", "false");
+      button.classList.remove("is-active");
+    }
+  }
+
+  function renderReaderDiff(rendered, rows) {
+    const viewer = document.createElement("section");
+    viewer.className = "reader-source-diff";
+    viewer.setAttribute("aria-label", "当前文件行级差异");
+    const legend = document.createElement("div");
+    legend.className = "reader-diff-legend";
+    legend.innerHTML =
+      '<span data-status="A">新增</span>' +
+      '<span data-status="M">修改</span>' +
+      '<span data-status="D">删除</span>';
+    const source = document.createElement("div");
+    source.className = "reader-diff-source";
+    rows.forEach(function (item) {
+      const row = document.createElement("div");
+      row.className = "reader-diff-line is-" + item.type;
+      const oldNumber = document.createElement("span");
+      const newNumber = document.createElement("span");
+      const marker = document.createElement("span");
+      const code = document.createElement("code");
+      oldNumber.textContent =
+        item.oldNumber === null ? "" : String(item.oldNumber);
+      newNumber.textContent =
+        item.newNumber === null ? "" : String(item.newNumber);
+      marker.textContent = item.marker;
+      code.textContent = item.text;
+      row.append(oldNumber, newNumber, marker, code);
+      source.append(row);
+    });
+    viewer.append(legend, source);
+    rendered.replaceChildren(viewer);
+  }
+
+  async function toggleReaderDiff() {
+    const controls = state.previewControls;
+    const host = controls && controls.closest("[data-editor-host]");
+    const rendered = host && query("[data-editable-rendered]", host);
+    const draft = currentReaderDraft(host);
+    const button = controls && query("[data-reader-diff]", controls);
+    if (!controls || !rendered || !draft || !button) {
+      return;
+    }
+    if (controls.diffActive) {
+      resetReaderDiff(controls);
+      return;
+    }
+    button.disabled = true;
+    try {
+      let baseContent = "";
+      if (draft.base_sha) {
+        let source = await loadDeployedSource(draft.path);
+        if (!source || source.sha !== draft.base_sha) {
+          source = await api(
+            "/repository/file?path=" + encodeURIComponent(draft.path)
+          );
+        }
+        baseContent = source.content;
+      }
+      const rows =
+        window.GCKReaderDiff && window.GCKReaderDiff.buildLineDiff
+          ? window.GCKReaderDiff.buildLineDiff(
+              baseContent,
+              draft.operation === "delete" ? "" : draft.content
+            )
+          : [];
+      controls.previewNodes = Array.from(rendered.childNodes);
+      controls.diffActive = true;
+      renderReaderDiff(rendered, rows);
+      button.setAttribute("aria-pressed", "true");
+      button.classList.add("is-active");
+    } catch (error) {
+      feedback(query("[data-reader-preview-feedback]", controls), error.message);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function revertReaderDraft() {
+    const controls = state.previewControls;
+    const host = controls && controls.closest("[data-editor-host]");
+    const draft = currentReaderDraft(host);
+    const button = controls && query("[data-reader-revert]", controls);
+    if (!draft || !button) {
+      return;
+    }
+    button.disabled = true;
+    try {
+      await discardDraft(draft);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("draft");
+      window.location.assign(url.pathname + url.search + url.hash);
+    } catch (error) {
+      button.disabled = false;
+      feedback(query("[data-reader-preview-feedback]", controls), error.message);
+    }
+  }
+
+  function createReaderPreviewControls(host) {
+    const controls = document.createElement("section");
+    controls.className = "reader-preview-controls";
+    controls.dataset.readerPreviewControls = "";
+    controls.innerHTML =
+      '<div class="reader-preview-context">' +
+      '<span><i data-lucide="eye" aria-hidden="true"></i>预览状态</span>' +
+      '<code data-reader-preview-path></code>' +
+      "</div>" +
+      '<div class="reader-preview-actions">' +
+      '<button class="secondary-button" type="button" data-reader-edit>' +
+      '<i data-lucide="square-pen" aria-hidden="true"></i>编辑内容</button>' +
+      '<button class="secondary-button" type="button" data-reader-diff ' +
+      'aria-pressed="false"><i data-lucide="git-compare-arrows" ' +
+      'aria-hidden="true"></i>行级 Diff</button>' +
+      '<button class="secondary-button reader-revert-button" type="button" ' +
+      'data-reader-revert><i data-lucide="undo-2" aria-hidden="true"></i>' +
+      "撤回更改</button>" +
+      "</div>" +
+      '<div class="account-feedback" data-reader-preview-feedback ' +
+      'role="status" aria-live="polite"></div>';
+    const rendered = query("[data-editable-rendered]", host);
+    if (rendered) {
+      rendered.before(controls);
+    } else {
+      host.append(controls);
+    }
+    query("[data-reader-edit]", controls).addEventListener(
+      "click",
+      function () {
+        openInlineEditor(host);
+      }
+    );
+    query("[data-reader-diff]", controls).addEventListener(
+      "click",
+      toggleReaderDiff
+    );
+    query("[data-reader-revert]", controls).addEventListener(
+      "click",
+      revertReaderDraft
+    );
+    refreshIcons(controls);
+    return controls;
+  }
+
+  function updateReaderPreviewControls() {
+    if (!state.editMode || readerEditMode() !== "new") {
+      return;
+    }
+    const host = currentReaderHost();
+    if (!host) {
+      return;
+    }
+    let controls = state.previewControls;
+    if (!controls || !controls.isConnected) {
+      controls = createReaderPreviewControls(host);
+      state.previewControls = controls;
+    }
+    resetReaderDiff(controls);
+    const draft = currentReaderDraft(host);
+    query("[data-reader-preview-path]", controls).textContent =
+      currentReaderPath(host);
+    const editButton = query("[data-reader-edit]", controls);
+    editButton.disabled = Boolean(draft && draft.operation === "delete");
+    editButton.title = editButton.disabled
+      ? "先撤回删除标记再编辑"
+      : "编辑当前文件";
+    const diffButton = query("[data-reader-diff]", controls);
+    diffButton.hidden = !(
+      state.config && state.config.reader_diff_enabled
+    );
+    diffButton.disabled = !draft;
+    diffButton.title = draft
+      ? "显示当前草稿相对 main 的逐行差异"
+      : "保存草稿后可查看行级差异";
+    query("[data-reader-revert]", controls).hidden = !draft;
+    controls.hidden = Boolean(state.inlinePanel);
+    feedback(query("[data-reader-preview-feedback]", controls), "");
+  }
+
+  function removeReaderPreviewControls() {
+    if (!state.previewControls) {
+      return;
+    }
+    resetReaderDiff(state.previewControls);
+    state.previewControls.remove();
+    state.previewControls = null;
+  }
+
   function applyEditMode(enabled) {
     state.editMode = Boolean(enabled);
     document.body.classList.toggle("is-edit-mode", state.editMode);
+    document.body.classList.toggle(
+      "reader-edit-new",
+      state.editMode && readerEditMode() === "new"
+    );
+    document.body.classList.toggle(
+      "reader-edit-old",
+      state.editMode && readerEditMode() === "old"
+    );
     window.localStorage.setItem("gck-edit-mode", state.editMode ? "1" : "0");
     const button = query("[data-edit-mode-trigger]");
     if (button) {
@@ -590,6 +834,11 @@
         ? '<i data-lucide="eye" aria-hidden="true"></i><span data-edit-mode-label>退出</span>'
         : '<i data-lucide="square-pen" aria-hidden="true"></i><span data-edit-mode-label>编辑</span>';
       refreshIcons(button);
+    }
+    if (state.editMode && readerEditMode() === "new") {
+      updateReaderPreviewControls();
+    } else {
+      removeReaderPreviewControls();
     }
   }
 
@@ -621,6 +870,11 @@
   function createInlinePanel(host, sourcePath) {
     const panel = document.createElement("section");
     panel.className = "inline-editor";
+    panel.classList.toggle("is-modern", readerEditMode() === "new");
+    panel.classList.toggle(
+      "is-compact",
+      Boolean(host.closest(".module-page-shell"))
+    );
     panel.dataset.inlineEditor = "";
     document.body.classList.add("has-inline-editor");
 
@@ -641,7 +895,7 @@
     close.className = "secondary-button";
     close.type = "button";
     close.dataset.inlineClose = "";
-    close.textContent = "关闭";
+    close.textContent = readerEditMode() === "new" ? "返回预览" : "关闭";
     const save = document.createElement("button");
     save.className = "primary-button";
     save.dataset.inlineSave = "";
@@ -663,10 +917,17 @@
 
     const rendered = query("[data-editable-rendered]", host);
     if (rendered) {
+      if (panel.classList.contains("is-modern")) {
+        panel.previewHtml = rendered.innerHTML;
+      }
       rendered.before(panel);
       rendered.hidden = true;
     } else {
       host.append(panel);
+    }
+    if (state.previewControls) {
+      resetReaderDiff(state.previewControls);
+      state.previewControls.hidden = true;
     }
     return panel;
   }
@@ -678,7 +939,23 @@
     const host = state.inlinePanel.closest("[data-editor-host]");
     const rendered = query("[data-editable-rendered]", host);
     if (rendered) {
+      if (
+        state.inlinePanel.classList.contains("is-modern") &&
+        state.inlinePanel.previewHtml !== undefined
+      ) {
+        rendered.innerHTML = state.inlinePanel.previewHtml;
+        refreshIcons(rendered);
+      }
       rendered.hidden = false;
+    }
+    if (state.inlinePanel.titleElement) {
+      state.inlinePanel.titleElement.removeAttribute("contenteditable");
+      state.inlinePanel.titleElement.removeAttribute("role");
+      state.inlinePanel.titleElement.removeAttribute("aria-label");
+      state.inlinePanel.titleElement.textContent =
+        state.inlinePanel.savedTitle ||
+        state.inlinePanel.originalTitle ||
+        state.inlinePanel.titleElement.textContent;
     }
     if (state.inlineEditor) {
       state.inlineEditor.destroy();
@@ -688,6 +965,7 @@
     state.inlinePanel.remove();
     state.inlinePanel = null;
     document.body.classList.remove("has-inline-editor");
+    updateReaderPreviewControls();
   }
 
   function renderMarkdownIntoHost(host, html) {
@@ -703,13 +981,15 @@
         ".article-header h1, .module-page-header h1",
         host
       );
-      if (pageTitle) {
+      if (pageTitle && !pageTitle.isContentEditable) {
         pageTitle.textContent = heading.textContent;
       }
       heading.remove();
     }
     const prose = document.createElement("div");
-    prose.className = "prose draft-rendered-content";
+    prose.className = host.closest(".module-page-shell")
+      ? "module-introduction prose compact-prose draft-rendered-content"
+      : "prose draft-rendered-content";
     prose.append(template.content);
     rendered.replaceChildren(prose);
     rendered.dataset.draftOverlay = "true";
@@ -730,16 +1010,84 @@
     }, 250);
   }
 
+  function splitMarkdownDocument(content) {
+    const match = content.match(/^#\s+(.+?)\s*$/m);
+    if (!match || match.index === undefined) {
+      return {
+        prefix: "",
+        title: "",
+        body: content
+      };
+    }
+    const lineEnd = content.indexOf("\n", match.index + match[0].length);
+    return {
+      prefix: content.slice(0, match.index),
+      title: match[1].replace(/[*_`]/g, "").trim(),
+      body:
+        lineEnd < 0
+          ? ""
+          : content.slice(lineEnd + 1).replace(/^\r?\n/, "")
+    };
+  }
+
+  function assembleMarkdownDocument(parts, title, body) {
+    const prefix = parts.prefix || "";
+    const heading = title ? "# " + title.trim() + "\n" : "";
+    const normalizedBody = (body || "").replace(/^\n+/, "");
+    return (
+      prefix +
+      heading +
+      (heading && normalizedBody ? "\n" : "") +
+      normalizedBody
+    );
+  }
+
+  function setupModernTitle(panel, host, parts) {
+    const title = query(".article-header h1, .module-page-header h1", host);
+    if (!title || !parts.title) {
+      return;
+    }
+    panel.titleElement = title;
+    panel.originalTitle = parts.title;
+    panel.savedTitle = parts.title;
+    title.textContent = parts.title;
+    title.contentEditable = "plaintext-only";
+    title.setAttribute("role", "textbox");
+    title.setAttribute("aria-label", "文档标题");
+    title.addEventListener("input", function () {
+      if (state.inlinePanel === panel) {
+        scheduleLiveRender(host, inlineContent(panel));
+      }
+    });
+    title.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        title.blur();
+      }
+    });
+  }
+
   function initializeVisualEditor(panel, host, content) {
     const initializationStartedAt = performance.now();
     const mount = query("[data-visual-editor]", panel);
     const textarea = query("[data-inline-input]", panel);
+    const modern = readerEditMode() === "new";
+    const parts = modern
+      ? splitMarkdownDocument(content)
+      : { prefix: "", title: "", body: content };
+    panel.documentParts = parts;
+    if (modern) {
+      setupModernTitle(panel, host, parts);
+    }
+    const editorValue = modern ? parts.body : content;
     if (!window.toastui || !window.toastui.Editor) {
       mount.hidden = true;
       textarea.hidden = false;
-      textarea.value = content;
+      textarea.value = editorValue;
       panel.originalContent = content;
-      panel.canonicalContent = content;
+      panel.canonicalContent = modern
+        ? assembleMarkdownDocument(parts, parts.title, editorValue)
+        : content;
       return;
     }
     textarea.hidden = true;
@@ -749,7 +1097,7 @@
       height: "600px",
       initialEditType: "wysiwyg",
       previewStyle: "tab",
-      initialValue: content,
+      initialValue: editorValue,
       usageStatistics: false,
       autofocus: true,
       toolbarItems: [
@@ -761,7 +1109,7 @@
       ],
       events: {
         change: function () {
-          const serializedContent = state.inlineEditor.getMarkdown();
+          const serializedContent = inlineContent(panel);
           // #region debug-point E:reader-change
           fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"E",location:"editor-integration.js:change",msg:"[DEBUG] Reader editor change serialization",data:{inputLength:content.length,outputLength:serializedContent.length,same:serializedContent===content},ts:Date.now()})}).catch(()=>{});
           // #endregion
@@ -770,7 +1118,13 @@
       }
     });
     panel.originalContent = content;
-    panel.canonicalContent = state.inlineEditor.getMarkdown();
+    panel.canonicalContent = modern
+      ? assembleMarkdownDocument(
+          parts,
+          parts.title,
+          state.inlineEditor.getMarkdown()
+        )
+      : state.inlineEditor.getMarkdown();
     // #region debug-point H:reader-editor-layout
     fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"H",location:"editor-integration.js:initializeVisualEditor","msg":"[DEBUG] Reader editor initialized","data":{sourceLength:content.length,initializationMs:Math.round((performance.now()-initializationStartedAt)*10)/10,totalOpenMs:Math.round((performance.now()-(panel.openStartedAt||initializationStartedAt))*10)/10},ts:Date.now()})}).catch(()=>{});
     // #endregion
@@ -780,10 +1134,19 @@
   }
 
   function inlineContent(panel) {
-    if (state.inlineEditor) {
-      return state.inlineEditor.getMarkdown();
+    const body = state.inlineEditor
+      ? state.inlineEditor.getMarkdown()
+      : query("[data-inline-input]", panel).value;
+    if (panel.classList.contains("is-modern") && panel.documentParts) {
+      const title = panel.titleElement
+        ? panel.titleElement.textContent
+        : panel.documentParts.title;
+      return assembleMarkdownDocument(panel.documentParts, title, body);
     }
-    return query("[data-inline-input]", panel).value;
+    if (state.inlineEditor) {
+      return body;
+    }
+    return body;
   }
 
   async function loadDeployedSource(path) {
@@ -923,8 +1286,22 @@
       panel.dataset.draftId = String(saved.id);
       panel.originalContent = saved.content;
       panel.canonicalContent = canonicalContent;
+      if (panel.titleElement) {
+        panel.savedTitle = panel.titleElement.textContent.trim();
+        panel.originalTitle = panel.savedTitle;
+        panel.documentParts = splitMarkdownDocument(saved.content);
+      }
       if (path.toLowerCase().endsWith(".md")) {
-        scheduleLiveRender(host, saved.content);
+        window.clearTimeout(state.renderTimer);
+        const preview = await api("/preview", {
+          method: "POST",
+          body: JSON.stringify({ content: saved.content })
+        });
+        renderMarkdownIntoHost(host, preview.html);
+        if (panel.classList.contains("is-modern")) {
+          const rendered = query("[data-editable-rendered]", host);
+          panel.previewHtml = rendered ? rendered.innerHTML : undefined;
+        }
       }
       setInlineFeedback(
         panel,
@@ -934,6 +1311,7 @@
       updateAccountView();
       addDraftNavigation();
       showDraftBadge(host, saved);
+      updateReaderPreviewControls();
     } catch (error) {
       setInlineFeedback(panel, error.message, "error");
     } finally {
@@ -1156,7 +1534,7 @@
         closeInlineEditor();
       }
       applyEditMode(next);
-      if (next) {
+      if (next && readerEditMode() === "old") {
         await openCurrentEditor();
       }
     });

@@ -245,6 +245,8 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     payload = response.json()
     assert payload["session"]["user"]["username"] == "bootstrap-user"
     assert payload["config"]["edit_policy"] == "local_authenticated"
+    assert payload["config"]["reader_edit_mode"] == "new"
+    assert payload["config"]["reader_diff_enabled"] is True
     assert [item["path"] for item in payload["drafts"]] == [
         "knowledge/cpp/bootstrap/README.md"
     ]
@@ -306,6 +308,37 @@ def test_onboarding_is_completed_once_per_user(client: TestClient) -> None:
         "local-password-123",
     )
     assert logged_in["user"]["needs_onboarding"] is False
+
+
+def test_preview_uses_reader_content_without_frontmatter(
+    client: TestClient,
+) -> None:
+    client.post(
+        "/api/auth/register",
+        json={
+            "email": "preview@example.test",
+            "username": "preview-user",
+            "password": "local-password-123",
+        },
+    )
+    response = client.post(
+        "/api/preview",
+        json={
+            "content": (
+                "---\n"
+                "shortTitle: Test\n"
+                "allowCode: true\n"
+                "---\n"
+                "# Preview title\n\n"
+                "Rendered body.\n"
+            )
+        },
+    )
+    assert response.status_code == 200
+    html = response.json()["html"]
+    assert "shortTitle" not in html
+    assert "<h1>Preview title</h1>" in html
+    assert "Rendered body." in html
 
 
 def test_file_delete_and_discard_change(client: TestClient) -> None:
@@ -378,11 +411,31 @@ def test_admin_can_switch_to_github_required_policy(client: TestClient) -> None:
             "edit_policy": "github_verified",
             "registration_enabled": True,
             "pr_auto_close_days": 14,
+            "reader_edit_mode": "old",
+            "reader_diff_enabled": False,
         },
     )
     assert response.status_code == 200, response.text
     assert response.json()["edit_policy"] == "github_verified"
     assert response.json()["pr_auto_close_days"] == 14
+    assert response.json()["reader_edit_mode"] == "old"
+    assert response.json()["reader_diff_enabled"] is False
+    config = client.get("/api/config").json()
+    assert config["reader_edit_mode"] == "old"
+    assert config["reader_diff_enabled"] is False
+
+    invalid = client.put(
+        "/api/admin/settings",
+        headers={"X-CSRF-Token": changed["csrf_token"]},
+        json={
+            "edit_policy": "github_verified",
+            "registration_enabled": True,
+            "pr_auto_close_days": 14,
+            "reader_edit_mode": "unsupported",
+            "reader_diff_enabled": True,
+        },
+    )
+    assert invalid.status_code == 422
 
 
 def test_admin_can_save_encrypted_smtp_configuration(

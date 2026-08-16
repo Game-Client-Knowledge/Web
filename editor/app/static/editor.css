@@ -1417,11 +1417,11 @@ dialog::backdrop {
   display: grid;
   align-items: end;
   gap: 16px;
-  grid-template-columns:
-    minmax(220px, 1.3fr)
-    minmax(170px, 1fr)
-    minmax(150px, 0.7fr)
-    auto;
+  grid-template-columns: repeat(3, minmax(190px, 1fr));
+}
+
+.settings-form > .primary-button {
+  justify-self: start;
 }
 
 .section-actions {

@@ -231,6 +231,10 @@ submission surface.
 See [Dynamic Top-Level Content Modules](dynamic-content-modules.md) for discovery,
 README frontmatter, online creation, and nested path resolution.
 
+See [Reader Edit Modes and Line Diff](reader-edit-modes-and-diff.md) for the
+admin-selectable `new`/`old` reader experience, preview-state revert, and local
+red/yellow/green source comparison.
+
 The workspace uses each repository-tree blob SHA as the expected version when
 loading `/raw/<path>`. A matching client-computed SHA avoids a second GitHub request
 and is cached for the session. Missing static files and SHA mismatches fall back to

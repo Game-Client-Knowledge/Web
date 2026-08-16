@@ -310,6 +310,10 @@ async function loadOverview() {
     data.settings.registration_enabled;
   byId("settingsForm").pr_auto_close_days.value =
     String(data.settings.pr_auto_close_days);
+  byId("settingsForm").reader_edit_mode.value =
+    data.settings.reader_edit_mode;
+  byId("settingsForm").reader_diff_enabled.checked =
+    data.settings.reader_diff_enabled;
   state.autoCloseDays = data.settings.pr_auto_close_days;
   renderIntegrations(data.settings);
   renderPendingSubmissions(
@@ -333,7 +337,10 @@ byId("settingsForm").addEventListener("submit", async (event) => {
         registration_enabled: event.currentTarget.registration_enabled.checked,
         pr_auto_close_days: Number(
           event.currentTarget.pr_auto_close_days.value
-        )
+        ),
+        reader_edit_mode: event.currentTarget.reader_edit_mode.value,
+        reader_diff_enabled:
+          event.currentTarget.reader_diff_enabled.checked
       })
     });
     feedback("编辑策略已保存", "success");
