@@ -255,6 +255,181 @@ def test_admin_can_switch_to_github_required_policy(client: TestClient) -> None:
     assert response.json()["edit_policy"] == "github_verified"
 
 
+def test_admin_can_save_encrypted_smtp_configuration(
+    client: TestClient,
+) -> None:
+    payload = login(client, "sourcecode", TEST_BOOTSTRAP_PASSWORD)
+    changed = client.post(
+        "/api/auth/change-password",
+        headers={"X-CSRF-Token": payload["csrf_token"]},
+        json={
+            "current_password": TEST_BOOTSTRAP_PASSWORD,
+            "new_password": "a-new-strong-password",
+        },
+    ).json()
+    csrf = changed["csrf_token"]
+
+    overview = client.get("/api/admin/overview").json()
+    assert {
+        template["id"] for template in overview["smtp_templates"]
+    } == {"qq", "gmail", "outlook", "custom"}
+    assert overview["smtp"]["configured"] is False
+
+    authorization_code = "qq-smtp-authorization-code"
+    saved = client.put(
+        "/api/admin/smtp",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "enabled": True,
+            "provider": "qq",
+            "host": "smtp.qq.com",
+            "port": 587,
+            "username": "sourcecode@qq.com",
+            "password": authorization_code,
+            "from_address": "sourcecode@qq.com",
+            "starttls": True,
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    configuration = saved.json()
+    assert configuration["configured"] is True
+    assert configuration["password_set"] is True
+    assert "password" not in configuration
+
+    database = client.app.state.db
+    with database.connect() as connection:
+        encrypted = connection.execute(
+            """
+            SELECT value FROM settings
+            WHERE key = 'smtp_password_encrypted'
+            """
+        ).fetchone()["value"]
+        audit_details = [
+            row["detail"]
+            for row in connection.execute(
+                "SELECT detail FROM audit_log WHERE detail IS NOT NULL"
+            ).fetchall()
+        ]
+    assert encrypted != authorization_code
+    assert client.app.state.cipher.decrypt(encrypted) == authorization_code
+    assert all(authorization_code not in detail for detail in audit_details)
+
+    retained = client.put(
+        "/api/admin/smtp",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "enabled": True,
+            "provider": "qq",
+            "host": "smtp.qq.com",
+            "port": 587,
+            "username": "sourcecode@qq.com",
+            "password": "",
+            "from_address": "sourcecode@qq.com",
+            "starttls": True,
+        },
+    )
+    assert retained.status_code == 200, retained.text
+    with database.connect() as connection:
+        retained_encrypted = connection.execute(
+            """
+            SELECT value FROM settings
+            WHERE key = 'smtp_password_encrypted'
+            """
+        ).fetchone()["value"]
+    assert retained_encrypted == encrypted
+
+    changed_username = client.put(
+        "/api/admin/smtp",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "enabled": True,
+            "provider": "gmail",
+            "host": "smtp.gmail.com",
+            "port": 587,
+            "username": "different@gmail.com",
+            "password": "",
+            "from_address": "different@gmail.com",
+            "starttls": True,
+        },
+    )
+    assert changed_username.status_code == 422
+
+    disabled_username_change = client.put(
+        "/api/admin/smtp",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "enabled": False,
+            "provider": "gmail",
+            "host": "smtp.gmail.com",
+            "port": 587,
+            "username": "different@gmail.com",
+            "password": "",
+            "from_address": "different@gmail.com",
+            "starttls": True,
+        },
+    )
+    assert disabled_username_change.status_code == 422
+
+
+def test_admin_smtp_test_uses_saved_configuration(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = login(client, "sourcecode", TEST_BOOTSTRAP_PASSWORD)
+    changed = client.post(
+        "/api/auth/change-password",
+        headers={"X-CSRF-Token": payload["csrf_token"]},
+        json={
+            "current_password": TEST_BOOTSTRAP_PASSWORD,
+            "new_password": "a-new-strong-password",
+        },
+    ).json()
+    csrf = changed["csrf_token"]
+    saved = client.put(
+        "/api/admin/smtp",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "enabled": True,
+            "provider": "gmail",
+            "host": "smtp.gmail.com",
+            "port": 587,
+            "username": "sender@gmail.com",
+            "password": "gmail-app-password",
+            "from_address": "sender@gmail.com",
+            "starttls": True,
+        },
+    )
+    assert saved.status_code == 200, saved.text
+
+    observed = {}
+
+    def fake_send_email(configuration, recipients, subject, body):
+        observed.update(
+            {
+                "configuration": configuration,
+                "recipients": recipients,
+                "subject": subject,
+                "body": body,
+            }
+        )
+        return "sent", None
+
+    monkeypatch.setattr("app.main.send_email", fake_send_email)
+    tested = client.post(
+        "/api/admin/smtp/test",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert tested.status_code == 200, tested.text
+    assert tested.json() == {
+        "status": "sent",
+        "recipient": "sourcecode@example.test",
+    }
+    assert observed["recipients"] == ["sourcecode@example.test"]
+    assert observed["configuration"].provider == "gmail"
+    assert observed["configuration"].smtp_password == "gmail-app-password"
+    assert "SMTP 配置测试" in observed["subject"]
+
+
 def test_admin_page_requires_ready_admin(client: TestClient) -> None:
     response = client.get("/admin", follow_redirects=False)
     assert response.status_code == 307

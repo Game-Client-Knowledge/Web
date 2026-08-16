@@ -289,6 +289,9 @@ Administrators can:
 
 - Switch the edit policy.
 - Enable or disable local registration.
+- Configure QQ Mail, Gmail, Outlook, or custom SMTP from provider templates,
+  retain the authorization code encrypted at rest, and send a test message to
+  their own administrator email.
 - Approve or reject administrator applications.
 - Confirm a local email after checking ownership through an external trusted
   channel.

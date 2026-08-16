@@ -14,10 +14,24 @@ Recipients are all active users whose role is `admin`. If SMTP is unavailable,
 the contribution workflow still succeeds and the notification is retained in
 `/editor/admin`.
 
-## Current Production Status
+## Supported Configuration Paths
 
-SMTP is not currently enabled in production. The host, username, password, and
-sender address are empty.
+Administrators can configure SMTP directly at:
+
+```text
+https://knowledge.chenyurui.top/editor/admin
+```
+
+The page provides templates for QQ Mail, Gmail / Google Workspace, Outlook /
+Microsoft 365, and custom SMTP. A template pre-fills the host, port, and STARTTLS
+mode; the administrator still supplies the mailbox, sender, and provider
+authorization code.
+
+The authorization code is encrypted with `EDITOR_ENCRYPTION_KEY` before it is
+stored in SQLite. Admin APIs return only whether a password is present and never
+return the secret itself. Leaving the password field empty preserves the existing
+encrypted value. The **Send test email** action sends only to the current
+administrator's own email address.
 
 The current mailer implementation supports:
 
@@ -46,7 +60,7 @@ Cloudflare Email Routing only receives and forwards email. It is not an outbound
 SMTP service. A separate mailbox or transactional email provider is still
 required.
 
-## Production Environment
+## Environment Fallback
 
 Secrets are stored only on the server:
 
@@ -62,7 +76,9 @@ Edit the server file:
 sudoedit /etc/game-client-knowledge-editor.env
 ```
 
-Add or update:
+Environment values remain supported as a bootstrap and recovery fallback. A
+configuration saved in the administration page overrides these values. Add or
+update:
 
 ```dotenv
 EDITOR_SMTP_HOST=smtp.example.com
@@ -144,8 +160,11 @@ openssl s_client \
   </dev/null
 ```
 
-Then trigger either an administrator application or a successful Draft PR
-submission. Open:
+From the administration page, save the configuration and select **Send test
+email**. A successful test is delivered to the signed-in administrator.
+
+You can also trigger either an administrator application or a successful Draft
+PR submission. Open:
 
 ```text
 https://knowledge.chenyurui.top/editor/admin
@@ -177,4 +196,3 @@ records in Cloudflare:
 
 Use the exact DNS values supplied by the email provider. Without SPF and DKIM,
 messages may be accepted by SMTP but delivered to spam or rejected later.
-

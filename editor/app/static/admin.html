@@ -61,6 +61,63 @@
 
     <section class="admin-section">
       <div class="section-title">
+        <div><h2>SMTP 邮件</h2><p>管理员通知发件设置。</p></div>
+        <span id="smtpConfigStatus" class="count-badge">未配置</span>
+      </div>
+      <form id="smtpForm" class="smtp-form" autocomplete="off">
+        <div class="smtp-grid">
+          <label>
+            邮箱模板
+            <select id="smtpProvider" name="provider"></select>
+          </label>
+          <label>
+            SMTP 主机
+            <input name="host" required maxlength="255" placeholder="smtp.example.com">
+          </label>
+          <label>
+            端口
+            <input name="port" type="number" min="1" max="65535" required>
+          </label>
+          <label>
+            登录账号
+            <input name="username" maxlength="254" autocomplete="username" placeholder="account@example.com">
+          </label>
+          <label>
+            授权码或应用密码
+            <input
+              name="password"
+              type="password"
+              maxlength="512"
+              autocomplete="new-password"
+              placeholder="留空则保留已保存值"
+            >
+            <small id="smtpPasswordStatus" class="field-status"></small>
+          </label>
+          <label>
+            发件邮箱
+            <input name="from_address" type="email" maxlength="254" required placeholder="account@example.com">
+          </label>
+        </div>
+        <div class="smtp-options">
+          <label class="check-label">
+            <input name="enabled" type="checkbox">
+            启用 SMTP 通知
+          </label>
+          <label class="check-label">
+            <input name="starttls" type="checkbox">
+            使用 STARTTLS
+          </label>
+        </div>
+        <div class="smtp-actions">
+          <button id="saveSmtpButton" class="primary-button" type="submit">保存 SMTP</button>
+          <button id="testSmtpButton" class="secondary-button" type="button">发送测试邮件</button>
+        </div>
+        <div id="smtpFeedback" class="feedback" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+
+    <section class="admin-section">
+      <div class="section-title">
         <div><h2>管理员申请</h2><p>审批后用户立即获得管理后台权限。</p></div>
         <span id="applicationCount" class="count-badge"></span>
       </div>

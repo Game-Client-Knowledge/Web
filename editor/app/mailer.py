@@ -3,11 +3,11 @@ from __future__ import annotations
 import smtplib
 from email.message import EmailMessage
 
-from .config import Settings
+from .smtp_config import SmtpConfiguration
 
 
 def send_email(
-    settings: Settings,
+    settings: SmtpConfiguration,
     recipients: list[str],
     subject: str,
     body: str,

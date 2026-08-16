@@ -47,6 +47,13 @@ from .security import (
     validate_password,
     verify_password,
 )
+from .smtp_config import (
+    SMTP_TEMPLATE_IDS,
+    SMTP_TEMPLATES,
+    load_smtp_configuration,
+    save_smtp_configuration,
+    smtp_public_payload,
+)
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
@@ -109,6 +116,17 @@ class AdminDecisionRequest(BaseModel):
 class SettingsRequest(BaseModel):
     edit_policy: str
     registration_enabled: bool
+
+
+class SmtpSettingsRequest(BaseModel):
+    enabled: bool
+    provider: str = Field(max_length=32)
+    host: str = Field(default="", max_length=255)
+    port: int = Field(default=587, ge=1, le=65535)
+    username: str = Field(default="", max_length=254)
+    password: str = Field(default="", max_length=512)
+    from_address: str = Field(default="", max_length=254)
+    starttls: bool = True
 
 
 class SlidingWindowLimiter:
@@ -255,7 +273,15 @@ def deliver_notification(
                 """
             ).fetchall()
         ]
-    status, error = send_email(settings, recipients, subject, body)
+    try:
+        smtp = load_smtp_configuration(
+            db,
+            settings,
+            TokenCipher(settings.encryption_key),
+        )
+        status, error = send_email(smtp, recipients, subject, body)
+    except RuntimeError as exc:
+        status, error = "failed", str(exc)[:500]
     with db.connect() as connection:
         connection.execute(
             """
@@ -478,6 +504,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def browser_return_url(path: str | None) -> str:
         return f"{site_origin}{path}" if path else f"{settings.base_url}/"
+
+    def smtp_configuration():
+        return load_smtp_configuration(db, settings, cipher)
 
     def config_payload() -> dict[str, Any]:
         return {
@@ -1657,6 +1686,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     """
                 ).fetchall()
             ]
+        smtp = smtp_configuration()
         return {
             "users": users,
             "applications": applications,
@@ -1669,10 +1699,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "registration_enabled": (
                     db.setting("registration_enabled", "1") == "1"
                 ),
-                "smtp_enabled": settings.smtp_enabled,
+                "smtp_enabled": smtp.smtp_enabled,
                 "github_oauth_enabled": settings.github_oauth_enabled,
                 "github_submission_enabled": settings.github_submission_enabled,
             },
+            "smtp": smtp_public_payload(smtp),
+            "smtp_templates": SMTP_TEMPLATES,
         }
 
     @app.post("/api/admin/applications/{application_id}")
@@ -1792,5 +1824,142 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "edit_policy": payload.edit_policy,
             "registration_enabled": payload.registration_enabled,
         }
+
+    @app.put("/api/admin/smtp")
+    async def update_smtp_settings(
+        payload: SmtpSettingsRequest,
+        request: Request,
+        x_csrf_token: str | None = Header(default=None),
+        admin: dict[str, Any] = Depends(require_admin),
+    ) -> dict[str, object]:
+        verify_csrf(admin, x_csrf_token)
+        if payload.provider not in SMTP_TEMPLATE_IDS:
+            raise HTTPException(status_code=422, detail="SMTP 模板无效")
+
+        host = payload.host.strip().lower()
+        username = payload.username.strip()
+        password = payload.password
+        from_address = payload.from_address.strip()
+        if host and (
+            "://" in host
+            or "/" in host
+            or any(character.isspace() for character in host)
+        ):
+            raise HTTPException(status_code=422, detail="SMTP 主机格式无效")
+        if any(character in username for character in "\r\n"):
+            raise HTTPException(status_code=422, detail="SMTP 用户名格式无效")
+        if from_address:
+            try:
+                from_address = normalize_email(from_address)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        current = smtp_configuration()
+        if (
+            username != current.smtp_username
+            and current.smtp_password
+            and not password
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="SMTP 登录账号变化时必须填写新的授权码或应用密码",
+            )
+        if payload.enabled:
+            if not host:
+                raise HTTPException(status_code=422, detail="请填写 SMTP 主机")
+            if not from_address:
+                raise HTTPException(status_code=422, detail="请填写发件邮箱")
+            if (
+                username
+                and not password
+                and (
+                    not current.smtp_password
+                    or username != current.smtp_username
+                )
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="请为当前 SMTP 用户名填写授权码或应用密码",
+                )
+
+        try:
+            save_smtp_configuration(
+                db,
+                cipher,
+                admin_id=admin["id"],
+                enabled=payload.enabled,
+                provider=payload.provider,
+                host=host,
+                port=payload.port,
+                username=username,
+                password=password,
+                from_address=from_address,
+                starttls=payload.starttls,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="服务未配置可用的密钥，无法保存 SMTP 授权码",
+            ) from exc
+
+        db.audit(
+            "smtp.settings_updated",
+            request_ip(request),
+            user_id=admin["id"],
+            detail=json.dumps(
+                {
+                    "enabled": payload.enabled,
+                    "provider": payload.provider,
+                    "host": host,
+                    "port": payload.port,
+                    "username": username,
+                    "from_address": from_address,
+                    "starttls": payload.starttls,
+                    "password_changed": bool(password),
+                },
+                ensure_ascii=False,
+            ),
+        )
+        return smtp_public_payload(smtp_configuration())
+
+    @app.post("/api/admin/smtp/test")
+    def test_smtp_settings(
+        request: Request,
+        x_csrf_token: str | None = Header(default=None),
+        admin: dict[str, Any] = Depends(require_admin),
+    ) -> dict[str, str]:
+        verify_csrf(admin, x_csrf_token)
+        if not rate_limiter.allow(f"smtp-test:{admin['id']}", 5, 600):
+            raise HTTPException(status_code=429, detail="SMTP 测试请求过多")
+
+        smtp = smtp_configuration()
+        if not smtp.smtp_enabled:
+            raise HTTPException(status_code=409, detail="请先保存并启用 SMTP")
+        status, error = send_email(
+            smtp,
+            [admin["email"]],
+            "[GCK] SMTP 配置测试",
+            (
+                "Game Client Knowledge 编辑系统 SMTP 配置测试成功。\n\n"
+                f"模板：{smtp.provider}\n"
+                f"服务器：{smtp.smtp_host}:{smtp.smtp_port}\n"
+            ),
+        )
+        db.audit(
+            "smtp.test",
+            request_ip(request),
+            user_id=admin["id"],
+            target=admin["email"],
+            detail=json.dumps(
+                {"status": status, "error": error},
+                ensure_ascii=False,
+            ),
+        )
+        if status != "sent":
+            raise HTTPException(
+                status_code=502,
+                detail=f"SMTP 测试失败：{error or '邮件服务器未接受请求'}",
+            )
+        return {"status": status, "recipient": admin["email"]}
 
     return app

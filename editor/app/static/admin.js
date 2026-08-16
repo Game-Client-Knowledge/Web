@@ -1,6 +1,8 @@
 const state = {
   session: null,
-  csrf: ""
+  csrf: "",
+  smtp: null,
+  smtpTemplates: []
 };
 
 const byId = (id) => document.getElementById(id);
@@ -18,7 +20,11 @@ async function api(path, options = {}) {
   });
   const payload = response.status === 204 ? null : await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload?.detail || `请求失败（HTTP ${response.status}）`);
+    const detail = payload?.detail;
+    const message = Array.isArray(detail)
+      ? detail.map((item) => item.msg || String(item)).join("；")
+      : detail;
+    throw new Error(message || `请求失败（HTTP ${response.status}）`);
   }
   return payload;
 }
@@ -69,6 +75,72 @@ function renderIntegrations(settings) {
     chip.className = `integration-chip${ready ? " ready" : ""}`;
     chip.textContent = `${label}：${ready ? "已配置" : "未配置"}`;
     target.append(chip);
+  }
+}
+
+function smtpFeedback(message, kind = "error") {
+  const target = byId("smtpFeedback");
+  target.textContent = message;
+  target.className = `feedback${message ? " is-visible" : ""} ${kind}`;
+}
+
+function syncSmtpEnabledState() {
+  const form = byId("smtpForm");
+  const enabled = form.enabled.checked;
+  form.host.required = enabled;
+  form.from_address.required = enabled;
+  byId("testSmtpButton").disabled = !state.smtp?.configured;
+}
+
+function renderSmtpTemplates(templates) {
+  const select = byId("smtpProvider");
+  select.replaceChildren();
+  templates.forEach((template) => {
+    const option = document.createElement("option");
+    option.value = template.id;
+    option.textContent = template.label;
+    select.append(option);
+  });
+}
+
+function renderSmtp(configuration, templates) {
+  state.smtp = configuration;
+  state.smtpTemplates = templates;
+  renderSmtpTemplates(templates);
+  const form = byId("smtpForm");
+  form.provider.value = configuration.provider;
+  form.host.value = configuration.host;
+  form.port.value = String(configuration.port);
+  form.username.value = configuration.username;
+  form.password.value = "";
+  form.from_address.value = configuration.from_address;
+  form.enabled.checked = configuration.enabled;
+  form.starttls.checked = configuration.starttls;
+
+  const status = byId("smtpConfigStatus");
+  status.textContent = configuration.configured
+    ? "已启用"
+    : configuration.enabled
+      ? "配置不完整"
+      : "已停用";
+  status.dataset.status = configuration.configured ? "ready" : "idle";
+  byId("smtpPasswordStatus").textContent = configuration.password_set
+    ? "授权码已加密保存；留空不会覆盖。"
+    : "尚未保存授权码。";
+  syncSmtpEnabledState();
+}
+
+function applySmtpTemplate() {
+  const form = byId("smtpForm");
+  const template = state.smtpTemplates.find(
+    (item) => item.id === form.provider.value
+  );
+  if (!template || template.id === "custom") return;
+  form.host.value = template.host;
+  form.port.value = String(template.port);
+  form.starttls.checked = template.starttls;
+  if (!form.from_address.value && form.username.value.includes("@")) {
+    form.from_address.value = form.username.value;
   }
 }
 
@@ -195,6 +267,7 @@ async function loadOverview() {
   byId("settingsForm").registration_enabled.checked =
     data.settings.registration_enabled;
   renderIntegrations(data.settings);
+  renderSmtp(data.smtp, data.smtp_templates);
   renderApplications(data.applications);
   renderSubmissions(data.submissions);
   renderNotifications(data.notifications);
@@ -215,6 +288,59 @@ byId("settingsForm").addEventListener("submit", async (event) => {
     await loadOverview();
   } catch (error) {
     feedback(error.message);
+  }
+});
+
+byId("smtpProvider").addEventListener("change", applySmtpTemplate);
+byId("smtpForm").enabled.addEventListener("change", syncSmtpEnabledState);
+byId("smtpForm").username.addEventListener("blur", (event) => {
+  const form = event.currentTarget.form;
+  if (!form.from_address.value && event.currentTarget.value.includes("@")) {
+    form.from_address.value = event.currentTarget.value.trim();
+  }
+});
+
+byId("smtpForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = byId("saveSmtpButton");
+  button.disabled = true;
+  smtpFeedback("");
+  try {
+    const configuration = await api("/admin/smtp", {
+      method: "PUT",
+      body: JSON.stringify({
+        enabled: form.enabled.checked,
+        provider: form.provider.value,
+        host: form.host.value,
+        port: Number(form.port.value),
+        username: form.username.value,
+        password: form.password.value,
+        from_address: form.from_address.value,
+        starttls: form.starttls.checked
+      })
+    });
+    renderSmtp(configuration, state.smtpTemplates);
+    smtpFeedback("SMTP 配置已保存。", "success");
+    await loadOverview();
+  } catch (error) {
+    smtpFeedback(error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+byId("testSmtpButton").addEventListener("click", async () => {
+  const button = byId("testSmtpButton");
+  button.disabled = true;
+  smtpFeedback("");
+  try {
+    const result = await api("/admin/smtp/test", { method: "POST" });
+    smtpFeedback(`测试邮件已发送至 ${result.recipient}。`, "success");
+  } catch (error) {
+    smtpFeedback(error.message);
+  } finally {
+    button.disabled = !state.smtp?.configured;
   }
 });
 

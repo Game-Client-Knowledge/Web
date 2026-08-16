@@ -164,7 +164,18 @@ has been granted access under the `Game-Client-Knowledge` organization policy.
 
 ## SMTP Configuration
 
-Set:
+The recommended path is the SMTP section at:
+
+```text
+https://knowledge.chenyurui.top/editor/admin
+```
+
+It includes QQ Mail, Gmail / Google Workspace, Outlook / Microsoft 365, and
+custom templates. Authorization codes are encrypted with
+`EDITOR_ENCRYPTION_KEY`, are never returned to the browser, and can be verified
+by sending a test email to the signed-in administrator.
+
+Environment variables remain available as a bootstrap or recovery fallback:
 
 ```text
 EDITOR_SMTP_HOST
@@ -175,6 +186,7 @@ EDITOR_SMTP_FROM
 EDITOR_SMTP_STARTTLS
 ```
 
+An administration-page configuration overrides the environment values.
 Without SMTP, submissions still succeed and notification records remain available
 in `/editor/admin`.
 

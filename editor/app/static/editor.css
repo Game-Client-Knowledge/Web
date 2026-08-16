@@ -1273,6 +1273,50 @@ dialog::backdrop {
   grid-template-columns: 280px minmax(220px, 1fr) auto;
 }
 
+.smtp-form {
+  display: grid;
+  gap: 16px;
+}
+
+.smtp-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.smtp-grid label {
+  min-width: 0;
+}
+
+.field-status {
+  min-height: 16px;
+  color: var(--ink-faint);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.smtp-options,
+.smtp-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.smtp-actions {
+  padding-top: 2px;
+}
+
+.smtp-form > .feedback {
+  margin-top: -4px;
+}
+
+#smtpConfigStatus[data-status="ready"] {
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+  border-color: #c7e1da;
+}
+
 .check-label {
   min-height: 42px;
   flex-direction: row;
@@ -1443,6 +1487,10 @@ dialog::backdrop {
   }
 
   .settings-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .smtp-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
