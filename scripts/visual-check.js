@@ -90,6 +90,36 @@ async function inspectPage(browser, scenario) {
     `${scenario.name}: browser errors: ${runtimeErrors.join(" | ")}`
   );
 
+  if (scenario.knowledgeField) {
+    const field = await page.locator("[data-knowledge-field]").evaluate(
+      (canvas) => {
+        const context = canvas.getContext("2d");
+        const pixels = context.getImageData(
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        ).data;
+        let painted = 0;
+        for (let index = 3; index < pixels.length; index += 16) {
+          if (pixels[index] > 0) painted += 1;
+        }
+        const catalogTop = document
+          .querySelector(".catalog-overview")
+          .getBoundingClientRect().top;
+        return { painted, catalogTop, viewportHeight: innerHeight };
+      }
+    );
+    assert(
+      field.painted > 100,
+      `${scenario.name}: knowledge field is blank`
+    );
+    assert(
+      field.catalogTop < field.viewportHeight,
+      `${scenario.name}: catalog is not visible below the hero`
+    );
+  }
+
   if (scenario.search) {
     await page.locator("[data-open-search]").first().click();
     await page.locator("[data-search-input]").fill("移动构造");
@@ -143,12 +173,14 @@ async function inspectPage(browser, scenario) {
       name: "home-desktop",
       route: "/",
       viewport: { width: 1440, height: 1000 },
-      search: true
+      search: true,
+      knowledgeField: true
     },
     {
       name: "home-mobile",
       route: "/",
-      viewport: { width: 390, height: 844 }
+      viewport: { width: 390, height: 844 },
+      knowledgeField: true
     },
     {
       name: "contribute-desktop",

@@ -410,27 +410,46 @@ body[data-editor-state="loading"] [data-account-label] {
 .library-intro {
   position: relative;
   display: flex;
-  min-height: 360px;
+  min-height: min(560px, calc(100vh - 140px));
   color: #ffffff;
-  background-color: #263430;
+  background: #182420;
   align-items: stretch;
+  isolation: isolate;
+  overflow: hidden;
 }
 
 .library-intro::before {
   position: absolute;
+  z-index: 0;
   inset: 0;
   content: "";
-  background: rgba(18, 30, 27, 0.74);
+  background: rgba(11, 20, 17, 0.5);
+  pointer-events: none;
+}
+
+.knowledge-field {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 .library-intro-overlay {
   position: relative;
+  z-index: 1;
   display: flex;
   width: min(100% - 40px, var(--content-width));
   margin: 0 auto;
-  padding: 52px 0;
+  padding: 58px 0 28px;
   flex-direction: column;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 40px;
+}
+
+.library-intro-copy {
+  max-width: 820px;
 }
 
 .library-intro .eyebrow {
@@ -438,23 +457,28 @@ body[data-editor-state="loading"] [data-account-label] {
 }
 
 .library-intro h1 {
-  max-width: 760px;
   margin: 0;
-  font-size: 48px;
-  line-height: 1.08;
+  font-size: 56px;
+  line-height: 1.06;
 }
 
 .intro-copy {
-  max-width: 650px;
-  margin: 18px 0 24px;
+  max-width: 680px;
+  margin: 20px 0 26px;
   color: #dce7e3;
   font-size: 18px;
   line-height: 1.7;
 }
 
+.intro-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
 .intro-search {
   display: flex;
-  width: min(100%, 440px);
+  width: min(100%, 430px);
   height: 48px;
   padding: 0 12px 0 16px;
   color: var(--ink);
@@ -480,27 +504,80 @@ body[data-editor-state="loading"] [data-account-label] {
   font-size: 12px;
 }
 
+.intro-catalog-link {
+  display: inline-flex;
+  min-height: 42px;
+  color: #d7e4df;
+  border-bottom: 1px solid rgba(215, 228, 223, 0.44);
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 680;
+  text-decoration: none;
+}
+
+.intro-catalog-link:hover {
+  color: #ffffff;
+  border-bottom-color: #9ce0cd;
+}
+
+.intro-stats {
+  display: grid;
+  margin: 0;
+  padding: 22px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.17);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.intro-stats > div {
+  min-width: 0;
+  padding: 0 24px;
+}
+
+.intro-stats > div:first-child {
+  padding-left: 0;
+}
+
+.intro-stats > div + div {
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.intro-stats dt {
+  margin-bottom: 3px;
+  color: #9fb2ab;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.intro-stats dd {
+  margin: 0;
+  color: #ffffff;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 21px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .catalog-overview {
   width: min(100% - 40px, var(--content-width));
   margin: 0 auto;
-  padding: 54px 0 64px;
+  padding: 62px 0 72px;
 }
 
 .catalog-stats {
   display: flex;
   color: var(--ink-soft);
   gap: 20px;
-  font-size: 14px;
-}
-
-.catalog-stats strong {
-  color: var(--ink);
-  font-size: 17px;
+  font-size: 13px;
 }
 
 .module-band {
+  display: grid;
   padding: 30px 0 34px;
   border-top: 1px solid var(--line);
+  gap: 48px;
+  grid-template-columns: minmax(220px, 0.72fr) minmax(0, 2.28fr);
 }
 
 .module-band:last-child {
@@ -508,17 +585,13 @@ body[data-editor-state="loading"] [data-account-label] {
 }
 
 .module-band-heading {
-  display: flex;
-  margin-bottom: 20px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
+  min-width: 0;
 }
 
 .module-identity {
   display: flex;
   min-width: 0;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
 }
 
@@ -562,6 +635,7 @@ body[data-editor-state="loading"] [data-account-label] {
 .text-link {
   display: inline-flex;
   flex: 0 0 auto;
+  margin: 16px 0 0 56px;
   align-items: center;
   gap: 5px;
   font-size: 14px;
@@ -571,7 +645,7 @@ body[data-editor-state="loading"] [data-account-label] {
 
 .unit-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 12px;
 }
 
@@ -579,10 +653,10 @@ body[data-editor-state="loading"] [data-account-label] {
   position: relative;
   display: flex;
   min-width: 0;
-  min-height: 154px;
+  min-height: 142px;
   padding: 18px 44px 18px 18px;
   color: var(--ink);
-  background: var(--paper);
+  background: #fbfcfb;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   flex-direction: column;
@@ -2603,6 +2677,22 @@ body.is-edit-mode [data-editor-host]::before {
 }
 
 @media (max-width: 900px) {
+  .module-band {
+    display: block;
+  }
+
+  .module-band-heading {
+    display: flex;
+    margin-bottom: 20px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+  }
+
+  .text-link {
+    margin: 0;
+  }
+
   .unit-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2757,23 +2847,59 @@ body.is-edit-mode [data-editor-host]::before {
   }
 
   .library-intro {
-    min-height: 400px;
+    min-height: min(520px, calc(100vh - 112px));
   }
 
   .library-intro-overlay {
     width: calc(100% - 32px);
-    padding: 42px 0;
-    justify-content: flex-end;
+    padding: 40px 0 24px;
+    gap: 30px;
   }
 
   .library-intro h1 {
-    font-size: 38px;
+    font-size: 42px;
     overflow-wrap: anywhere;
   }
 
   .intro-copy {
     margin: 14px 0 20px;
     font-size: 16px;
+  }
+
+  .intro-actions {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .intro-search {
+    width: 100%;
+  }
+
+  .intro-stats {
+    padding-top: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 14px;
+  }
+
+  .intro-stats > div {
+    padding: 0 14px;
+  }
+
+  .intro-stats > div:nth-child(3) {
+    padding-top: 12px;
+    padding-left: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-left: 0;
+  }
+
+  .intro-stats > div:nth-child(4) {
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .intro-stats dd {
+    font-size: 18px;
   }
 
   .catalog-overview {

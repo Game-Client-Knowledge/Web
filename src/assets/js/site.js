@@ -181,6 +181,176 @@
     });
   }
 
+  function setupKnowledgeField() {
+    const canvas = document.querySelector("[data-knowledge-field]");
+    const context = canvas && canvas.getContext("2d");
+    if (!canvas || !context) {
+      return;
+    }
+
+    const host = canvas.closest(".library-intro");
+    const reducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    const pointColors = [
+      "rgba(156, 224, 205, 0.88)",
+      "rgba(238, 168, 104, 0.78)",
+      "rgba(229, 201, 112, 0.72)",
+      "rgba(255, 255, 255, 0.68)"
+    ];
+    const pointer = { x: 0, y: 0, active: false };
+    let width = 0;
+    let height = 0;
+    let pixelRatio = 1;
+    let nodes = [];
+    let frame = 0;
+    let visible = true;
+
+    function createNodes() {
+      const density = Math.round((width * height) / 15000);
+      const maximum = width < 700 ? 36 : 68;
+      const count = Math.max(24, Math.min(maximum, density));
+      nodes = Array.from({ length: count }, function (_, index) {
+        return {
+          x: Math.random() * width,
+          y: Math.random() * height,
+          vx: (Math.random() - 0.5) * 0.22,
+          vy: (Math.random() - 0.5) * 0.22,
+          radius: 0.8 + Math.random() * 1.4,
+          depth: 0.25 + Math.random() * 0.75,
+          color: pointColors[index % pointColors.length]
+        };
+      });
+    }
+
+    function resize() {
+      const rectangle = canvas.getBoundingClientRect();
+      width = Math.max(1, Math.round(rectangle.width));
+      height = Math.max(1, Math.round(rectangle.height));
+      pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(width * pixelRatio);
+      canvas.height = Math.round(height * pixelRatio);
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      createNodes();
+      draw();
+    }
+
+    function draw() {
+      context.clearRect(0, 0, width, height);
+      const linkDistance = width < 700 ? 92 : 132;
+
+      for (let left = 0; left < nodes.length; left += 1) {
+        for (let right = left + 1; right < nodes.length; right += 1) {
+          const deltaX = nodes[left].x - nodes[right].x;
+          const deltaY = nodes[left].y - nodes[right].y;
+          const distance = Math.hypot(deltaX, deltaY);
+          if (distance >= linkDistance) {
+            continue;
+          }
+          context.beginPath();
+          context.strokeStyle =
+            `rgba(132, 197, 179, ${0.2 * (1 - distance / linkDistance)})`;
+          context.lineWidth = 0.7;
+          context.moveTo(nodes[left].x, nodes[left].y);
+          context.lineTo(nodes[right].x, nodes[right].y);
+          context.stroke();
+        }
+      }
+
+      nodes.forEach(function (node) {
+        const offsetX = pointer.active
+          ? (pointer.x - width / 2) * node.depth * 0.012
+          : 0;
+        const offsetY = pointer.active
+          ? (pointer.y - height / 2) * node.depth * 0.012
+          : 0;
+        context.beginPath();
+        context.fillStyle = node.color;
+        context.arc(
+          node.x + offsetX,
+          node.y + offsetY,
+          node.radius,
+          0,
+          Math.PI * 2
+        );
+        context.fill();
+
+        if (reducedMotion) {
+          return;
+        }
+        if (pointer.active) {
+          const deltaX = pointer.x - node.x;
+          const deltaY = pointer.y - node.y;
+          const distance = Math.max(1, Math.hypot(deltaX, deltaY));
+          if (distance < 180) {
+            node.vx += (deltaX / distance) * 0.0012;
+            node.vy += (deltaY / distance) * 0.0012;
+          }
+        }
+        node.vx = Math.max(-0.34, Math.min(0.34, node.vx));
+        node.vy = Math.max(-0.34, Math.min(0.34, node.vy));
+        node.x += node.vx;
+        node.y += node.vy;
+        if (node.x < -4) node.x = width + 4;
+        if (node.x > width + 4) node.x = -4;
+        if (node.y < -4) node.y = height + 4;
+        if (node.y > height + 4) node.y = -4;
+      });
+    }
+
+    function animate() {
+      frame = 0;
+      if (!visible || document.hidden) {
+        return;
+      }
+      draw();
+      frame = window.requestAnimationFrame(animate);
+    }
+
+    function start() {
+      if (!reducedMotion && !frame && visible && !document.hidden) {
+        frame = window.requestAnimationFrame(animate);
+      }
+    }
+
+    function stop() {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+        frame = 0;
+      }
+    }
+
+    host.addEventListener("pointermove", function (event) {
+      const rectangle = host.getBoundingClientRect();
+      pointer.x = event.clientX - rectangle.left;
+      pointer.y = event.clientY - rectangle.top;
+      pointer.active = true;
+    });
+    host.addEventListener("pointerleave", function () {
+      pointer.active = false;
+    });
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) stop();
+      else start();
+    });
+
+    if ("IntersectionObserver" in window) {
+      new IntersectionObserver(function (entries) {
+        visible = entries[0].isIntersecting;
+        if (visible) start();
+        else stop();
+      }).observe(host);
+    }
+    if ("ResizeObserver" in window) {
+      new ResizeObserver(resize).observe(host);
+    } else {
+      window.addEventListener("resize", resize);
+    }
+
+    resize();
+    start();
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     refreshIcons();
     setupHeaderNavigation();
@@ -188,6 +358,7 @@
     setupCopyActions();
     setupTableOfContents();
     setupMermaid();
+    setupKnowledgeField();
     refreshIcons();
   });
 })();

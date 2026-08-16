@@ -5,30 +5,57 @@ permalink: index.html
 ---
 
 <section class="library-intro">
+  <canvas class="knowledge-field" data-knowledge-field aria-hidden="true"></canvas>
   <div class="library-intro-overlay">
-    <p class="eyebrow">开放 · 持续更新 · 多人共建</p>
-    <h1>Game Client Knowledge</h1>
-    <p class="intro-copy">
-      游戏客户端开发与面试知识库。按专题学习，按公司复盘面经，
-      直接阅读和运行配套代码。
-    </p>
-    <button class="intro-search" type="button" data-open-search>
-      <i data-lucide="search" aria-hidden="true"></i>
-      搜索全部内容
-      <span>⌘ K</span>
-    </button>
+    <div class="library-intro-copy">
+      <p class="eyebrow">开放 · 持续更新 · 多人共建</p>
+      <h1>Game Client Knowledge</h1>
+      <p class="intro-copy">
+        游戏客户端开发与面试知识库。按专题学习，按公司复盘面经，
+        直接阅读配套源码。
+      </p>
+      <div class="intro-actions">
+        <button class="intro-search" type="button" data-open-search>
+          <i data-lucide="search" aria-hidden="true"></i>
+          搜索全部内容
+          <span>⌘ K</span>
+        </button>
+        <a class="intro-catalog-link" href="#catalog-title">
+          浏览知识体系
+          <i data-lucide="arrow-down" aria-hidden="true"></i>
+        </a>
+      </div>
+    </div>
+    <dl class="intro-stats" aria-label="知识库内容统计">
+      <div>
+        <dt>内容模块</dt>
+        <dd>{{ catalog.modules | length }}</dd>
+      </div>
+      <div>
+        <dt>知识专题</dt>
+        <dd>{{ catalog.units.length }}</dd>
+      </div>
+      <div>
+        <dt>可读内容</dt>
+        <dd>{{ catalog.documents | length }}</dd>
+      </div>
+      <div>
+        <dt>当前版本</dt>
+        <dd>{{ catalog.repository.commit }}</dd>
+      </div>
+    </dl>
   </div>
 </section>
 
 <section class="catalog-overview" aria-labelledby="catalog-title">
   <div class="section-heading">
     <div>
-      <p class="eyebrow">自动扫描内容仓库</p>
+      <p class="eyebrow">Content graph</p>
       <h2 id="catalog-title">知识库目录</h2>
     </div>
     <div class="catalog-stats" aria-label="内容统计">
-      <span><strong>{{ catalog.units.length }}</strong> 个专题</span>
-      <span><strong>{{ catalog.documents | length }}</strong> 篇内容</span>
+      <span>按目录自动生成</span>
+      <span>持续同步内容仓库</span>
     </div>
   </div>
 
