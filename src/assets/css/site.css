@@ -93,6 +93,10 @@ svg {
   outline-offset: 2px;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 .skip-link {
   position: fixed;
   z-index: 200;
