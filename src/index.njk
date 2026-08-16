@@ -76,8 +76,14 @@ permalink: index.html
     <h2>新增内容，不改网站代码</h2>
     <p>在内容仓库添加文件夹和 Markdown，导航、页面与搜索索引会在下次构建时自动更新。</p>
   </div>
-  <a class="secondary-button" href="{{ site.repositoryUrl }}/blob/main/CONTRIBUTING.md">
-    <i data-lucide="git-pull-request-arrow" aria-hidden="true"></i>
-    查看贡献规范
-  </a>
+  <div class="contribution-actions">
+    <a class="primary-button" href="{{ site.joinUrl }}">
+      <i data-lucide="user-plus" aria-hidden="true"></i>
+      加入共建
+    </a>
+    <a class="secondary-button" href="{{ site.repositoryUrl }}/blob/main/CONTRIBUTING.md">
+      <i data-lucide="git-pull-request-arrow" aria-hidden="true"></i>
+      查看贡献规范
+    </a>
+  </div>
 </section>

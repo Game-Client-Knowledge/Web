@@ -193,6 +193,10 @@ svg {
   border-bottom-color: #73cbb4;
 }
 
+.primary-nav .join-nav-link {
+  color: #9ce0cd;
+}
+
 .header-actions {
   display: flex;
   margin-left: auto;
@@ -554,6 +558,13 @@ svg {
   max-width: 700px;
   margin: 0;
   color: var(--ink-soft);
+}
+
+.contribution-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
 }
 
 .primary-button,
@@ -1805,6 +1816,12 @@ svg {
   .contribution-band {
     padding: 32px 20px;
     align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .contribution-actions {
+    width: 100%;
+    align-items: stretch;
     flex-direction: column;
   }
 

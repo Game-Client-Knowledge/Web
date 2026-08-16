@@ -175,7 +175,8 @@ module.exports = function configureEleventy(eleventyConfig) {
     shortName: "GCK",
     description: "游戏客户端开发与面试知识库",
     basePath,
-    repositoryUrl: catalog.repositoryUrl
+    repositoryUrl: catalog.repositoryUrl,
+    joinUrl: process.env.JOIN_URL || "https://join.chenyurui.top"
   });
 
   eleventyConfig.addFilter("withBase", withBase);

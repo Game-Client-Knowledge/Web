@@ -9,6 +9,7 @@
     "audit": "node scripts/audit-content.js",
     "audit:site": "node scripts/audit-site.js",
     "test:visual": "node scripts/visual-check.js",
+    "deploy:join": "bash scripts/deploy-join.sh",
     "deploy:server": "bash scripts/deploy-server.sh",
     "check": "npm run audit && npm run build && npm run audit:site"
   },

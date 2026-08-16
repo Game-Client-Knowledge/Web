@@ -35,6 +35,7 @@
               {{ module.shortTitle }}
             </a>
           {% endfor %}
+          <a class="join-nav-link" href="{{ site.joinUrl }}">加入共建</a>
         </nav>
 
         <div class="header-actions">
@@ -77,6 +78,10 @@
             {{ module.title }}
           </a>
         {% endfor %}
+        <a href="{{ site.joinUrl }}">
+          <i data-lucide="user-plus" aria-hidden="true"></i>
+          加入共建
+        </a>
       </nav>
     </header>
 

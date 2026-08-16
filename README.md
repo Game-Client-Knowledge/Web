@@ -34,6 +34,7 @@ The site reads `../Game-Client-Knowledge` automatically. Use
 | `npm run audit` | Validate Markdown, links, routes, and scanner coverage |
 | `npm run check` | Run the audit and production build |
 | `npm run test:visual` | Check desktop, tablet, and mobile layouts with local Chrome |
+| `npm run deploy:join` | Deploy a versioned Join page release |
 | `npm run deploy:server` | Build and deploy a versioned release to the production server |
 
 ## Content contract
@@ -54,4 +55,5 @@ no website code or manifest change.
 - [Repository analysis](./docs/repository-analysis.md)
 - [System architecture](./docs/architecture.md)
 - [Build and deployment operations](./docs/operations.md)
+- [Join page](./docs/join-page.md)
 - [Web editing and GitHub contribution design](./docs/web-editing-and-contribution.md)
