@@ -79,3 +79,17 @@ GitHub passed authorization and reached payload validation without creating an
 object.
 
 Application post-fix verification pending deployment.
+
+## Post-Fix Evidence
+
+- Lines 3 and 7 of the post-fix log both report `stateFound=true` for the
+  same failed callback. Pre-fix, the second lookup reported `false`.
+- Line 10 reports the Bot write probe as HTTP 422 with
+  `acceptedPermissions=contents=write`; pre-fix it was HTTP 403.
+- Lines 12-13 record an explicit `access_denied` callback with a valid cookie
+  and state. The response redirected to
+  `/knowledge/?github_auth_error=access_denied`.
+- Production serves the source diff bundle and editor release from Web commit
+  `5249d2a`.
+
+Awaiting user verification before removing instrumentation and debug artifacts.
