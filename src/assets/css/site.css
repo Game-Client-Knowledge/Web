@@ -785,7 +785,7 @@ svg {
 }
 
 .guide-shell {
-  width: min(100% - 40px, 1080px);
+  width: min(100% - 48px, 920px);
   min-height: calc(100vh - var(--header-height));
   margin: 0 auto;
   padding: 34px 0 76px;
@@ -825,7 +825,7 @@ svg {
 }
 
 .guide-title-row p:last-child {
-  max-width: 720px;
+  max-width: 640px;
   margin: 0;
   color: var(--ink-soft);
 }
@@ -933,8 +933,8 @@ svg {
   display: grid;
   padding-top: 34px;
   align-items: start;
-  gap: 72px;
-  grid-template-columns: minmax(0, 760px) minmax(180px, 1fr);
+  gap: 48px;
+  grid-template-columns: minmax(0, 640px) 180px;
 }
 
 .guide-section-label {
