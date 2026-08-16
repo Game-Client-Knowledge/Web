@@ -35,7 +35,17 @@ import json
 import sys
 
 payload = json.load(sys.stdin)
-print(payload["sha"], payload["commit"]["committer"]["date"])
+import base64
+
+commit = payload["commit"]
+encode = lambda value: base64.b64encode(value.encode()).decode()
+print(
+    payload["sha"],
+    commit["committer"]["date"],
+    encode(commit["author"].get("name") or "GitHub contributor"),
+    encode(commit["author"].get("email") or "noreply@github.com"),
+    sep="\t",
+)
 '
 }
 
@@ -64,22 +74,63 @@ download_snapshot() {
 update_git_mirror() {
   local repository="$1"
   local destination="$2"
+  local revision="$3"
+  local snapshot="$4"
+  local author_name="$5"
+  local author_email="$6"
+  local authored_at="$7"
+  local importer="$8"
   local remote="https://github.com/${repository}.git"
 
   if [[ ! -d "$destination" ]]; then
-    git clone --mirror "$remote" "$destination"
-  else
-    git --git-dir="$destination" fetch --prune origin \
-      '+refs/heads/*:refs/heads/*'
+    if ! timeout 60 git -c http.version=HTTP/1.1 \
+      clone --mirror "$remote" "$destination"; then
+      if [[ -d "$destination" ]]; then
+        mv "$destination" "${destination}.failed-$(date +%s)"
+      fi
+      git init --bare "$destination" >/dev/null
+      git --git-dir="$destination" remote add origin "$remote"
+    fi
   fi
+
+  if ! git --git-dir="$destination" cat-file -e "${revision}^{commit}" 2>/dev/null; then
+    timeout 30 git -c http.version=HTTP/1.1 \
+      --git-dir="$destination" fetch --prune origin \
+      '+refs/heads/*:refs/heads/*' || true
+  fi
+
+  if git --git-dir="$destination" cat-file -e "${revision}^{commit}" 2>/dev/null; then
+    git --git-dir="$destination" update-ref \
+      "refs/gck-upstream/${revision}" "$revision"
+    printf '%s\n' "$revision"
+    return
+  fi
+
+  python3 "$importer" \
+    --repo "$destination" \
+    --worktree "$snapshot" \
+    --upstream-revision "$revision" \
+    --author-name "$author_name" \
+    --author-email "$author_email" \
+    --authored-at "$authored_at"
 }
 
-read -r content_commit content_updated_at < <(
+IFS=$'\t' read -r \
+  content_commit \
+  content_updated_at \
+  content_author_name_b64 \
+  content_author_email_b64 < <(
   github_commit_metadata "$CONTENT_REPOSITORY"
 )
-read -r web_commit _web_updated_at < <(
+IFS=$'\t' read -r web_commit _web_updated_at _web_name _web_email < <(
   github_commit_metadata "$WEB_REPOSITORY"
 )
+content_author_name="$(
+  printf '%s' "$content_author_name_b64" | base64 --decode
+)"
+content_author_email="$(
+  printf '%s' "$content_author_email_b64" | base64 --decode
+)"
 
 if [[ -z "$content_commit" || -z "$web_commit" ]]; then
   echo "Unable to resolve pushed main commits." >&2
@@ -110,7 +161,17 @@ content_snapshot="${workspace}/content"
 
 download_snapshot "$WEB_REPOSITORY" "$web_commit" "$web_snapshot"
 download_snapshot "$CONTENT_REPOSITORY" "$content_commit" "$content_snapshot"
-update_git_mirror "$CONTENT_REPOSITORY" "$CONTENT_GIT_MIRROR"
+mirror_revision="$(
+  update_git_mirror \
+    "$CONTENT_REPOSITORY" \
+    "$CONTENT_GIT_MIRROR" \
+    "$content_commit" \
+    "$content_snapshot" \
+    "$content_author_name" \
+    "$content_author_email" \
+    "$content_updated_at" \
+    "$web_snapshot/scripts/import-content-snapshot.py"
+)"
 
 cd "$web_snapshot"
 npm ci \
@@ -127,13 +188,21 @@ WEB_COMMIT="$web_commit" \
 previous_attribution_commit=""
 if [[ -f "$ATTRIBUTION_STATE_FILE" ]]; then
   candidate="$(cat "$ATTRIBUTION_STATE_FILE")"
-  if git --git-dir="$CONTENT_GIT_MIRROR" cat-file -e "${candidate}^{commit}" 2>/dev/null; then
-    previous_attribution_commit="$candidate"
+  mapped_reference="refs/gck-upstream/${candidate}"
+  if git --git-dir="$CONTENT_GIT_MIRROR" show-ref \
+    --verify --quiet "$mapped_reference"; then
+    previous_attribution_commit="$(
+      git --git-dir="$CONTENT_GIT_MIRROR" rev-parse "$mapped_reference"
+    )"
+  elif git --git-dir="$CONTENT_GIT_MIRROR" \
+    cat-file -e "${candidate}^{commit}" 2>/dev/null; then
+      previous_attribution_commit="$candidate"
   fi
 fi
 python3 scripts/sync-line-authors.py \
   --repo "$CONTENT_GIT_MIRROR" \
-  --revision "$content_commit" \
+  --revision "$mirror_revision" \
+  --content-revision "$content_commit" \
   --previous "$previous_attribution_commit"
 
 release_id="$(

@@ -70,7 +70,12 @@ def changed_paths(repo: str, previous: str, revision: str) -> tuple[list[str], l
     return sorted(path for path in paths if editable(path)), []
 
 
-def blame_file(repo: str, revision: str, path: str) -> dict[str, object]:
+def blame_file(
+    repo: str,
+    revision: str,
+    content_revision: str,
+    path: str,
+) -> dict[str, object]:
     output = git(repo, "blame", "--line-porcelain", revision, "--", path)
     lines: list[dict[str, object]] = []
     commit = ""
@@ -98,7 +103,7 @@ def blame_file(repo: str, revision: str, path: str) -> dict[str, object]:
             )
     return {
         "path": path,
-        "commit": revision,
+        "commit": content_revision,
         "line_count": len(lines),
         "lines": lines,
     }
@@ -166,6 +171,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", required=True)
     parser.add_argument("--revision", required=True)
+    parser.add_argument("--content-revision", default="")
     parser.add_argument("--previous", default="")
     parser.add_argument(
         "--url",
@@ -185,13 +191,18 @@ def main() -> None:
         arguments.revision,
     )
     files = [
-        blame_file(arguments.repo, arguments.revision, path)
+        blame_file(
+            arguments.repo,
+            arguments.revision,
+            arguments.content_revision or arguments.revision,
+            path,
+        )
         for path in paths
     ]
     file_count, line_count = upload(
         arguments.url,
         arguments.token,
-        arguments.revision,
+        arguments.content_revision or arguments.revision,
         files,
         deleted,
     )
