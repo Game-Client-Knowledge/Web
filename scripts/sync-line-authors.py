@@ -105,13 +105,13 @@ def blame_file(repo: str, revision: str, path: str) -> dict[str, object]:
 
 
 def post(url: str, token: str, payload: dict[str, object]) -> dict[str, object]:
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(
         url,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        },
+        headers=headers,
         method="POST",
     )
     try:
@@ -179,9 +179,6 @@ def main() -> None:
         default=os.getenv("EDITOR_ATTRIBUTION_SYNC_TOKEN", ""),
     )
     arguments = parser.parse_args()
-    if not arguments.token:
-        raise SystemExit("EDITOR_ATTRIBUTION_SYNC_TOKEN is required")
-
     paths, deleted = changed_paths(
         arguments.repo,
         arguments.previous,

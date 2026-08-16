@@ -18,7 +18,8 @@ and the stateful editor service.
 
 ## Attribution Sync
 
-Set the same random token in `/etc/game-client-knowledge-editor.env`:
+For defense in depth, set the same random token in
+`/etc/game-client-knowledge-editor.env`:
 
 ```dotenv
 EDITOR_ATTRIBUTION_SYNC_TOKEN=<random-token>
@@ -41,6 +42,11 @@ update script maintains:
 On the first run, all supported text files are blamed. Later runs use the
 previous successful attribution commit and process only added, modified, or
 renamed files. Deleted paths are removed from the cache.
+
+If no token is configured, the endpoint accepts synchronization only from
+`127.0.0.1` or `::1`. Requests forwarded from Nginx or Cloudflare retain the
+external client address and are rejected. A configured token always takes
+precedence and is recommended.
 
 Uploads are split below the editor service's request limit and sent to:
 

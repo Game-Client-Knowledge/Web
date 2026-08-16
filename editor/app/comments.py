@@ -151,6 +151,7 @@ def create_comments_router(
     @router.post("/internal/attribution-sync")
     def sync_attribution(
         payload: AttributionSyncRequest,
+        request: Request,
         authorization: str | None = Header(default=None),
     ) -> dict[str, int]:
         expected = settings.attribution_sync_token
@@ -159,7 +160,14 @@ def create_comments_router(
             if authorization and authorization.startswith("Bearer ")
             else ""
         )
-        if not expected or not secrets.compare_digest(expected, supplied):
+        loopback = request.client and request.client.host in {
+            "127.0.0.1",
+            "::1",
+        }
+        if (
+            expected
+            and not secrets.compare_digest(expected, supplied)
+        ) or (not expected and not loopback):
             raise HTTPException(status_code=401, detail="同步令牌无效")
 
         files = 0
