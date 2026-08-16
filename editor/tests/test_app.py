@@ -251,6 +251,63 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert "Immediate draft content." in payload["active_draft_html"]
 
 
+def test_onboarding_is_completed_once_per_user(client: TestClient) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "onboarding@example.test",
+            "username": "onboarding-user",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    assert registered["user"]["needs_onboarding"] is True
+
+    rejected = client.post("/api/onboarding/complete")
+    assert rejected.status_code == 403
+
+    completed = client.post(
+        "/api/onboarding/complete",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert completed.status_code == 200
+    assert completed.json() == {"completed": True}
+    assert client.get("/api/session").json()["user"]["needs_onboarding"] is False
+
+    repeated = client.post(
+        "/api/onboarding/complete",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert repeated.status_code == 200
+    with client.app.state.db.connect() as connection:
+        columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(users)"
+            ).fetchall()
+        }
+        audit_count = connection.execute(
+            """
+            SELECT COUNT(*) AS count FROM audit_log
+            WHERE action = 'onboarding.completed'
+            """
+        ).fetchone()["count"]
+    assert "onboarding_completed_at" in columns
+    assert audit_count == 1
+
+    logged_out = client.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert logged_out.status_code == 204
+    logged_in = login(
+        client,
+        "onboarding-user",
+        "local-password-123",
+    )
+    assert logged_in["user"]["needs_onboarding"] is False
+
+
 def test_file_delete_and_discard_change(client: TestClient) -> None:
     registered = client.post(
         "/api/auth/register",

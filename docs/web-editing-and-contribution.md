@@ -101,6 +101,7 @@ SQLite uses WAL mode and stores:
 - Runtime settings.
 - Notification delivery records.
 - Audit events.
+- Per-user first-login onboarding completion.
 
 The database is outside all release directories:
 
@@ -115,6 +116,10 @@ Deploying or rolling back application code does not remove user drafts.
 Local sessions use a random `HttpOnly`, `Secure`, `SameSite=Lax` cookie. Only a
 SHA-256 digest of the session token is stored. State-changing requests also require
 the session's CSRF token.
+
+The reader and full workspace use the same server-persisted first-login guide.
+See [First-login Onboarding](first-login-onboarding.md) for its content,
+completion API, and migration behavior.
 
 GitHub OAuth uses:
 

@@ -214,6 +214,7 @@ def public_user(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
         "role": row["role"],
         "status": row["status"],
         "must_change_password": bool(row["must_change_password"]),
+        "needs_onboarding": not bool(row["onboarding_completed_at"]),
     }
 
 
@@ -813,6 +814,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             csrf,
             row["auth_provider"],
         )
+
+    @app.post("/api/onboarding/complete")
+    async def complete_onboarding(
+        request: Request,
+        x_csrf_token: str | None = Header(default=None),
+        user: dict[str, Any] = Depends(require_ready_user),
+    ) -> dict[str, bool]:
+        verify_csrf(user, x_csrf_token)
+        now = utc_now()
+        with db.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE users
+                SET onboarding_completed_at = ?, updated_at = ?
+                WHERE id = ? AND onboarding_completed_at IS NULL
+                """,
+                (now, now, user["id"]),
+            )
+        if cursor.rowcount:
+            db.audit(
+                "onboarding.completed",
+                request_ip(request),
+                user_id=user["id"],
+            )
+        return {"completed": True}
 
     @app.get("/api/auth/github")
     async def github_login(

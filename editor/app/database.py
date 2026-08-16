@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'admin')),
     status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'disabled')),
     must_change_password INTEGER NOT NULL DEFAULT 0,
+    onboarding_completed_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -184,6 +185,10 @@ class Database:
                     UPDATE users SET email_verified = 1
                     WHERE github_verified = 1 OR role = 'admin'
                     """
+                )
+            if "onboarding_completed_at" not in columns:
+                connection.execute(
+                    "ALTER TABLE users ADD COLUMN onboarding_completed_at TEXT"
                 )
             oauth_columns = {
                 row["name"]

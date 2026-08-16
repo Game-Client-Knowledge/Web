@@ -304,6 +304,126 @@
       </div>
     </dialog>
 
+    <dialog
+      class="onboarding-dialog"
+      data-onboarding-dialog
+      aria-labelledby="onboarding-title"
+    >
+      <section class="onboarding-panel">
+        <header class="onboarding-header">
+          <div>
+            <p class="eyebrow">First login guide</p>
+            <h2 id="onboarding-title">开始参与知识库共建</h2>
+          </div>
+          <span data-onboarding-counter>1 / 4</span>
+        </header>
+        <div class="onboarding-progress" aria-hidden="true">
+          <span data-onboarding-progress></span>
+          <span data-onboarding-progress></span>
+          <span data-onboarding-progress></span>
+          <span data-onboarding-progress></span>
+        </div>
+        <div class="onboarding-steps">
+          <article data-onboarding-step>
+            <span class="onboarding-icon">
+              <i data-lucide="notebook-tabs" aria-hidden="true"></i>
+            </span>
+            <div>
+              <p class="eyebrow">01 · 先读规范</p>
+              <h3>目录结构决定导航结构</h3>
+              <p>
+                提交前请确认文件位置、Markdown 标题、命名和内容范围。
+                规范页面包含知识、面经与代码示例的完整约定。
+              </p>
+              <a href="{{ '/contribute/' | withBase }}" target="_blank">
+                打开建设规范
+                <i data-lucide="arrow-up-right" aria-hidden="true"></i>
+              </a>
+            </div>
+          </article>
+          <article data-onboarding-step hidden>
+            <span class="onboarding-icon is-orange">
+              <i data-lucide="user-plus" aria-hidden="true"></i>
+            </span>
+            <div>
+              <p class="eyebrow">02 · 加入组织</p>
+              <h3>申请后还要接受 GitHub 邀请</h3>
+              <p>
+                加入页会自动创建组织邀请。收到 GitHub 邮件或通知后，
+                仍需手动接受，账号才会成为组织成员。
+              </p>
+              <a href="{{ site.joinUrl }}" target="_blank" rel="noreferrer">
+                前往加入页面
+                <i data-lucide="arrow-up-right" aria-hidden="true"></i>
+              </a>
+            </div>
+          </article>
+          <article data-onboarding-step hidden>
+            <span class="onboarding-icon is-gold">
+              <i data-lucide="square-pen" aria-hidden="true"></i>
+            </span>
+            <div>
+              <p class="eyebrow">03 · 页面内编辑</p>
+              <h3>使用右上角“编辑”进入或退出编辑模式</h3>
+              <p>
+                进入后可直接修改当前文档，也可在模块中创建子模块和文件。
+                保存只会写入你的个人草稿，不会直接修改 main。
+              </p>
+            </div>
+          </article>
+          <article data-onboarding-step hidden>
+            <span class="onboarding-icon">
+              <i data-lucide="git-pull-request-arrow" aria-hidden="true"></i>
+            </span>
+            <div>
+              <p class="eyebrow">04 · 统一提交</p>
+              <h3>在工作台检查更改并创建 Draft PR</h3>
+              <p>
+                工作台会用 A/M/D 标记全部草稿。填写提交头和说明后，
+                系统创建个人分支、一个 commit 和一份 Draft Pull Request。
+              </p>
+              <a href="{{ site.editorUrl }}" target="_blank">
+                打开编辑工作台
+                <i data-lucide="arrow-up-right" aria-hidden="true"></i>
+              </a>
+            </div>
+          </article>
+        </div>
+        <footer class="onboarding-footer">
+          <button class="quiet-command" type="button" data-onboarding-skip>
+            跳过引导
+          </button>
+          <div>
+            <button
+              class="secondary-button"
+              type="button"
+              data-onboarding-previous
+              hidden
+            >
+              上一步
+            </button>
+            <button class="primary-button" type="button" data-onboarding-next>
+              下一步
+            </button>
+            <button
+              class="primary-button"
+              type="button"
+              data-onboarding-finish
+              hidden
+            >
+              完成引导
+            </button>
+          </div>
+        </footer>
+        <div
+          class="account-feedback"
+          data-onboarding-feedback
+          role="status"
+          aria-live="polite"
+        ></div>
+      </section>
+    </dialog>
+
     <dialog class="content-create-dialog" data-content-create-dialog>
       <form class="content-create-form" data-content-create-form>
         <header>

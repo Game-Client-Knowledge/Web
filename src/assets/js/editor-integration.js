@@ -12,7 +12,9 @@
     editMode: window.localStorage.getItem("gck-edit-mode") === "1",
     inlinePanel: null,
     inlineEditor: null,
-    renderTimer: null
+    renderTimer: null,
+    onboardingStep: 0,
+    onboardingSaving: false
   };
 
   function query(selector, root) {
@@ -458,13 +460,81 @@
       feedback(query("[data-account-feedback]"), githubAuthError);
     }
     await applyDraftsToReader(payload.active_draft_html);
+    const onboardingOpen = openOnboardingIfNeeded();
     if (
+      !onboardingOpen &&
       state.editMode &&
       state.session.authenticated &&
       state.session.can_edit &&
       !state.session.user.must_change_password
     ) {
       await openCurrentEditor();
+    }
+  }
+
+  function renderOnboarding() {
+    const steps = queryAll("[data-onboarding-step]");
+    const progress = queryAll("[data-onboarding-progress]");
+    steps.forEach(function (step, index) {
+      step.hidden = index !== state.onboardingStep;
+    });
+    progress.forEach(function (item, index) {
+      item.classList.toggle("is-active", index <= state.onboardingStep);
+    });
+    query("[data-onboarding-counter]").textContent =
+      state.onboardingStep + 1 + " / " + steps.length;
+    query("[data-onboarding-previous]").hidden = state.onboardingStep === 0;
+    query("[data-onboarding-next]").hidden =
+      state.onboardingStep === steps.length - 1;
+    query("[data-onboarding-finish]").hidden =
+      state.onboardingStep !== steps.length - 1;
+    refreshIcons(query("[data-onboarding-dialog]"));
+  }
+
+  function openOnboardingIfNeeded() {
+    const user =
+      state.session && state.session.authenticated
+        ? state.session.user
+        : null;
+    if (!user || user.must_change_password || !user.needs_onboarding) {
+      return false;
+    }
+    const account = query("[data-account-dialog]");
+    const dialog = query("[data-onboarding-dialog]");
+    if (account && account.open) {
+      account.close();
+    }
+    state.onboardingStep = 0;
+    renderOnboarding();
+    feedback(query("[data-onboarding-feedback]"), "");
+    if (!dialog.open) {
+      dialog.showModal();
+    }
+    return true;
+  }
+
+  async function completeOnboarding() {
+    if (state.onboardingSaving) {
+      return;
+    }
+    state.onboardingSaving = true;
+    const dialog = query("[data-onboarding-dialog]");
+    const buttons = queryAll("button", dialog);
+    buttons.forEach(function (button) {
+      button.disabled = true;
+    });
+    feedback(query("[data-onboarding-feedback]"), "");
+    try {
+      await api("/onboarding/complete", { method: "POST" });
+      state.session.user.needs_onboarding = false;
+      dialog.close();
+    } catch (error) {
+      feedback(query("[data-onboarding-feedback]"), error.message);
+    } finally {
+      state.onboardingSaving = false;
+      buttons.forEach(function (button) {
+        button.disabled = false;
+      });
     }
   }
 
@@ -1053,6 +1123,7 @@
         await loadDrafts();
         updateAccountView();
         await applyDraftsToReader();
+        openOnboardingIfNeeded();
       } catch (error) {
         feedback(target, error.message);
       }
@@ -1071,6 +1142,7 @@
         await loadDrafts();
         updateAccountView();
         await applyDraftsToReader();
+        openOnboardingIfNeeded();
       } catch (error) {
         feedback(target, error.message);
       }
@@ -1147,6 +1219,28 @@
     query("[data-content-create-form]").addEventListener("submit", function (event) {
       event.preventDefault();
       submitCreateDialog(event.currentTarget);
+    });
+    query("[data-onboarding-next]").addEventListener("click", function () {
+      state.onboardingStep = Math.min(
+        state.onboardingStep + 1,
+        queryAll("[data-onboarding-step]").length - 1
+      );
+      renderOnboarding();
+    });
+    query("[data-onboarding-previous]").addEventListener("click", function () {
+      state.onboardingStep = Math.max(0, state.onboardingStep - 1);
+      renderOnboarding();
+    });
+    query("[data-onboarding-skip]").addEventListener(
+      "click",
+      completeOnboarding
+    );
+    query("[data-onboarding-finish]").addEventListener(
+      "click",
+      completeOnboarding
+    );
+    query("[data-onboarding-dialog]").addEventListener("cancel", function (event) {
+      event.preventDefault();
     });
   }
 

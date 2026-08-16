@@ -9,7 +9,9 @@ const state = {
   workspaceView: "resources",
   resourceFilter: "",
   visualEditor: null,
-  remoteContent: new Map()
+  remoteContent: new Map(),
+  onboardingStep: 0,
+  onboardingSaving: false
 };
 
 const byId = (id) => document.getElementById(id);
@@ -126,6 +128,75 @@ function applyConfig() {
       : "当前策略：本地账号登录后即可编辑。";
 }
 
+function renderOnboarding() {
+  const steps = Array.from(document.querySelectorAll("[data-onboarding-step]"));
+  const progress = Array.from(
+    document.querySelectorAll("[data-onboarding-progress]")
+  );
+  steps.forEach((step, index) => {
+    step.hidden = index !== state.onboardingStep;
+  });
+  progress.forEach((item, index) => {
+    item.classList.toggle("is-active", index <= state.onboardingStep);
+  });
+  byId("onboardingCounter").textContent =
+    `${state.onboardingStep + 1} / ${steps.length}`;
+  byId("onboardingPrevious").hidden = state.onboardingStep === 0;
+  byId("onboardingNext").hidden =
+    state.onboardingStep === steps.length - 1;
+  byId("onboardingFinish").hidden =
+    state.onboardingStep !== steps.length - 1;
+  refreshIcons(byId("onboardingDialog"));
+}
+
+function openOnboardingIfNeeded() {
+  const user = state.session?.authenticated ? state.session.user : null;
+  if (!user || user.must_change_password || !user.needs_onboarding) {
+    return false;
+  }
+  state.onboardingStep = 0;
+  renderOnboarding();
+  clearFeedback(byId("onboardingFeedback"));
+  if (!byId("onboardingDialog").open) {
+    byId("onboardingDialog").showModal();
+  }
+  return true;
+}
+
+function openRequestedModuleDialog() {
+  if (
+    new URLSearchParams(location.search).get("new_module") === "1" &&
+    !byId("moduleDialog").open
+  ) {
+    clearFeedback(byId("moduleDialogFeedback"));
+    byId("moduleDialog").showModal();
+  }
+}
+
+async function completeOnboarding() {
+  if (state.onboardingSaving) return;
+  state.onboardingSaving = true;
+  const dialog = byId("onboardingDialog");
+  const buttons = dialog.querySelectorAll("button");
+  buttons.forEach((button) => {
+    button.disabled = true;
+  });
+  clearFeedback(byId("onboardingFeedback"));
+  try {
+    await api("/onboarding/complete", { method: "POST" });
+    state.session.user.needs_onboarding = false;
+    dialog.close();
+    openRequestedModuleDialog();
+  } catch (error) {
+    feedback(byId("onboardingFeedback"), error.message);
+  } finally {
+    state.onboardingSaving = false;
+    buttons.forEach((button) => {
+      button.disabled = false;
+    });
+  }
+}
+
 async function loadSession() {
   const githubAuthError = takeGithubAuthError();
   const bootstrap = await api("/bootstrap");
@@ -146,6 +217,7 @@ async function loadSession() {
   }
   showView("workspace");
   await initializeWorkspace(true);
+  openOnboardingIfNeeded();
   if (githubAuthError) feedback(byId("editorFeedback"), githubAuthError);
 }
 
@@ -195,10 +267,7 @@ async function initializeWorkspace(draftsReady = false) {
   if (requestedFile) {
     await openResource(requestedFile);
   }
-  if (new URLSearchParams(location.search).get("new_module") === "1") {
-    clearFeedback(byId("moduleDialogFeedback"));
-    byId("moduleDialog").showModal();
-  }
+  if (!state.session.user.needs_onboarding) openRequestedModuleDialog();
 }
 
 async function loadDrafts() {
@@ -1035,6 +1104,7 @@ byId("loginForm").addEventListener("submit", async (event) => {
     } else {
       showView("workspace");
       await initializeWorkspace();
+      openOnboardingIfNeeded();
     }
   } catch (error) {
     feedback(byId("authFeedback"), error.message);
@@ -1053,6 +1123,7 @@ byId("registerForm").addEventListener("submit", async (event) => {
     state.csrf = payload.csrf_token;
     showView("workspace");
     await initializeWorkspace();
+    openOnboardingIfNeeded();
   } catch (error) {
     feedback(byId("authFeedback"), error.message);
   }
@@ -1090,6 +1161,22 @@ byId("newTopicButton").addEventListener("click", () => {
 byId("newModuleButton").addEventListener("click", () => {
   clearFeedback(byId("moduleDialogFeedback"));
   byId("moduleDialog").showModal();
+});
+byId("onboardingNext").addEventListener("click", () => {
+  state.onboardingStep = Math.min(
+    state.onboardingStep + 1,
+    document.querySelectorAll("[data-onboarding-step]").length - 1
+  );
+  renderOnboarding();
+});
+byId("onboardingPrevious").addEventListener("click", () => {
+  state.onboardingStep = Math.max(0, state.onboardingStep - 1);
+  renderOnboarding();
+});
+byId("onboardingSkip").addEventListener("click", completeOnboarding);
+byId("onboardingFinish").addEventListener("click", completeOnboarding);
+byId("onboardingDialog").addEventListener("cancel", (event) => {
+  event.preventDefault();
 });
 // #region debug-point A:file-dialog-click
 byId("fileForm").addEventListener("click",(event)=>{const button=event.target.closest("button");if(button)fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"A",location:"editor.js:fileForm-click",msg:"[DEBUG] File dialog button clicked",data:{value:button.value,type:button.type,formValid:event.currentTarget.matches(":valid")},ts:Date.now()})}).catch(()=>{})});
