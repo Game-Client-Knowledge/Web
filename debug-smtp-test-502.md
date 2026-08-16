@@ -63,3 +63,28 @@ Minimal fix:
 - Force `AUTH LOGIN` for the QQ provider.
 - Convert SMTP 535 into an actionable Chinese authentication message.
 - Retain all instrumentation for post-fix comparison.
+
+Post-fix evidence after clearing the session log:
+
+- Line 1: The effective QQ configuration remains complete and consistent.
+- Line 2: STARTTLS still succeeds.
+- Line 3: The QQ-specific `AUTH LOGIN` path now receives SMTP `535` instead of
+  losing the connection. The provider response says the account is abnormal,
+  SMTP is disabled, the authorization code is incorrect, login frequency is
+  limited, or QQ is temporarily busy.
+- The application returns the actionable Chinese message:
+  `SMTP 认证失败：请确认邮箱已开启 SMTP 服务，账号与授权码匹配，并避免短时间重复测试`.
+
+Pre-fix vs post-fix:
+
+| Behavior | Pre-fix | Post-fix |
+|----------|---------|----------|
+| QQ authentication mechanism | Python default prefers `AUTH PLAIN` | QQ template forces `AUTH LOGIN` |
+| Provider response | Connection closed without SMTP status | Explicit SMTP `535` |
+| Administrator feedback | Generic HTTP 502 / connection closed | Actionable authentication guidance |
+| Email delivery | Failed before authentication | Still blocked by QQ account/service/authorization state |
+
+The code-level compatibility issue is fixed and deployed in `df1b80d`. Final
+delivery requires enabling SMTP in QQ Mail and replacing the exposed
+authorization code. The session remains `[OPEN]` pending that external
+verification.
