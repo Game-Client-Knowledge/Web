@@ -27,13 +27,57 @@ permalink: contribute/index.html
       </div>
     </header>
 
+    <section class="guide-quickstart" aria-labelledby="quickstart-title">
+      <div class="guide-quickstart-heading">
+        <div>
+          <p class="eyebrow">Quick start</p>
+          <h2 id="quickstart-title">三步完成一次内容更新</h2>
+        </div>
+        <span>目录即配置，无需修改网站代码</span>
+      </div>
+
+      <ol class="guide-steps">
+        <li>
+          <span class="guide-step-icon">
+            <i data-lucide="folder-tree" aria-hidden="true"></i>
+          </span>
+          <span class="guide-step-copy">
+            <small>01 · 选择位置</small>
+            <strong>确定内容类型</strong>
+            <span>知识放入 <code>knowledge/</code>，面经放入 <code>interviews/</code>，示例放入 <code>examples/</code>。</span>
+          </span>
+        </li>
+        <li>
+          <span class="guide-step-icon">
+            <i data-lucide="file-plus-2" aria-hidden="true"></i>
+          </span>
+          <span class="guide-step-copy">
+            <small>02 · 编写内容</small>
+            <strong>添加 README 与 Markdown</strong>
+            <span>一级标题负责展示名称，数字文件名前缀负责默认阅读顺序。</span>
+          </span>
+        </li>
+        <li>
+          <span class="guide-step-icon">
+            <i data-lucide="git-pull-request-arrow" aria-hidden="true"></i>
+          </span>
+          <span class="guide-step-copy">
+            <small>03 · 提交审核</small>
+            <strong>使用范围明确的提交信息</strong>
+            <span>按 <code>&lt;范围&gt;: &lt;摘要&gt;</code> 提交，通过 Pull Request 完成检查与审核。</span>
+          </span>
+        </li>
+      </ol>
+    </section>
+
     <div class="guide-layout">
       <article class="prose guide-prose">
+        <p class="guide-section-label">完整规范</p>
         {{ catalog.contribution.body | renderMarkdown(catalog.contribution.sourceRelative) | safe }}
       </article>
 
       <aside class="guide-aside" aria-label="规范导航">
-        <p>本页目录</p>
+        <p>快速跳转</p>
         <ol>
           {% for heading in catalog.contribution.headings %}
             <li class="toc-level-{{ heading.level }}">
@@ -48,6 +92,10 @@ permalink: contribute/index.html
         >
           <i data-lucide="square-arrow-out-up-right" aria-hidden="true"></i>
           查看规范源文件
+        </a>
+        <a class="primary-button guide-join-link" href="{{ site.joinUrl }}">
+          <i data-lucide="user-plus" aria-hidden="true"></i>
+          加入共建组织
         </a>
       </aside>
     </div>

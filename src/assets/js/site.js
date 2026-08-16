@@ -118,7 +118,9 @@
   }
 
   function setupTableOfContents() {
-    const links = Array.from(document.querySelectorAll(".article-toc a"));
+    const links = Array.from(
+      document.querySelectorAll(".article-toc a, .guide-aside ol a")
+    );
     if (!links.length || !("IntersectionObserver" in window)) {
       return;
     }
