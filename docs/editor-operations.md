@@ -149,6 +149,19 @@ curl -fsS https://knowledge.chenyurui.top/editor/api/config
 
 `github_oauth_enabled` must be `true` before GitHub login or binding can start.
 
+The production OAuth App is registered with:
+
+```text
+Homepage:
+https://knowledge.chenyurui.top
+
+Callback:
+https://knowledge.chenyurui.top/editor/api/auth/github/callback
+```
+
+Its secret remains only in `/etc/game-client-knowledge-editor.env`. The OAuth App
+has been granted access under the `Game-Client-Knowledge` organization policy.
+
 ## SMTP Configuration
 
 Set:

@@ -6,7 +6,8 @@ const state = {
   repository: [],
   active: null,
   previewing: false,
-  resourceFilter: ""
+  resourceFilter: "",
+  visualEditor: null
 };
 
 const byId = (id) => document.getElementById(id);
@@ -262,7 +263,12 @@ function renderTreeNode(node, target, depth) {
     if (file.draft) {
       const badge = document.createElement("small");
       badge.className = "resource-change-badge";
-      badge.textContent = file.sha ? "M" : "A";
+      badge.textContent =
+        file.draft.operation === "delete"
+          ? "D"
+          : file.sha
+            ? "M"
+            : "A";
       button.append(badge);
     }
     button.addEventListener("click", () => openResource(file.path));
@@ -280,7 +286,9 @@ function renderChanges() {
     button.className = "change-item";
     button.type = "button";
     const change = document.createElement("small");
-    change.textContent = draft.base_sha ? "M" : "A";
+    change.textContent =
+      draft.operation === "delete" ? "D" : draft.base_sha ? "M" : "A";
+    change.dataset.status = change.textContent;
     const label = document.createElement("span");
     label.textContent = draft.path.split("/").pop();
     const meta = document.createElement("small");
@@ -316,6 +324,54 @@ function renderResources() {
   refreshIcons(target);
 }
 
+function destroyVisualEditor() {
+  if (state.visualEditor) {
+    state.visualEditor.destroy();
+    state.visualEditor = null;
+  }
+  byId("visualEditor").replaceChildren();
+}
+
+function showContentEditor(path, content) {
+  destroyVisualEditor();
+  state.previewing = false;
+  byId("previewPane").hidden = true;
+  const markdown = path.toLowerCase().endsWith(".md");
+  if (markdown && window.toastui?.Editor) {
+    byId("contentEditor").hidden = true;
+    byId("visualEditor").hidden = false;
+    byId("previewButton").hidden = true;
+    state.visualEditor = new window.toastui.Editor({
+      el: byId("visualEditor"),
+      height: "560px",
+      initialEditType: "wysiwyg",
+      previewStyle: "tab",
+      initialValue: content,
+      usageStatistics: false,
+      autofocus: true,
+      toolbarItems: [
+        ["heading", "bold", "italic"],
+        ["hr", "quote"],
+        ["ul", "ol", "task"],
+        ["table", "link"],
+        ["code", "codeblock"]
+      ]
+    });
+    return;
+  }
+  byId("visualEditor").hidden = true;
+  byId("contentEditor").hidden = false;
+  byId("contentEditor").value = content;
+  byId("previewButton").hidden = !markdown;
+  byId("previewButton").textContent = "预览";
+}
+
+function editorContent() {
+  return state.visualEditor
+    ? state.visualEditor.getMarkdown()
+    : byId("contentEditor").value;
+}
+
 function openDraft(draft) {
   state.active = {
     draftId: draft.id,
@@ -328,12 +384,7 @@ function openDraft(draft) {
   byId("activeEditor").hidden = false;
   byId("filePath").value = draft.path;
   byId("filePath").readOnly = true;
-  byId("contentEditor").value = draft.content;
-  byId("contentEditor").hidden = false;
-  byId("previewPane").hidden = true;
-  byId("previewButton").hidden =
-    !draft.path.toLowerCase().endsWith(".md");
-  byId("previewButton").textContent = "预览";
+  showContentEditor(draft.path, draft.content);
   clearFeedback(byId("editorFeedback"));
   renderResources();
 }
@@ -394,13 +445,7 @@ async function openResource(path) {
     byId("activeEditor").hidden = false;
     byId("filePath").value = file.path;
     byId("filePath").readOnly = true;
-    byId("contentEditor").value = file.content;
-    byId("contentEditor").hidden = false;
-    byId("previewPane").hidden = true;
-    byId("previewButton").hidden =
-      !file.path.toLowerCase().endsWith(".md");
-    byId("previewButton").textContent = "预览";
-    state.previewing = false;
+    showContentEditor(file.path, file.content);
     clearFeedback(byId("editorFeedback"));
     renderResources();
   } catch (error) {
@@ -422,7 +467,7 @@ async function saveActiveDraft() {
       method: "PUT",
       body: JSON.stringify({
         path: byId("filePath").value,
-        content: byId("contentEditor").value,
+        content: editorContent(),
         base_sha: state.active.baseSha,
         operation: "upsert"
       })
@@ -450,6 +495,7 @@ async function deleteActiveDraft() {
       await api(`/drafts/${state.active.draftId}`, { method: "DELETE" });
     }
     state.active = null;
+    destroyVisualEditor();
     byId("activeEditor").hidden = true;
     byId("emptyEditor").hidden = false;
     resetEmptyEditor();
@@ -471,7 +517,7 @@ async function togglePreview() {
   try {
     const result = await api("/preview", {
       method: "POST",
-      body: JSON.stringify({ content: byId("contentEditor").value })
+      body: JSON.stringify({ content: editorContent() })
     });
     byId("previewPane").innerHTML = result.html;
     state.previewing = true;
@@ -601,6 +647,17 @@ byId("githubUnlinkButton").addEventListener("click", async () => {
     feedback(byId("editorFeedback"), error.message);
   }
 });
+document.querySelectorAll("[data-workspace-view]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const view = button.dataset.workspaceView;
+    document.querySelectorAll("[data-workspace-view]").forEach((item) => {
+      item.classList.toggle("is-active", item === button);
+    });
+    document.querySelectorAll("[data-workspace-pane]").forEach((pane) => {
+      pane.hidden = pane.dataset.workspacePane !== view;
+    });
+  });
+});
 
 byId("fileForm").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -621,11 +678,7 @@ byId("fileForm").addEventListener("submit", async (event) => {
   byId("activeEditor").hidden = false;
   byId("filePath").value = state.active.path;
   byId("filePath").readOnly = false;
-  byId("contentEditor").value = state.active.content;
-  byId("contentEditor").hidden = false;
-  byId("previewPane").hidden = true;
-  byId("previewButton").hidden =
-    !state.active.path.toLowerCase().endsWith(".md");
+  showContentEditor(state.active.path, state.active.content);
 });
 
 byId("topicForm").addEventListener("submit", async (event) => {
@@ -674,6 +727,7 @@ byId("submitForm").addEventListener("submit", async (event) => {
     box.replaceChildren(document.createTextNode("提交成功："), link);
     box.className = "feedback is-visible success";
     state.active = null;
+    destroyVisualEditor();
     byId("activeEditor").hidden = true;
     byId("emptyEditor").hidden = false;
     resetEmptyEditor();

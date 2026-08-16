@@ -167,23 +167,32 @@ Each user can keep at most 50 drafts.
 ### Reader edit mode
 
 The static reader keeps rendered content as the default view. Once an authenticated
-user enables edit mode, contextual controls become visible:
+user presses the dedicated header edit button, contextual controls become visible.
+The same button exits edit mode; edit mode is not hidden inside account settings.
 
 - Document pages load their `sourceRelative` file through the editor API.
+- Markdown files open in Toast UI's WYSIWYG mode. Toolbar and direct visual changes
+  are serialized back to Markdown through `getMarkdown()`.
+- Source files continue to use a plain text editor.
 - Module pages edit the module `README.md`.
 - Module and topic controls prefill the correct content root and parent directory
   when creating child modules or files.
 
 Saving updates only the user's server-side draft. It does not regenerate the
-current static page and does not write to GitHub.
+current static release and does not write to GitHub. The browser overlays saved
+draft HTML on the static reader, so modified content appears immediately on reload.
+New draft files are injected into module/topic navigation and open through a
+same-page `?draft=<path>` preview until their pull request is merged and the static
+site is rebuilt.
 
 ### Full workspace
 
-`/editor/` merges the remote `main` tree and the user's draft paths into one
-hierarchical resource explorer. Added and modified files carry change markers.
+`/editor/` has separate **Resources** and **Changes** views. Resources merge the
+remote `main` tree and the user's draft paths into one hierarchical explorer.
+Changes use Git-style `A`, `M`, and `D` markers instead of a second file tree.
 Selecting a remote file fetches and decodes its GitHub Contents API payload;
-selecting a changed file opens the draft. The right panel lists all pending changes
-and remains the only submission surface.
+selecting a changed file opens the draft. Markdown files use the same visual editor
+as the reader. The right panel remains the only submission surface.
 
 ## Submission Workflow
 

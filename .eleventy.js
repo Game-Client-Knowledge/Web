@@ -254,6 +254,13 @@ module.exports = function configureEleventy(eleventyConfig) {
   eleventyConfig.addPassthroughCopy({
     "node_modules/lucide/dist/umd/lucide.js": "assets/vendor/lucide.js"
   });
+  eleventyConfig.addPassthroughCopy({
+    ".cache/vendor/toastui-editor.js": "assets/vendor/toastui-editor.js"
+  });
+  eleventyConfig.addPassthroughCopy({
+    "node_modules/@toast-ui/editor/dist/toastui-editor.css":
+      "assets/vendor/toastui-editor.css"
+  });
   return {
     dir: {
       input: "src",

@@ -11,6 +11,9 @@
     >
     <title>{% if title %}{{ title }} · {% endif %}{{ site.name }}</title>
     <link rel="stylesheet" href="{{ '/assets/css/site.css' | assetUrl }}">
+    {% if pageKind == "document" or pageKind == "module" %}
+      <link rel="stylesheet" href="{{ '/assets/vendor/toastui-editor.css' | assetUrl }}">
+    {% endif %}
     <link rel="icon" href="{{ '/assets/images/favicon.svg' | assetUrl }}" type="image/svg+xml">
   </head>
   <body class="page-{{ pageKind or 'default' }}">
@@ -65,6 +68,16 @@
           >
             <i data-lucide="github" aria-hidden="true"></i>
           </a>
+          <button
+            class="edit-mode-trigger"
+            type="button"
+            data-edit-mode-trigger
+            aria-label="进入编辑模式"
+            title="编辑模式"
+          >
+            <i data-lucide="square-pen" aria-hidden="true"></i>
+            <span data-edit-mode-label>编辑</span>
+          </button>
           <button
             class="account-trigger"
             type="button"
@@ -227,10 +240,6 @@
             </div>
           </dl>
           <div class="account-actions">
-            <button class="secondary-button" type="button" data-toggle-edit-mode>
-              <i data-lucide="square-pen" aria-hidden="true"></i>
-              开启编辑模式
-            </button>
             <a class="secondary-button" href="{{ site.editorUrl }}">
               <i data-lucide="folder-tree" aria-hidden="true"></i>
               打开编辑工作台
@@ -310,6 +319,9 @@
       };
     </script>
     <script src="{{ '/assets/vendor/lucide.js' | assetUrl }}"></script>
+    {% if pageKind == "document" or pageKind == "module" %}
+      <script src="{{ '/assets/vendor/toastui-editor.js' | assetUrl }}"></script>
+    {% endif %}
     {% if
       (document and document.hasMermaid)
       or (module and module.hasMermaid)

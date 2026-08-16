@@ -10,7 +10,9 @@
     csrf: "",
     drafts: [],
     editMode: window.localStorage.getItem("gck-edit-mode") === "1",
-    inlinePanel: null
+    inlinePanel: null,
+    inlineEditor: null,
+    renderTimer: null
   };
 
   function query(selector, root) {
@@ -167,12 +169,9 @@
       bind.title = "需要先配置 GitHub OAuth";
     }
 
-    const editButton = query("[data-toggle-edit-mode]");
+    const editButton = query("[data-edit-mode-trigger]");
     editButton.disabled =
       !state.session.can_edit || user.must_change_password;
-    editButton.innerHTML = state.editMode
-      ? '<i data-lucide="eye" aria-hidden="true"></i>退出编辑模式'
-      : '<i data-lucide="square-pen" aria-hidden="true"></i>开启编辑模式';
 
     if (user.must_change_password) {
       feedback(
@@ -197,6 +196,144 @@
     }
   }
 
+  function requestedDraftPath() {
+    return new URLSearchParams(window.location.search).get("draft");
+  }
+
+  function draftLink(path) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("draft", path);
+    url.hash = "";
+    return url.pathname + url.search;
+  }
+
+  function draftTitle(draft) {
+    const heading = draft.content.match(/^#\s+(.+?)\s*$/m);
+    return heading
+      ? heading[1].replace(/[*_`]/g, "")
+      : draft.path.split("/").pop();
+  }
+
+  function addDraftNavigation() {
+    queryAll("[data-draft-navigation]").forEach(function (element) {
+      element.remove();
+    });
+    const root = config.editorContext && config.editorContext.root;
+    if (!root) {
+      return;
+    }
+    const currentPaths = new Set(
+      queryAll("[data-editor-source]").map(function (element) {
+        return element.dataset.editorSource;
+      })
+    );
+    const relevant = state.drafts.filter(function (draft) {
+      return (
+        draft.path.startsWith(root + "/") &&
+        (!currentPaths.has(draft.path) || !draft.base_sha)
+      );
+    });
+    if (!relevant.length) {
+      return;
+    }
+
+    const docsNavigation = query(".docs-navigation");
+    if (docsNavigation) {
+      const section = document.createElement("section");
+      section.className = "docs-nav-unit draft-navigation";
+      section.dataset.draftNavigation = "";
+      const title = document.createElement("p");
+      title.className = "docs-nav-unit-title";
+      title.textContent = "个人草稿";
+      const list = document.createElement("ol");
+      relevant.forEach(function (draft) {
+        const item = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = draftLink(draft.path);
+        const icon = document.createElement("i");
+        icon.dataset.lucide = "file-diff";
+        icon.setAttribute("aria-hidden", "true");
+        link.append(icon);
+        const label = document.createElement("span");
+        label.textContent = draftTitle(draft);
+        link.append(label);
+        item.append(link);
+        list.append(item);
+      });
+      section.append(title, list);
+      docsNavigation.append(section);
+      refreshIcons(section);
+    }
+
+    const unitList = query(".module-unit-list");
+    if (unitList) {
+      const section = document.createElement("section");
+      section.className = "draft-content-list";
+      section.dataset.draftNavigation = "";
+      const heading = document.createElement("div");
+      heading.className = "draft-content-list-heading";
+      heading.innerHTML =
+        '<i data-lucide="git-branch" aria-hidden="true"></i><strong>个人未提交内容</strong>';
+      const list = document.createElement("div");
+      relevant.forEach(function (draft) {
+        const link = document.createElement("a");
+        link.className = "draft-content-link";
+        link.href = draftLink(draft.path);
+        const change = document.createElement("span");
+        change.textContent = draft.base_sha ? "M" : "A";
+        const copy = document.createElement("span");
+        const strong = document.createElement("strong");
+        strong.textContent = draftTitle(draft);
+        const path = document.createElement("small");
+        path.textContent = draft.path;
+        copy.append(strong, path);
+        link.append(change, copy);
+        list.append(link);
+      });
+      section.append(heading, list);
+      unitList.prepend(section);
+      refreshIcons(section);
+    }
+  }
+
+  async function applyDraftsToReader() {
+    addDraftNavigation();
+    const host = query("[data-editor-host]");
+    if (!host) {
+      return;
+    }
+    const requested = requestedDraftPath();
+    const sourcePath = requested || host.dataset.editorSource;
+    const draft = state.drafts.find(function (item) {
+      return item.path === sourcePath;
+    });
+    if (!draft) {
+      return;
+    }
+    host.dataset.editorSource = draft.path;
+    try {
+      const result = await api("/preview", {
+        method: "POST",
+        body: JSON.stringify({ content: draft.content })
+      });
+      renderMarkdownIntoHost(host, result.html);
+      const header = query(".article-header, .module-page-header", host);
+      if (header) {
+        let badge = query("[data-draft-badge]", header);
+        if (!badge) {
+          badge = document.createElement("p");
+          badge.className = "draft-page-badge";
+          badge.dataset.draftBadge = "";
+          header.append(badge);
+        }
+        badge.textContent =
+          (draft.base_sha ? "已修改" : "新增") + " · 个人未提交草稿";
+      }
+    } catch {
+      // Invalid drafts stay available in the workspace for correction.
+    }
+  }
+
   async function loadIdentity() {
     state.config = await api("/config");
     state.session = await api("/session");
@@ -205,6 +342,7 @@
       : "";
     await loadDrafts();
     updateAccountView();
+    await applyDraftsToReader();
   }
 
   function openAccount() {
@@ -244,11 +382,20 @@
     state.editMode = Boolean(enabled);
     document.body.classList.toggle("is-edit-mode", state.editMode);
     window.localStorage.setItem("gck-edit-mode", state.editMode ? "1" : "0");
-    const button = query("[data-toggle-edit-mode]");
-    if (button && state.session && state.session.authenticated) {
+    const button = query("[data-edit-mode-trigger]");
+    if (button) {
+      const label = query("[data-edit-mode-label]", button);
+      button.classList.toggle("is-active", state.editMode);
+      button.setAttribute(
+        "aria-label",
+        state.editMode ? "退出编辑模式" : "进入编辑模式"
+      );
+      if (label) {
+        label.textContent = state.editMode ? "退出" : "编辑";
+      }
       button.innerHTML = state.editMode
-        ? '<i data-lucide="eye" aria-hidden="true"></i>退出编辑模式'
-        : '<i data-lucide="square-pen" aria-hidden="true"></i>开启编辑模式';
+        ? '<i data-lucide="eye" aria-hidden="true"></i><span data-edit-mode-label>退出</span>'
+        : '<i data-lucide="square-pen" aria-hidden="true"></i><span data-edit-mode-label>编辑</span>';
       refreshIcons(button);
     }
   }
@@ -274,11 +421,6 @@
     const actions = document.createElement("div");
     actions.className = "inline-editor-actions";
 
-    const preview = document.createElement("button");
-    preview.className = "secondary-button";
-    preview.type = "button";
-    preview.dataset.inlinePreview = "";
-    preview.textContent = "预览";
     const close = document.createElement("button");
     close.className = "secondary-button";
     close.type = "button";
@@ -286,25 +428,22 @@
     close.textContent = "关闭";
     const save = document.createElement("button");
     save.className = "primary-button";
-    save.type = "button";
     save.dataset.inlineSave = "";
     save.textContent = "保存草稿";
-    actions.append(preview, close, save);
+    actions.append(close, save);
     toolbar.append(path, actions);
 
+    const visualEditor = document.createElement("div");
+    visualEditor.dataset.visualEditor = "";
     const textarea = document.createElement("textarea");
     textarea.dataset.inlineInput = "";
     textarea.setAttribute("aria-label", "编辑 " + sourcePath);
     textarea.spellcheck = false;
-    const previewPane = document.createElement("div");
-    previewPane.className = "inline-editor-preview prose";
-    previewPane.dataset.inlinePreviewPane = "";
-    previewPane.hidden = true;
     const status = document.createElement("div");
     status.className = "inline-editor-feedback";
     status.dataset.inlineFeedback = "";
     status.textContent = "正在加载源文件…";
-    panel.append(toolbar, textarea, previewPane, status);
+    panel.append(toolbar, visualEditor, textarea, status);
 
     const rendered = query("[data-editable-rendered]", host);
     if (rendered) {
@@ -325,8 +464,94 @@
     if (rendered) {
       rendered.hidden = false;
     }
+    if (state.inlineEditor) {
+      state.inlineEditor.destroy();
+      state.inlineEditor = null;
+    }
+    window.clearTimeout(state.renderTimer);
     state.inlinePanel.remove();
     state.inlinePanel = null;
+  }
+
+  function renderMarkdownIntoHost(host, html) {
+    const rendered = query("[data-editable-rendered]", host);
+    if (!rendered) {
+      return;
+    }
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    const heading = template.content.querySelector("h1");
+    if (heading) {
+      const pageTitle = query(
+        ".article-header h1, .module-page-header h1",
+        host
+      );
+      if (pageTitle) {
+        pageTitle.textContent = heading.textContent;
+      }
+      heading.remove();
+    }
+    const prose = document.createElement("div");
+    prose.className = "prose draft-rendered-content";
+    prose.append(template.content);
+    rendered.replaceChildren(prose);
+    rendered.dataset.draftOverlay = "true";
+  }
+
+  function scheduleLiveRender(host, markdown) {
+    window.clearTimeout(state.renderTimer);
+    state.renderTimer = window.setTimeout(async function () {
+      try {
+        const result = await api("/preview", {
+          method: "POST",
+          body: JSON.stringify({ content: markdown })
+        });
+        renderMarkdownIntoHost(host, result.html);
+      } catch {
+        // Saving still performs server-side validation and reports the error.
+      }
+    }, 250);
+  }
+
+  function initializeVisualEditor(panel, host, content) {
+    const mount = query("[data-visual-editor]", panel);
+    const textarea = query("[data-inline-input]", panel);
+    if (!window.toastui || !window.toastui.Editor) {
+      mount.hidden = true;
+      textarea.hidden = false;
+      textarea.value = content;
+      return;
+    }
+    textarea.hidden = true;
+    mount.hidden = false;
+    state.inlineEditor = new window.toastui.Editor({
+      el: mount,
+      height: "600px",
+      initialEditType: "wysiwyg",
+      previewStyle: "tab",
+      initialValue: content,
+      usageStatistics: false,
+      autofocus: true,
+      toolbarItems: [
+        ["heading", "bold", "italic"],
+        ["hr", "quote"],
+        ["ul", "ol", "task"],
+        ["table", "link"],
+        ["code", "codeblock"]
+      ],
+      events: {
+        change: function () {
+          scheduleLiveRender(host, state.inlineEditor.getMarkdown());
+        }
+      }
+    });
+  }
+
+  function inlineContent(panel) {
+    if (state.inlineEditor) {
+      return state.inlineEditor.getMarkdown();
+    }
+    return query("[data-inline-input]", panel).value;
   }
 
   async function openInlineEditor(button) {
@@ -344,8 +569,6 @@
     const panel = createInlinePanel(host, sourcePath);
     state.inlinePanel = panel;
     const textarea = query("[data-inline-input]", panel);
-    query("[data-inline-preview]", panel).hidden =
-      !sourcePath.toLowerCase().endsWith(".md");
     try {
       const draft = state.drafts.find(function (item) {
         return item.path === sourcePath;
@@ -357,12 +580,18 @@
           );
       panel.dataset.baseSha = source.base_sha || source.sha || "";
       panel.dataset.draftId = draft ? String(draft.id) : "";
-      textarea.value = source.content;
+      if (sourcePath.toLowerCase().endsWith(".md")) {
+        initializeVisualEditor(panel, host, source.content);
+      } else {
+        query("[data-visual-editor]", panel).hidden = true;
+        textarea.hidden = false;
+        textarea.value = source.content;
+        textarea.focus();
+      }
       setInlineFeedback(
         panel,
         draft ? "已加载个人草稿。" : "已加载 main 分支源文件。"
       );
-      textarea.focus();
     } catch (error) {
       setInlineFeedback(panel, error.message, "error");
     }
@@ -371,7 +600,6 @@
   async function saveInlineEditor(panel) {
     const host = panel.closest("[data-editor-host]");
     const path = host.dataset.editorSource;
-    const textarea = query("[data-inline-input]", panel);
     const button = query("[data-inline-save]", panel);
     button.disabled = true;
     try {
@@ -379,7 +607,7 @@
         method: "PUT",
         body: JSON.stringify({
           path: path,
-          content: textarea.value,
+          content: inlineContent(panel),
           base_sha: panel.dataset.baseSha || null,
           operation: "upsert"
         })
@@ -393,39 +621,15 @@
         state.drafts.push(saved);
       }
       panel.dataset.draftId = String(saved.id);
+      if (path.toLowerCase().endsWith(".md")) {
+        scheduleLiveRender(host, saved.content);
+      }
       setInlineFeedback(
         panel,
         "草稿已保存，可在编辑工作台统一查看并提交。",
         "success"
       );
       updateAccountView();
-    } catch (error) {
-      setInlineFeedback(panel, error.message, "error");
-    } finally {
-      button.disabled = false;
-    }
-  }
-
-  async function toggleInlinePreview(panel) {
-    const textarea = query("[data-inline-input]", panel);
-    const preview = query("[data-inline-preview-pane]", panel);
-    const button = query("[data-inline-preview]", panel);
-    if (!preview.hidden) {
-      preview.hidden = true;
-      textarea.hidden = false;
-      button.textContent = "预览";
-      return;
-    }
-    button.disabled = true;
-    try {
-      const result = await api("/preview", {
-        method: "POST",
-        body: JSON.stringify({ content: textarea.value })
-      });
-      preview.innerHTML = result.html;
-      textarea.hidden = true;
-      preview.hidden = false;
-      button.textContent = "返回编辑";
     } catch (error) {
       setInlineFeedback(panel, error.message, "error");
     } finally {
@@ -513,10 +717,14 @@
       }
       feedback(
         target,
-        "已创建 " + saved.path + "，可在编辑工作台继续编辑。",
+        "已创建 " + saved.path + "，正在打开预览。",
         true
       );
       updateAccountView();
+      addDraftNavigation();
+      window.setTimeout(function () {
+        window.location.href = draftLink(saved.path);
+      }, 450);
     } catch (error) {
       feedback(target, error.message);
     } finally {
@@ -549,6 +757,7 @@
         state.csrf = payload.csrf_token;
         await loadDrafts();
         updateAccountView();
+        await applyDraftsToReader();
       } catch (error) {
         feedback(target, error.message);
       }
@@ -566,17 +775,20 @@
         state.csrf = payload.csrf_token;
         await loadDrafts();
         updateAccountView();
+        await applyDraftsToReader();
       } catch (error) {
         feedback(target, error.message);
       }
     });
-    query("[data-toggle-edit-mode]").addEventListener("click", function () {
+    query("[data-edit-mode-trigger]").addEventListener("click", function () {
       if (!ensureEditorAccess()) {
         return;
       }
-      applyEditMode(!state.editMode);
-      updateAccountView();
-      query("[data-account-dialog]").close();
+      const next = !state.editMode;
+      if (!next) {
+        closeInlineEditor();
+      }
+      applyEditMode(next);
     });
     query("[data-account-logout]").addEventListener("click", async function () {
       try {
@@ -615,8 +827,6 @@
         closeInlineEditor();
       } else if (event.target.closest("[data-inline-save]")) {
         saveInlineEditor(panel);
-      } else if (event.target.closest("[data-inline-preview]")) {
-        toggleInlinePreview(panel);
       }
     });
     queryAll("[data-close-content-create]").forEach(function (button) {

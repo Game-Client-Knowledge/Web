@@ -8,6 +8,7 @@
   <meta name="description" content="Game Client Knowledge 在线内容编辑器">
   <title>在线编辑 · Game Client Knowledge</title>
   <link rel="stylesheet" href="assets/editor.css">
+  <link rel="stylesheet" href="/assets/vendor/toastui-editor.css?v=3.2.2-gck1">
   <link
     rel="icon"
     href="assets/favicon.svg"
@@ -133,6 +134,18 @@
 
       <div class="workspace-grid">
         <aside class="workspace-sidebar">
+          <div class="workspace-view-tabs" role="tablist" aria-label="工作区视图">
+            <button class="is-active" type="button" data-workspace-view="resources">
+              <i data-lucide="folder-tree" aria-hidden="true"></i>
+              资源
+            </button>
+            <button type="button" data-workspace-view="changes">
+              <i data-lucide="git-branch" aria-hidden="true"></i>
+              更改
+              <span id="changeCount">0</span>
+            </button>
+          </div>
+          <div data-workspace-pane="resources">
           <div class="explorer-heading">
             <div>
               <strong>资源管理器</strong>
@@ -154,6 +167,16 @@
             </button>
           </div>
           <div id="resourceTree" class="resource-tree" aria-label="内容仓库目录"></div>
+          </div>
+          <div data-workspace-pane="changes" hidden>
+            <div class="explorer-heading">
+              <div>
+                <strong>未提交更改</strong>
+                <span>点击文件查看并继续编辑</span>
+              </div>
+            </div>
+            <div id="changeList" class="change-list change-list-sidebar"></div>
+          </div>
         </aside>
 
         <section class="editor-panel">
@@ -175,6 +198,7 @@
               </div>
             </div>
             <div class="editor-surface">
+              <div id="visualEditor" hidden></div>
               <textarea id="contentEditor" spellcheck="false" aria-label="Markdown 内容"></textarea>
               <div id="previewPane" class="preview-pane prose-preview" hidden></div>
             </div>
@@ -183,14 +207,6 @@
         </section>
 
         <aside class="submit-panel">
-          <section class="change-review">
-            <div class="change-review-heading">
-              <h2>全部更改</h2>
-              <span id="changeCount">0</span>
-            </div>
-            <div id="changeList" class="change-list"></div>
-          </section>
-
           <section class="submit-section">
           <h2>统一提交</h2>
           <p>当前账号的全部草稿将组成一个 commit 和一个 Draft PR。</p>
@@ -297,6 +313,7 @@
   </dialog>
 
   <script src="/assets/vendor/lucide.js"></script>
+  <script src="/assets/vendor/toastui-editor.js?v=3.2.2-gck1"></script>
   <script src="assets/editor.js"></script>
 </body>
 </html>

@@ -4,7 +4,8 @@
   "private": true,
   "description": "Convention-driven static website for Game Client Knowledge.",
   "scripts": {
-    "build": "node scripts/clean.js && eleventy",
+    "build:vendor": "node scripts/build-editor-vendor.js",
+    "build": "npm run build:vendor && node scripts/clean.js && eleventy",
     "dev": "eleventy --serve --quiet",
     "audit": "node scripts/audit-content.js",
     "audit:site": "node scripts/audit-site.js",
@@ -19,6 +20,7 @@
   },
   "dependencies": {
     "@11ty/eleventy": "3.1.6",
+    "@toast-ui/editor": "3.2.2",
     "gray-matter": "4.0.3",
     "lucide": "0.468.0",
     "markdown-it": "15.0.0",
@@ -27,9 +29,11 @@
     "prismjs": "1.30.0"
   },
   "devDependencies": {
+    "esbuild": "0.28.2",
     "playwright-core": "1.62.1"
   },
   "overrides": {
+    "dompurify": "3.4.13",
     "@11ty/eleventy": {
       "markdown-it": "15.0.0"
     }

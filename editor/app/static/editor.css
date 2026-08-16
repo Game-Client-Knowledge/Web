@@ -499,6 +499,46 @@ a[aria-disabled="true"] {
   border-right: 1px solid var(--line);
 }
 
+.workspace-view-tabs {
+  display: grid;
+  margin: -18px -18px 16px;
+  border-bottom: 1px solid var(--line-strong);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.workspace-view-tabs button {
+  display: inline-flex;
+  min-height: 42px;
+  padding: 7px 10px;
+  color: var(--ink-faint);
+  background: #eef1ef;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.workspace-view-tabs button.is-active {
+  color: var(--teal-dark);
+  background: #ffffff;
+  border-bottom-color: var(--teal);
+}
+
+.workspace-view-tabs button span {
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+  border-radius: 3px;
+  font-size: 9px;
+  place-items: center;
+}
+
 .submit-panel {
   border-left: 1px solid var(--line);
 }
@@ -676,34 +716,13 @@ a[aria-disabled="true"] {
   text-align: center;
 }
 
-.change-review {
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--line-strong);
-}
-
-.change-review-heading {
-  display: flex;
-  margin-bottom: 10px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.change-review-heading span {
-  display: grid;
-  min-width: 24px;
-  height: 24px;
-  padding: 0 5px;
-  color: var(--teal-dark);
-  background: var(--teal-soft);
-  border-radius: 3px;
-  font-size: 10px;
-  place-items: center;
-}
-
 .change-list {
   max-height: 190px;
   overflow-y: auto;
+}
+
+.change-list-sidebar {
+  max-height: 610px;
 }
 
 .change-item {
@@ -727,6 +746,18 @@ a[aria-disabled="true"] {
   grid-row: 1 / 3;
 }
 
+.change-item > small[data-status="A"] {
+  color: #047857;
+}
+
+.change-item > small[data-status="M"] {
+  color: #9a6700;
+}
+
+.change-item > small[data-status="D"] {
+  color: #b42318;
+}
+
 .change-item span {
   font-size: 11px;
   font-weight: 680;
@@ -743,7 +774,7 @@ a[aria-disabled="true"] {
 }
 
 .submit-section {
-  padding-top: 18px;
+  padding-top: 0;
 }
 
 .editor-panel {
@@ -798,6 +829,35 @@ a[aria-disabled="true"] {
 
 .editor-surface {
   min-height: 540px;
+}
+
+#visualEditor {
+  min-height: 560px;
+  background: #ffffff;
+}
+
+#visualEditor .toastui-editor-defaultUI {
+  border: 0;
+  border-radius: 0;
+}
+
+#visualEditor .toastui-editor-toolbar {
+  background: #ffffff;
+  border-bottom-color: var(--line);
+}
+
+#visualEditor .toastui-editor-mode-switch {
+  display: none !important;
+}
+
+#visualEditor .toastui-editor-contents,
+#visualEditor .ProseMirror {
+  color: var(--ink);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.75;
 }
 
 #contentEditor {
