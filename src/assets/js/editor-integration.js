@@ -661,6 +661,7 @@
   }
 
   function initializeVisualEditor(panel, host, content) {
+    const initializationStartedAt = performance.now();
     const mount = query("[data-visual-editor]", panel);
     const textarea = query("[data-inline-input]", panel);
     if (!window.toastui || !window.toastui.Editor) {
@@ -700,6 +701,9 @@
     });
     panel.originalContent = content;
     panel.canonicalContent = state.inlineEditor.getMarkdown();
+    // #region debug-point H:reader-editor-layout
+    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"H",location:"editor-integration.js:initializeVisualEditor","msg":"[DEBUG] Reader editor initialized","data":{sourceLength:content.length,initializationMs:Math.round((performance.now()-initializationStartedAt)*10)/10,totalOpenMs:Math.round((performance.now()-(panel.openStartedAt||initializationStartedAt))*10)/10},ts:Date.now()})}).catch(()=>{});
+    // #endregion
     // #region debug-point C:reader-initial-serialization
     fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"C",location:"editor-integration.js:initializeVisualEditor",msg:"[DEBUG] Reader initial Markdown serialization",data:(()=>{const output=state.inlineEditor.getMarkdown();return{inputLength:content.length,outputLength:output.length,same:output===content,escapedHeadings:(output.match(/^## \\d+\\\\\\./gm)||[]).length,dashBullets:(output.match(/^- /gm)||[]).length,starBullets:(output.match(/^\\* /gm)||[]).length,compactTable:output.includes("|---|"),spacedTable:output.includes("| --- |")}})(),ts:Date.now()})}).catch(()=>{});
     // #endregion
@@ -710,6 +714,31 @@
       return state.inlineEditor.getMarkdown();
     }
     return query("[data-inline-input]", panel).value;
+  }
+
+  async function loadDeployedSource(path) {
+    if (!window.GCKSource) {
+      return null;
+    }
+    const prefetched = window.GCK_SOURCE_PREFETCH;
+    if (
+      prefetched &&
+      prefetched.path === path &&
+      prefetched.version === config.contentVersion
+    ) {
+      const source = await prefetched.promise;
+      return source
+        ? { ...source, sourceType: "head-" + source.sourceType }
+        : null;
+    }
+    try {
+      return await window.GCKSource.load(path, {
+        version: config.contentVersion,
+        rawBase: config.rawBase
+      });
+    } catch {
+      return null;
+    }
   }
 
   async function openInlineEditor(target) {
@@ -727,17 +756,26 @@
     }
     closeInlineEditor();
     const panel = createInlinePanel(host, sourcePath);
+    panel.openStartedAt = performance.now();
     state.inlinePanel = panel;
     const textarea = query("[data-inline-input]", panel);
     try {
       const draft = state.drafts.find(function (item) {
         return item.path === sourcePath;
       });
-      const source = draft
-        ? draft
-        : await api(
-            "/repository/file?path=" + encodeURIComponent(sourcePath)
-          );
+      const sourceStartedAt = performance.now();
+      let source = draft
+        ? { ...draft, sourceType: "draft" }
+        : await loadDeployedSource(sourcePath);
+      if (!source) {
+        source = await api(
+          "/repository/file?path=" + encodeURIComponent(sourcePath)
+        );
+        source.sourceType = "repository-api";
+      }
+      // #region debug-point G:reader-source-load
+      fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"G",location:"editor-integration.js:openInlineEditor","msg":"[DEBUG] Reader source loaded","data":{sourceType:source.sourceType,sourceMs:Math.round((performance.now()-sourceStartedAt)*10)/10,sourceLength:source.content.length,hasBaseSha:Boolean(source.base_sha||source.sha)},ts:Date.now()})}).catch(()=>{});
+      // #endregion
       panel.dataset.baseSha = source.base_sha || source.sha || "";
       panel.dataset.draftId = draft ? String(draft.id) : "";
       query("[data-inline-delete]", panel).textContent =
@@ -748,6 +786,8 @@
         query("[data-visual-editor]", panel).hidden = true;
         textarea.hidden = false;
         textarea.value = source.content;
+        panel.originalContent = source.content;
+        panel.canonicalContent = source.content;
         textarea.focus();
       }
       setInlineFeedback(
@@ -779,6 +819,17 @@
       // #region debug-point D:reader-save-payload
       fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"D",location:"editor-integration.js:saveInlineEditor",msg:"[DEBUG] Reader draft save payload",data:{originalLength:panel.originalContent.length,canonicalLength:canonicalContent.length,outputLength:serializedContent.length,canonicalSame:canonicalContent===panel.canonicalContent,sourceSame:serializedContent===panel.originalContent,escapedHeadings:(serializedContent.match(/^## \\d+\\\\\\./gm)||[]).length,dashBullets:(serializedContent.match(/^- /gm)||[]).length,starBullets:(serializedContent.match(/^\\* /gm)||[]).length,compactTable:serializedContent.includes("|---|"),spacedTable:serializedContent.includes("| --- |")},ts:Date.now()})}).catch(()=>{});
       // #endregion
+      if (serializedContent === panel.originalContent) {
+        // #region debug-point F:reader-noop-skipped
+        fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"F",location:"editor-integration.js:saveInlineEditor","msg":"[DEBUG] Reader unchanged save skipped","data":{sourceSame:true,apiCalled:false,hadDraft:Boolean(panel.dataset.draftId)},ts:Date.now()})}).catch(()=>{});
+        // #endregion
+        setInlineFeedback(
+          panel,
+          "没有检测到需要保存的更改。",
+          "success"
+        );
+        return;
+      }
       const saved = await api("/drafts", {
         method: "PUT",
         body: JSON.stringify({
@@ -788,6 +839,9 @@
           operation: "upsert"
         })
       });
+      // #region debug-point F:reader-noop-created
+      fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"F",location:"editor-integration.js:saveInlineEditor","msg":"[DEBUG] Reader changed save completed","data":{sourceSame:false,apiCalled:true,savedDraftId:saved.id,hadDraft:Boolean(panel.dataset.draftId)},ts:Date.now()})}).catch(()=>{});
+      // #endregion
       const index = state.drafts.findIndex(function (item) {
         return item.path === saved.path;
       });

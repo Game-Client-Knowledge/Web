@@ -10,11 +10,12 @@
     "audit": "node scripts/audit-content.js",
     "audit:site": "node scripts/audit-site.js",
     "test:markdown-preserve": "node scripts/test-markdown-preserve.js",
+    "test:source-cache": "node scripts/test-source-cache.js",
     "test:visual": "node scripts/visual-check.js",
     "deploy:join": "bash scripts/deploy-join.sh",
     "deploy:editor": "bash scripts/deploy-editor.sh",
     "deploy:server": "bash scripts/deploy-server.sh",
-    "check": "npm run test:markdown-preserve && npm run audit && npm run build && npm run audit:site"
+    "check": "npm run test:markdown-preserve && npm run test:source-cache && npm run audit && npm run build && npm run audit:site"
   },
   "engines": {
     "node": ">=20.19"

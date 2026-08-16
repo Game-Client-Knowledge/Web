@@ -15,15 +15,31 @@
       <link rel="stylesheet" href="{{ '/assets/vendor/toastui-editor.css' | assetUrl }}">
     {% endif %}
     <link rel="icon" href="{{ '/assets/images/favicon.svg' | assetUrl }}" type="image/svg+xml">
+    <script src="{{ '/assets/js/source-cache.js' | assetUrl }}"></script>
     <script>
       (function () {
         var editorApi = {{ (site.editorUrl ~ 'api') | json | safe }};
         var staticSource = {% if document %}{{ document.sourceRelative | json | safe }}{% elif module %}{{ module.sourceRelative | json | safe }}{% else %}""{% endif %};
+        var contentVersion = {{ catalog.repository.commit | json | safe }};
+        var rawBase = {{ '/raw/' | withBase | json | safe }};
         var draftPath = new URLSearchParams(window.location.search).get("draft");
         var sourcePath = draftPath || staticSource;
         var query = sourcePath
           ? "?path=" + encodeURIComponent(sourcePath)
           : "";
+        window.GCK_SOURCE_PREFETCH =
+          staticSource && window.GCKSource
+            ? {
+                path: staticSource,
+                version: contentVersion,
+                promise: window.GCKSource.load(staticSource, {
+                  version: contentVersion,
+                  rawBase: rawBase
+                }).catch(function () {
+                  return null;
+                })
+              }
+            : null;
         window.GCK_EDITOR_BOOTSTRAP = fetch(
           editorApi + "/bootstrap" + query,
           { credentials: "same-origin" }
@@ -335,6 +351,8 @@
         searchIndex: {{ (('/search-index.json' | withBase) + '?v=' + site.searchVersion) | json | safe }},
         editorUrl: {{ site.editorUrl | json | safe }},
         editorApi: {{ (site.editorUrl ~ 'api') | json | safe }},
+        contentVersion: {{ catalog.repository.commit | json | safe }},
+        rawBase: {{ '/raw/' | withBase | json | safe }},
         editorContext: {
           pageKind: {{ (pageKind or "default") | json | safe }},
           sourcePath: {% if document %}{{ document.sourceRelative | json | safe }}{% elif module %}{{ module.sourceRelative | json | safe }}{% else %}null{% endif %},

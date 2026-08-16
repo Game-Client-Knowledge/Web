@@ -431,7 +431,9 @@ async function baseContentForDraft(draft) {
   if (state.remoteContent.has(draft.path)) {
     return state.remoteContent.get(draft.path);
   }
-  const file = await api(`/repository/file?path=${encodeURIComponent(draft.path)}`);
+  const file =
+    (await loadStaticRepositoryFile(draft.path, draft.base_sha)) ||
+    (await api(`/repository/file?path=${encodeURIComponent(draft.path)}`));
   state.remoteContent.set(draft.path, file.content);
   return file.content;
 }
@@ -470,6 +472,7 @@ function destroyVisualEditor() {
 }
 
 function showContentEditor(path, content) {
+  const initializationStartedAt = performance.now();
   destroyVisualEditor();
   state.previewing = false;
   byId("diffViewer").hidden = true;
@@ -503,6 +506,9 @@ function showContentEditor(path, content) {
       state.active.originalContent = content;
       state.active.canonicalContent = state.visualEditor.getMarkdown();
     }
+    // #region debug-point H:workspace-editor-layout
+    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"H",location:"editor.js:showContentEditor",msg:"[DEBUG] Workspace editor initialized",data:{sourceLength:content.length,initializationMs:Math.round((performance.now()-initializationStartedAt)*10)/10,totalOpenMs:Math.round((performance.now()-(state.active?.openStartedAt||initializationStartedAt))*10)/10},ts:Date.now()})}).catch(()=>{});
+    // #endregion
     // #region debug-point C:workspace-initial-serialization
     fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"C",location:"editor.js:showContentEditor",msg:"[DEBUG] Workspace initial Markdown serialization",data:(()=>{const output=state.visualEditor.getMarkdown();return{inputLength:content.length,outputLength:output.length,same:output===content,escapedHeadings:(output.match(/^## \\d+\\\\\\./gm)||[]).length,dashBullets:(output.match(/^- /gm)||[]).length,starBullets:(output.match(/^\\* /gm)||[]).length,compactTable:output.includes("|---|"),spacedTable:output.includes("| --- |")}})(),ts:Date.now()})}).catch(()=>{});
     // #endregion
@@ -605,6 +611,21 @@ async function loadRepository(force = false) {
   }
 }
 
+async function loadStaticRepositoryFile(path, expectedSha) {
+  if (!window.GCKSource || !expectedSha) {
+    return null;
+  }
+  try {
+    return await window.GCKSource.load(path, {
+      version: expectedSha,
+      expectedSha,
+      rawBase: "/raw/"
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function openResource(path) {
   const draft = state.drafts.find((item) => item.path === path);
   if (draft) {
@@ -612,16 +633,25 @@ async function openResource(path) {
     return;
   }
   showEditorLoading(path);
+  const openStartedAt = performance.now();
   try {
-    const file = await api(
-      `/repository/file?path=${encodeURIComponent(path)}`
-    );
+    const sourceStartedAt = performance.now();
+    const repositoryEntry = state.repository.find((item) => item.path === path);
+    let file = await loadStaticRepositoryFile(path, repositoryEntry?.sha);
+    if (!file) {
+      file = await api(`/repository/file?path=${encodeURIComponent(path)}`);
+      file.sourceType = "repository-api";
+    }
+    // #region debug-point G:workspace-source-load
+    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"G",location:"editor.js:openResource",msg:"[DEBUG] Workspace source loaded","data":{sourceType:file.sourceType,sourceMs:Math.round((performance.now()-sourceStartedAt)*10)/10,sourceLength:file.content.length,shaMatchesTree:Boolean(repositoryEntry&&file.sha===repositoryEntry.sha)},ts:Date.now()})}).catch(()=>{});
+    // #endregion
     state.active = {
       draftId: null,
       path: file.path,
       baseSha: file.sha,
       content: file.content,
-      operation: "upsert"
+      operation: "upsert",
+      openStartedAt
     };
     state.remoteContent.set(file.path, file.content);
     byId("emptyEditor").hidden = true;
@@ -664,6 +694,22 @@ async function saveActiveDraft() {
     // #region debug-point D:workspace-save-payload
     fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"D",location:"editor.js:saveActiveDraft",msg:"[DEBUG] Workspace draft save payload",data:{originalLength:state.active.originalContent.length,canonicalLength:canonicalContent.length,outputLength:serializedContent.length,canonicalSame:canonicalContent===state.active.canonicalContent,sourceSame:serializedContent===state.active.originalContent,escapedHeadings:(serializedContent.match(/^## \\d+\\\\\\./gm)||[]).length,dashBullets:(serializedContent.match(/^- /gm)||[]).length,starBullets:(serializedContent.match(/^\\* /gm)||[]).length,compactTable:serializedContent.includes("|---|"),spacedTable:serializedContent.includes("| --- |")},ts:Date.now()})}).catch(()=>{});
     // #endregion
+    const unsavedNewFile =
+      !state.active.draftId && !state.active.baseSha;
+    if (
+      serializedContent === state.active.originalContent &&
+      !unsavedNewFile
+    ) {
+      // #region debug-point F:workspace-noop-skipped
+      fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"F",location:"editor.js:saveActiveDraft",msg:"[DEBUG] Workspace unchanged save skipped","data":{sourceSame:true,apiCalled:false,hadDraft:Boolean(state.active.draftId)},ts:Date.now()})}).catch(()=>{});
+      // #endregion
+      feedback(
+        byId("editorFeedback"),
+        "没有检测到需要保存的更改。",
+        "success"
+      );
+      return;
+    }
     const saved = await api("/drafts", {
       method: "PUT",
       body: JSON.stringify({
@@ -673,6 +719,9 @@ async function saveActiveDraft() {
         operation: "upsert"
       })
     });
+    // #region debug-point F:workspace-noop-created
+    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"F",location:"editor.js:saveActiveDraft",msg:"[DEBUG] Workspace changed or new save completed","data":{sourceSame:serializedContent===state.active.originalContent,apiCalled:true,savedDraftId:saved.id,hadDraft:Boolean(state.active.draftId),unsavedNewFile},ts:Date.now()})}).catch(()=>{});
+    // #endregion
     state.active.draftId = saved.id;
     state.active.path = saved.path;
     state.active.content = saved.content;

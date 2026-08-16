@@ -85,3 +85,90 @@ Production verification:
 - Editor service status: `active`.
 
 Awaiting user confirmation before removing instrumentation and debug artifacts.
+
+## Iteration: No-Op Save and Edit-Mode Latency
+
+User feedback: saving an untouched file still creates an `M` draft, and entering
+edit mode remains slow.
+
+| ID | Hypothesis | Likelihood | Expected Evidence |
+|----|------------|------------|-------------------|
+| F | The source-preserving output equals the original, but the client still unconditionally calls `PUT /drafts` | High | `sourceSame=true` followed by a new draft ID |
+| G | `/repository/file` and its upstream GitHub request dominate edit-mode latency | High | Source fetch time is substantially larger than Toast UI initialization |
+| H | Toast UI initialization and layout dominate edit-mode latency | Medium | Editor initialization time exceeds source fetch time |
+| I | The static `/raw/<path>` source is available and cacheable | High | Static source returns the same bytes without the editor API |
+| J | A client-computed Git blob SHA can replace the repository-file SHA lookup | Medium | SHA-1 of `blob <bytes>\\0<content>` matches the repository tree SHA |
+
+Pre-fix evidence:
+
+- Reader save serialization reports `sourceSame=true`; the following save event
+  still reports a draft ID, so the client reaches `PUT /drafts` even when the
+  source-preserving output is unchanged.
+- A draft-backed reader source opens in `26.3ms`, of which Toast UI
+  initialization takes `25.8ms`.
+- An isolated static `/raw/<path>` request completes in about `3.3ms`.
+- With `/repository/file` delayed by `1200ms`, the reader takes about `1355ms`
+  to open. A direct production-server GitHub Contents request also exceeded a
+  20-second connection timeout.
+
+| ID | Status | Conclusion |
+|----|--------|------------|
+| F | Confirmed | Unchanged serialized source does not prevent the draft API call |
+| G | Confirmed | The GitHub-backed repository-file request dominates an uncached open |
+| H | Rejected | Toast UI initializes in tens of milliseconds, not seconds |
+| I | Confirmed | The deployed raw source is available locally and is fast |
+| J | Confirmed | Browser SHA equals both `git hash-object` and the repository-tree blob SHA |
+
+Minimal fix:
+
+- Short-circuit unchanged saves before `PUT /drafts`.
+- Prefetch the current deployed source in the document head.
+- Cache source by deployed content version and path in `sessionStorage`.
+- Compute `SHA1("blob " + byteLength + "\0" + content)` in the browser.
+- Fall back to `/repository/file` when static source is missing or its computed
+  blob SHA does not match the workspace repository tree.
+
+Instrumentation remains active for post-fix comparison.
+
+Post-fix evidence:
+
+- Reader first open: head-prefetched static source resolves in `0.2ms`; Toast UI
+  initializes in `38.1ms`; total open time is `39ms`.
+- Reader reload: `sessionStorage` source resolves in `0ms`; Toast UI initializes
+  in `15.8ms`; total open time is `15.9ms`.
+- Workspace open: static source resolves and matches the repository-tree SHA in
+  `3.5ms`; total open time is `25.9ms`.
+- Reader and workspace unchanged saves both report `sourceSame=true` and
+  `apiCalled=false`. Browser API counters remain `PUT /drafts=0`, and neither
+  surface creates an `M` marker.
+- A real one-character edit reports `sourceSame=false`, `apiCalled=true`, and
+  exactly one draft PUT.
+- A newly created, otherwise untouched file also performs its required first
+  draft PUT, so the no-op guard does not suppress creation.
+- Browser-computed SHA for `knowledge/engine/README.md` is
+  `2905b7b5120687e578caeccf4a90ee962ffb2cef`, exactly matching
+  `git hash-object`.
+
+Pre-fix vs post-fix:
+
+| Behavior | Pre-fix | Post-fix |
+|----------|---------|----------|
+| Unchanged save | Draft API called and an `M` draft is retained/created | Draft API skipped |
+| Reader source | GitHub-backed repository API can dominate opening | Head prefetch or session cache |
+| Cached reader open | About `1355ms` with a simulated `1200ms` API delay | `15.9ms` total |
+| Workspace file open | Repository Contents API per file | Static raw source verified against tree SHA |
+
+The session remains `[OPEN]` pending user confirmation; instrumentation and
+debug artifacts must not be removed yet.
+
+Pure post-fix rerun after clearing the session log:
+
+- Lines 1-2: reader source is a head-started session-cache hit (`0ms`) and the
+  complete editor opens in `16ms`.
+- Lines 4-5: reader serialization equals the original source and the save exits
+  with `apiCalled=false`.
+- Lines 6-7: workspace source is a SHA-verified session-cache hit (`0.1ms`) and
+  the complete editor opens in `9.8ms`.
+- Lines 9-10: workspace serialization equals the original source and the save
+  exits with `apiCalled=false`.
+- Mock API counters for both reruns are `repositoryFiles=0` and `draftPuts=0`.

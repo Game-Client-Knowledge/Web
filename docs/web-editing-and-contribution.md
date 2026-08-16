@@ -175,7 +175,14 @@ across reader navigation, so each editable destination opens without a second
 per-page click. The same header button exits edit mode; edit mode is not hidden
 inside account settings.
 
-- Document pages load their `sourceRelative` file through the editor API.
+- Document pages start loading `/raw/<sourceRelative>` from the document head in
+  parallel with the editor bootstrap request. The deployed content commit and path
+  form a `sessionStorage` cache key.
+- The browser computes the source blob ID with
+  `SHA1("blob " + byteLength + "\0" + content)`. This supplies `base_sha`
+  without a GitHub Contents request.
+- Source resolution order is personal draft, head prefetch, versioned session
+  cache, deployed raw source, then `/repository/file` as a compatibility fallback.
 - Markdown files open in Toast UI's WYSIWYG mode. Toolbar and direct visual changes
   are serialized back to Markdown through `getMarkdown()`.
 - Existing Markdown uses a source-preserving three-way merge when saved. Toast UI's
@@ -186,6 +193,9 @@ inside account settings.
 - Module pages edit the module `README.md`.
 - Module and topic controls prefill the correct content root and parent directory
   when creating child modules or files.
+- Saving source that is byte-for-byte equal to the loaded baseline is a local no-op
+  and does not create or update a draft. An unsaved new file still performs its
+  required first save.
 
 Saving updates only the user's server-side draft. It does not regenerate the
 current static release and does not write to GitHub. The browser overlays saved
@@ -208,6 +218,12 @@ Markdown: added lines are green, replacement lines are yellow, and removed lines
 are red. The Resources view remains the editing surface and Markdown files there
 use the same visual editor as the reader. The right panel remains the only
 submission surface.
+
+The workspace uses each repository-tree blob SHA as the expected version when
+loading `/raw/<path>`. A matching client-computed SHA avoids a second GitHub request
+and is cached for the session. Missing static files and SHA mismatches fall back to
+`/repository/file`, so a deployed release cannot silently supply stale content for
+an updated tree entry.
 
 Deleting an existing file creates a `delete` draft with the file's current blob
 SHA. Discarding that draft restores the `main` version. Deleting an unsubmitted new
