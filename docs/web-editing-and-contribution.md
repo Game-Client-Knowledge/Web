@@ -199,9 +199,11 @@ yellow `M`, and deleted files use red `D`.
 `/editor/` has separate **Resources** and **Changes** views. Resources merge the
 remote `main` tree and the user's draft paths into one hierarchical explorer.
 Changes use Git-style `A`, `M`, and `D` markers instead of a second file tree.
-Selecting a remote file fetches and decodes its GitHub Contents API payload;
-selecting a changed file opens the draft. Markdown files use the same visual editor
-as the reader. The right panel remains the only submission surface.
+Selecting a changed file opens a source-level line diff rather than rendered
+Markdown: added lines are green, replacement lines are yellow, and removed lines
+are red. The Resources view remains the editing surface and Markdown files there
+use the same visual editor as the reader. The right panel remains the only
+submission surface.
 
 Deleting an existing file creates a `delete` draft with the file's current blob
 SHA. Discarding that draft restores the `main` version. Deleting an unsubmitted new
@@ -221,6 +223,11 @@ This replaces the previous serial `/config`, `/session`, `/drafts`, and `/previe
 waterfall. While the request is pending, the public static article remains fully
 visible and the fixed-size account control shows a neutral synchronization
 placeholder, preventing false logged-out state and header layout shifts.
+
+OAuth state is retained until GitHub token exchange succeeds, allowing a callback
+to be retried after a transient network failure. Explicit GitHub denial returns to
+the initiating reader or workspace with an inline error instead of exposing a raw
+API response.
 
 ## Submission Workflow
 

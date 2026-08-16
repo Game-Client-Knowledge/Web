@@ -6,8 +6,10 @@ const state = {
   repository: [],
   active: null,
   previewing: false,
+  workspaceView: "resources",
   resourceFilter: "",
-  visualEditor: null
+  visualEditor: null,
+  remoteContent: new Map()
 };
 
 const byId = (id) => document.getElementById(id);
@@ -63,6 +65,21 @@ function slugify(value) {
   );
 }
 
+function draftStatus(draft) {
+  return draft.operation === "delete" ? "D" : draft.base_sha ? "M" : "A";
+}
+
+function takeGithubAuthError() {
+  const url = new URL(window.location.href);
+  const code = url.searchParams.get("github_auth_error");
+  if (!code) return "";
+  url.searchParams.delete("github_auth_error");
+  window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+  return code === "access_denied"
+    ? "GitHub 授权已取消，账号尚未绑定。"
+    : "GitHub 认证失败，请重新尝试。";
+}
+
 function setAuthTab(name) {
   document.querySelectorAll("[data-auth-tab]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.authTab === name);
@@ -101,6 +118,7 @@ function applyConfig() {
 }
 
 async function loadSession() {
+  const githubAuthError = takeGithubAuthError();
   const bootstrap = await api("/bootstrap");
   state.config = bootstrap.config;
   applyConfig();
@@ -108,6 +126,7 @@ async function loadSession() {
   state.session = session;
   if (!session.authenticated) {
     showView("auth");
+    if (githubAuthError) feedback(byId("authFeedback"), githubAuthError);
     return;
   }
   state.csrf = session.csrf_token;
@@ -118,6 +137,7 @@ async function loadSession() {
   }
   showView("workspace");
   await initializeWorkspace(true);
+  if (githubAuthError) feedback(byId("editorFeedback"), githubAuthError);
 }
 
 async function initializeWorkspace(draftsReady = false) {
@@ -272,12 +292,7 @@ function renderTreeNode(node, target, depth) {
     if (file.draft) {
       const badge = document.createElement("small");
       badge.className = "resource-change-badge";
-      const status =
-        file.draft.operation === "delete"
-          ? "D"
-          : file.sha
-            ? "M"
-            : "A";
+      const status = draftStatus(file.draft);
       badge.dataset.status = status;
       badge.textContent = status;
       button.dataset.status = status;
@@ -300,8 +315,7 @@ function renderChanges() {
     button.className = "change-item";
     button.type = "button";
     const change = document.createElement("small");
-    change.textContent =
-      draft.operation === "delete" ? "D" : draft.base_sha ? "M" : "A";
+    change.textContent = draftStatus(draft);
     change.dataset.status = change.textContent;
     const label = document.createElement("span");
     label.textContent = draft.path.split("/").pop();
@@ -346,6 +360,107 @@ function renderResources() {
   refreshIcons(target);
 }
 
+function diffLines(value) {
+  if (!value) return [];
+  const lines = value.split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  return lines;
+}
+
+function appendDiffPart(target, value, type, counters) {
+  for (const text of diffLines(value)) {
+    const row = document.createElement("div");
+    row.className = `diff-line is-${type}`;
+    const oldNumber = document.createElement("span");
+    const newNumber = document.createElement("span");
+    const marker = document.createElement("span");
+    const source = document.createElement("code");
+    if (type === "removed") {
+      oldNumber.textContent = String(counters.oldLine++);
+      marker.textContent = "-";
+    } else if (type === "added") {
+      newNumber.textContent = String(counters.newLine++);
+      marker.textContent = "+";
+    } else if (type === "modified") {
+      newNumber.textContent = String(counters.newLine++);
+      marker.textContent = "~";
+    } else {
+      oldNumber.textContent = String(counters.oldLine++);
+      newNumber.textContent = String(counters.newLine++);
+      marker.textContent = " ";
+    }
+    source.textContent = text || " ";
+    row.append(oldNumber, newNumber, marker, source);
+    target.append(row);
+  }
+}
+
+function renderSourceDiff(baseContent, draft) {
+  const target = byId("diffSource");
+  target.replaceChildren();
+  const nextContent = draft.operation === "delete" ? "" : draft.content;
+  const parts = window.JsDiff?.diffLines
+    ? window.JsDiff.diffLines(baseContent, nextContent)
+    : [{ value: nextContent || baseContent, added: !baseContent, removed: !nextContent }];
+  const counters = { oldLine: 1, newLine: 1 };
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index];
+    const next = parts[index + 1];
+    if (part.removed && next?.added) {
+      appendDiffPart(target, part.value, "removed", counters);
+      appendDiffPart(target, next.value, "modified", counters);
+      index += 1;
+    } else if (part.added) {
+      appendDiffPart(target, part.value, "added", counters);
+    } else if (part.removed) {
+      appendDiffPart(target, part.value, "removed", counters);
+    } else {
+      appendDiffPart(target, part.value, "context", counters);
+    }
+  }
+  if (!target.children.length) {
+    const empty = document.createElement("p");
+    empty.className = "diff-empty";
+    empty.textContent = "源文件内容没有行级变化";
+    target.append(empty);
+  }
+}
+
+async function baseContentForDraft(draft) {
+  if (!draft.base_sha) return "";
+  if (state.remoteContent.has(draft.path)) {
+    return state.remoteContent.get(draft.path);
+  }
+  const file = await api(`/repository/file?path=${encodeURIComponent(draft.path)}`);
+  state.remoteContent.set(draft.path, file.content);
+  return file.content;
+}
+
+async function showChangeDiff(draft) {
+  destroyVisualEditor();
+  state.previewing = false;
+  byId("emptyEditor").hidden = true;
+  byId("activeEditor").hidden = false;
+  byId("filePath").value = draft.path;
+  byId("filePath").readOnly = true;
+  byId("deletionNotice").hidden = true;
+  byId("visualEditor").closest(".editor-surface").hidden = true;
+  byId("diffViewer").hidden = false;
+  byId("diffModeLabel").hidden = false;
+  byId("editChangeButton").hidden = false;
+  byId("previewButton").hidden = true;
+  byId("discardDraftButton").hidden = false;
+  byId("markDeleteButton").hidden = true;
+  byId("saveDraftButton").hidden = true;
+  byId("diffSource").replaceChildren();
+  clearFeedback(byId("editorFeedback"));
+  try {
+    renderSourceDiff(await baseContentForDraft(draft), draft);
+  } catch (error) {
+    feedback(byId("editorFeedback"), error.message);
+  }
+}
+
 function destroyVisualEditor() {
   if (state.visualEditor) {
     state.visualEditor.destroy();
@@ -357,6 +472,9 @@ function destroyVisualEditor() {
 function showContentEditor(path, content) {
   destroyVisualEditor();
   state.previewing = false;
+  byId("diffViewer").hidden = true;
+  byId("diffModeLabel").hidden = true;
+  byId("editChangeButton").hidden = true;
   byId("deletionNotice").hidden = true;
   byId("visualEditor").closest(".editor-surface").hidden = false;
   byId("previewPane").hidden = true;
@@ -396,13 +514,19 @@ function editorContent() {
     : byId("contentEditor").value;
 }
 
-function openDraft(draft) {
+async function openDraft(draft, forceEditor = false) {
   state.active = {
     draftId: draft.id,
     path: draft.path,
     baseSha: draft.base_sha,
-    content: draft.content
+    content: draft.content,
+    operation: draft.operation
   };
+  if (state.workspaceView === "changes" && !forceEditor) {
+    await showChangeDiff(draft);
+    renderResources();
+    return;
+  }
   state.previewing = false;
   byId("emptyEditor").hidden = true;
   byId("activeEditor").hidden = false;
@@ -414,6 +538,9 @@ function openDraft(draft) {
     ? "删除文件"
     : "删除新增文件";
   byId("saveDraftButton").hidden = draft.operation === "delete";
+  byId("diffViewer").hidden = true;
+  byId("diffModeLabel").hidden = true;
+  byId("editChangeButton").hidden = true;
   if (draft.operation === "delete") {
     destroyVisualEditor();
     byId("visualEditor").closest(".editor-surface").hidden = true;
@@ -429,6 +556,9 @@ function openDraft(draft) {
 }
 
 function showEditorLoading(path) {
+  byId("diffViewer").hidden = true;
+  byId("diffModeLabel").hidden = true;
+  byId("editChangeButton").hidden = true;
   byId("emptyEditor").hidden = false;
   byId("activeEditor").hidden = true;
   byId("emptyEditor").replaceChildren();
@@ -454,6 +584,7 @@ async function loadRepository(force = false) {
     return;
   }
   byId("resourceTree").textContent = "正在读取仓库目录…";
+  if (force) state.remoteContent.clear();
   try {
     const payload = await api("/repository/tree");
     state.repository = payload.items;
@@ -466,7 +597,7 @@ async function loadRepository(force = false) {
 async function openResource(path) {
   const draft = state.drafts.find((item) => item.path === path);
   if (draft) {
-    openDraft(draft);
+    await openDraft(draft);
     return;
   }
   showEditorLoading(path);
@@ -478,8 +609,10 @@ async function openResource(path) {
       draftId: null,
       path: file.path,
       baseSha: file.sha,
-      content: file.content
+      content: file.content,
+      operation: "upsert"
     };
+    state.remoteContent.set(file.path, file.content);
     byId("emptyEditor").hidden = true;
     byId("activeEditor").hidden = false;
     byId("filePath").value = file.path;
@@ -518,6 +651,7 @@ async function saveActiveDraft() {
     state.active.draftId = saved.id;
     state.active.path = saved.path;
     state.active.content = saved.content;
+    state.active.operation = saved.operation;
     feedback(byId("editorFeedback"), "草稿已保存到个人工作区", "success");
     await loadDrafts();
   } catch (error) {
@@ -542,7 +676,7 @@ async function discardDraft(draft, confirmChange = true) {
       byId("activeEditor").hidden = true;
       byId("emptyEditor").hidden = false;
       resetEmptyEditor();
-      if (restoreRemote) {
+      if (restoreRemote && state.workspaceView === "resources") {
         await openResource(draft.path);
       }
     }
@@ -594,7 +728,7 @@ async function markActiveFileDeleted() {
       })
     });
     await loadDrafts();
-    openDraft(deleted);
+    await openDraft(deleted);
   } catch (error) {
     feedback(byId("editorFeedback"), error.message);
   }
@@ -659,6 +793,42 @@ async function logout() {
   }
 }
 
+async function setWorkspaceView(view) {
+  state.workspaceView = view;
+  document.querySelectorAll("[data-workspace-view]").forEach((item) => {
+    item.classList.toggle("is-active", item.dataset.workspaceView === view);
+  });
+  document.querySelectorAll("[data-workspace-pane]").forEach((pane) => {
+    pane.hidden = pane.dataset.workspacePane !== view;
+  });
+  if (!state.active) return;
+  const draft = state.drafts.find((item) => item.path === state.active.path);
+  if (view === "changes") {
+    if (draft) {
+      await showChangeDiff(draft);
+    } else {
+      byId("activeEditor").hidden = true;
+      byId("emptyEditor").hidden = false;
+      byId("emptyEditor").replaceChildren();
+      const title = document.createElement("strong");
+      title.textContent = "选择更改查看源文件差异";
+      byId("emptyEditor").append(title);
+    }
+    return;
+  }
+  if (draft) {
+    await openDraft(draft, true);
+    return;
+  }
+  byId("emptyEditor").hidden = true;
+  byId("activeEditor").hidden = false;
+  byId("filePath").value = state.active.path;
+  byId("discardDraftButton").hidden = true;
+  byId("markDeleteButton").hidden = false;
+  byId("saveDraftButton").hidden = false;
+  showContentEditor(state.active.path, state.active.content);
+}
+
 document.querySelectorAll("[data-auth-tab]").forEach((button) => {
   button.addEventListener("click", () => setAuthTab(button.dataset.authTab));
 });
@@ -719,6 +889,9 @@ byId("saveDraftButton").addEventListener("click", saveActiveDraft);
 byId("discardDraftButton").addEventListener("click", discardActiveDraft);
 byId("markDeleteButton").addEventListener("click", markActiveFileDeleted);
 byId("previewButton").addEventListener("click", togglePreview);
+byId("editChangeButton").addEventListener("click", async () => {
+  await setWorkspaceView("resources");
+});
 byId("newFileButton").addEventListener("click", () => {
   clearFeedback(byId("fileDialogFeedback"));
   byId("fileDialog").showModal();
@@ -743,15 +916,17 @@ byId("githubUnlinkButton").addEventListener("click", async () => {
     feedback(byId("editorFeedback"), error.message);
   }
 });
+byId("githubBindingButton").addEventListener("click", (event) => {
+  const link = event.currentTarget;
+  if (!link.href || link.getAttribute("aria-disabled") === "true") return;
+  event.preventDefault();
+  link.setAttribute("aria-busy", "true");
+  link.textContent = "正在前往 GitHub";
+  window.location.assign(link.href);
+});
 document.querySelectorAll("[data-workspace-view]").forEach((button) => {
-  button.addEventListener("click", () => {
-    const view = button.dataset.workspaceView;
-    document.querySelectorAll("[data-workspace-view]").forEach((item) => {
-      item.classList.toggle("is-active", item === button);
-    });
-    document.querySelectorAll("[data-workspace-pane]").forEach((pane) => {
-      pane.hidden = pane.dataset.workspacePane !== view;
-    });
+  button.addEventListener("click", async () => {
+    await setWorkspaceView(button.dataset.workspaceView);
   });
 });
 
@@ -767,7 +942,8 @@ byId("fileForm").addEventListener("submit", async (event) => {
     draftId: null,
     path: payload.path,
     baseSha: null,
-    content: `# ${payload.title}\n\n`
+    content: `# ${payload.title}\n\n`,
+    operation: "upsert"
   };
   byId("fileDialog").close();
   byId("emptyEditor").hidden = true;
@@ -796,7 +972,7 @@ byId("topicForm").addEventListener("submit", async (event) => {
     byId("topicDialog").close();
     event.currentTarget.reset();
     await loadDrafts();
-    openDraft(result);
+    await openDraft(result);
   } catch (error) {
     feedback(byId("topicDialogFeedback"), error.message);
   }
@@ -828,6 +1004,7 @@ byId("submitForm").addEventListener("submit", async (event) => {
     box.className = "feedback is-visible success";
     state.active = null;
     destroyVisualEditor();
+    byId("diffViewer").hidden = true;
     byId("activeEditor").hidden = true;
     byId("emptyEditor").hidden = false;
     resetEmptyEditor();

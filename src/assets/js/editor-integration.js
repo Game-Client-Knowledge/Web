@@ -94,6 +94,19 @@
     return editorApi + "/auth/github?" + parameters.toString();
   }
 
+  function takeGithubAuthError() {
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get("github_auth_error");
+    if (!code) {
+      return "";
+    }
+    url.searchParams.delete("github_auth_error");
+    window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    return code === "access_denied"
+      ? "GitHub 授权已取消，账号尚未绑定。"
+      : "GitHub 认证失败，请重新尝试。";
+  }
+
   function setAccountTab(name) {
     queryAll("[data-account-tab]").forEach(function (button) {
       button.classList.toggle("is-active", button.dataset.accountTab === name);
@@ -438,7 +451,12 @@
       ? state.session.csrf_token
       : "";
     state.drafts = payload.drafts || [];
+    const githubAuthError = takeGithubAuthError();
     updateAccountView();
+    if (githubAuthError) {
+      openAccount();
+      feedback(query("[data-account-feedback]"), githubAuthError);
+    }
     await applyDraftsToReader(payload.active_draft_html);
     if (
       state.editMode &&
@@ -992,6 +1010,16 @@
       } catch (error) {
         feedback(target, error.message);
       }
+    });
+    query("[data-account-bind-github]").addEventListener("click", function (event) {
+      const link = event.currentTarget;
+      if (!link.href || link.getAttribute("aria-disabled") === "true") {
+        return;
+      }
+      event.preventDefault();
+      link.setAttribute("aria-busy", "true");
+      link.textContent = "正在前往 GitHub";
+      window.location.assign(link.href);
     });
     queryAll("[data-edit-current]").forEach(function (button) {
       button.addEventListener("click", function () {

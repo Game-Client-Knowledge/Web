@@ -887,11 +887,143 @@ a[aria-disabled="true"] {
 
 .toolbar-buttons {
   display: flex;
+  align-items: center;
   gap: 7px;
+}
+
+.diff-mode-label {
+  min-height: 30px;
+  padding: 5px 8px;
+  color: var(--git-modified);
+  background: var(--git-modified-soft);
+  border: 1px solid #d4a72c;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 800;
 }
 
 .editor-surface {
   min-height: 540px;
+}
+
+.diff-viewer {
+  min-height: 540px;
+  background: #ffffff;
+  overflow: auto;
+}
+
+.diff-legend {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  min-height: 40px;
+  padding: 8px 12px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--line);
+  align-items: center;
+  gap: 8px;
+}
+
+.diff-legend span {
+  padding: 2px 7px;
+  border: 1px solid;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.diff-legend [data-status="A"] {
+  color: var(--git-added);
+  background: var(--git-added-soft);
+  border-color: #82c891;
+}
+
+.diff-legend [data-status="M"] {
+  color: var(--git-modified);
+  background: var(--git-modified-soft);
+  border-color: #d4a72c;
+}
+
+.diff-legend [data-status="D"] {
+  color: var(--git-deleted);
+  background: var(--git-deleted-soft);
+  border-color: #ff8182;
+}
+
+.diff-source {
+  min-width: max-content;
+  padding-bottom: 18px;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.diff-line {
+  display: grid;
+  min-height: 23px;
+  grid-template-columns: 46px 46px 24px minmax(520px, 1fr);
+}
+
+.diff-line > span {
+  padding: 2px 7px;
+  color: var(--ink-faint);
+  background: #f6f8fa;
+  border-right: 1px solid var(--line);
+  text-align: right;
+  user-select: none;
+}
+
+.diff-line > span:nth-child(3) {
+  padding-right: 5px;
+  padding-left: 5px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.diff-line code {
+  display: block;
+  min-width: 0;
+  padding: 2px 10px;
+  color: var(--ink);
+  white-space: pre;
+}
+
+.diff-line.is-added,
+.diff-line.is-added > span,
+.diff-line.is-added code {
+  background: var(--git-added-soft);
+}
+
+.diff-line.is-added > span:nth-child(3) {
+  color: var(--git-added);
+}
+
+.diff-line.is-modified,
+.diff-line.is-modified > span,
+.diff-line.is-modified code {
+  background: var(--git-modified-soft);
+}
+
+.diff-line.is-modified > span:nth-child(3) {
+  color: var(--git-modified);
+}
+
+.diff-line.is-removed,
+.diff-line.is-removed > span,
+.diff-line.is-removed code {
+  background: var(--git-deleted-soft);
+}
+
+.diff-line.is-removed > span:nth-child(3) {
+  color: var(--git-deleted);
+}
+
+.diff-empty {
+  margin: 0;
+  padding: 48px 20px;
+  color: var(--ink-faint);
+  text-align: center;
 }
 
 .deletion-notice {
@@ -1303,6 +1435,11 @@ dialog::backdrop {
 
   .toolbar-buttons {
     justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .diff-line {
+    grid-template-columns: 38px 38px 22px minmax(420px, 1fr);
   }
 
   .settings-form {

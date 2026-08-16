@@ -11,7 +11,7 @@ from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.github import SubmissionResult
+from app.github import GitHubError, SubmissionResult
 from app.main import create_app
 
 TEST_BOOTSTRAP_PASSWORD = "test-bootstrap-password"
@@ -494,6 +494,71 @@ def test_github_oauth_state_is_bound_to_browser(
     assert session["user"]["email_verified"] is True
 
 
+def test_github_oauth_state_survives_exchange_transport_failure(
+    oauth_client: TestClient,
+) -> None:
+    start = oauth_client.get("/api/auth/github", follow_redirects=False)
+    state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
+    github = oauth_client.app.state.github
+    github.exchange_oauth_code = AsyncMock(
+        side_effect=GitHubError("GitHub OAuth unavailable", 503)
+    )
+
+    failed = oauth_client.get(
+        "/api/auth/github/callback",
+        params={"code": "retryable-code", "state": state},
+        follow_redirects=False,
+    )
+    assert failed.status_code == 503
+
+    github.exchange_oauth_code = AsyncMock(return_value="github-token")
+    github.user_profile = AsyncMock(
+        return_value={"id": 4321, "login": "retry-user"}
+    )
+    github.user_emails = AsyncMock(
+        return_value=[
+            {
+                "email": "retry@example.test",
+                "verified": True,
+                "primary": True,
+            }
+        ]
+    )
+    retried = oauth_client.get(
+        "/api/auth/github/callback",
+        params={"code": "retryable-code", "state": state},
+        follow_redirects=False,
+    )
+    assert retried.status_code == 307
+
+
+def test_github_oauth_denial_returns_to_reader(
+    oauth_client: TestClient,
+) -> None:
+    start = oauth_client.get(
+        "/api/auth/github",
+        params={"return_to": "/knowledge/cpp/"},
+        follow_redirects=False,
+    )
+    state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
+    denied = oauth_client.get(
+        "/api/auth/github/callback",
+        params={"error": "access_denied", "state": state},
+        follow_redirects=False,
+    )
+    assert denied.status_code == 307
+    assert denied.headers["location"] == (
+        "https://example.test/knowledge/cpp/?github_auth_error=access_denied"
+    )
+
+    replayed = oauth_client.get(
+        "/api/auth/github/callback",
+        params={"error": "access_denied", "state": state},
+        follow_redirects=False,
+    )
+    assert replayed.status_code == 400
+
+
 def test_local_account_can_explicitly_bind_and_unlink_github(
     oauth_client: TestClient,
 ) -> None:
@@ -544,6 +609,41 @@ def test_local_account_can_explicitly_bind_and_unlink_github(
     assert session["user"]["github_login"] == "bound-user"
     assert session["user"]["github_email"] == "github@example.test"
     assert session["user"]["github_verified"] is True
+
+    draft = oauth_client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": "knowledge/cpp/bound-user.md",
+            "content": "# Bound user\n",
+            "operation": "upsert",
+        },
+    )
+    assert draft.status_code == 200
+    github.main_reference = AsyncMock(
+        return_value={"object": {"sha": "main-commit-sha"}}
+    )
+    github.repository_tree = AsyncMock(return_value=[])
+    github.submit = AsyncMock(
+        return_value=SubmissionResult(
+            branch="web/local-user/bound-submit",
+            commit_sha="commit-sha",
+            pr_number=44,
+            pr_url="https://github.example/pr/44",
+        )
+    )
+    submitted = oauth_client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "custom_head": "bound-submit",
+            "title": "docs: bound submit",
+            "description": "",
+        },
+    )
+    assert submitted.status_code == 200, submitted.text
+    assert github.submit.await_args.kwargs["token"] == "github-token"
+    assert github.submit.await_args.kwargs["author"] is None
 
     unlinked = oauth_client.post(
         "/api/auth/github/unlink",

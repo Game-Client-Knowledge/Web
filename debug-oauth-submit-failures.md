@@ -33,8 +33,49 @@
 
 ## Log Evidence
 
-Pending pre-fix instrumentation run.
+- Line 2: callback contained `code,state`, no GitHub `error`, and had the
+  state cookie.
+- Line 3: the first callback found a matching state and cookie.
+- Line 5: GitHub token exchange responded; the controlled invalid code was
+  classified as `bad_verification_code`.
+- Lines 6-7: retrying the same callback retained the matching cookie but the
+  state had already been deleted.
+- Production access log: repeated profile binding requests reached
+  `/api/auth/github?mode=bind` and returned 307 redirects.
+- Production submission record 1: GitHub `POST .../git/blobs` returned 403
+  `Resource not accessible by personal access token`.
+- Permission probe: the write endpoint returned 403 and advertised
+  `contents=write` as the required permission.
 
 ## Verification Conclusion
 
-Pending.
+| ID | Status | Conclusion |
+|----|--------|------------|
+| A | Confirmed | State deletion occurs before token exchange succeeds |
+| B | Rejected | Binding navigation reaches the server and GitHub redirect |
+| C | Rejected / Secondary issue | GitHub approved the callback; an earlier exchange also hit an intermittent connect timeout |
+| D | Confirmed | The generic 502 wraps a concrete GitHub permission failure |
+| E | Confirmed | The configured fine-grained Bot PAT lacks Contents write permission |
+
+## Minimal Fix
+
+- Consume OAuth state only after token exchange succeeds.
+- Preserve state across transient GitHub transport failures.
+- Redirect explicit GitHub denial back to the initiating UI with readable feedback.
+- Map GitHub transport failures to 503 and permission failures to 403.
+- Prefer a bound user's GitHub token even when the current session began locally.
+- Keep Bot submission for unbound local users; the external Bot PAT still requires
+  `Contents: Read and write` and `Pull requests: Read and write`.
+
+The existing `join-code` fine-grained PAT was updated to the least-privilege
+configuration:
+
+- Repository: `Game-Client-Knowledge/Game-Client-Knowledge` only.
+- Contents: Read and write.
+- Pull requests: Read and write.
+
+The same invalid-payload permission probe changed from 403 to 422, proving that
+GitHub passed authorization and reached payload validation without creating an
+object.
+
+Application post-fix verification pending deployment.

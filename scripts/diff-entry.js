@@ -1,0 +1,1 @@
+window.JsDiff = require("diff");

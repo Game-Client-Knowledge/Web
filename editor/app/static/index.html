@@ -172,7 +172,7 @@
             <div class="explorer-heading">
               <div>
                 <strong>未提交更改</strong>
-                <span>点击文件查看并继续编辑</span>
+                <span>点击文件查看源文件行级差异</span>
               </div>
             </div>
             <div id="changeList" class="change-list change-list-sidebar"></div>
@@ -192,6 +192,8 @@
                 <input id="filePath" maxlength="240">
               </div>
               <div class="toolbar-buttons">
+                <span id="diffModeLabel" class="diff-mode-label" hidden>源文件差异</span>
+                <button id="editChangeButton" class="secondary-button" type="button" hidden>编辑源文件</button>
                 <button id="previewButton" class="secondary-button" type="button">预览</button>
                 <button id="discardDraftButton" class="secondary-button" type="button">撤销更改</button>
                 <button id="markDeleteButton" class="danger-button" type="button">删除文件</button>
@@ -209,6 +211,14 @@
               <div id="visualEditor" hidden></div>
               <textarea id="contentEditor" spellcheck="false" aria-label="Markdown 内容"></textarea>
               <div id="previewPane" class="preview-pane prose-preview" hidden></div>
+            </div>
+            <div id="diffViewer" class="diff-viewer" hidden>
+              <div class="diff-legend" aria-label="差异颜色说明">
+                <span data-status="A">新增</span>
+                <span data-status="M">修改</span>
+                <span data-status="D">删除</span>
+              </div>
+              <div id="diffSource" class="diff-source" aria-label="源文件差异"></div>
             </div>
             <div id="editorFeedback" class="feedback" role="status" aria-live="polite"></div>
           </div>
@@ -322,6 +332,7 @@
 
   <script src="/assets/vendor/lucide.js"></script>
   <script src="/assets/vendor/toastui-editor.js?v=3.2.2-gck1"></script>
+  <script src="/assets/vendor/diff.js?v=8.0.4"></script>
   <script src="assets/editor.js"></script>
 </body>
 </html>

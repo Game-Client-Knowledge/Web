@@ -258,6 +258,9 @@ module.exports = function configureEleventy(eleventyConfig) {
     ".cache/vendor/toastui-editor.js": "assets/vendor/toastui-editor.js"
   });
   eleventyConfig.addPassthroughCopy({
+    ".cache/vendor/diff.js": "assets/vendor/diff.js"
+  });
+  eleventyConfig.addPassthroughCopy({
     "node_modules/@toast-ui/editor/dist/toastui-editor.css":
       "assets/vendor/toastui-editor.css"
   });

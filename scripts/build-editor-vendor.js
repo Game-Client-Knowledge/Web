@@ -17,3 +17,14 @@ esbuild.buildSync({
   target: ["es2020"],
   legalComments: "none"
 });
+
+esbuild.buildSync({
+  entryPoints: [path.join(__dirname, "diff-entry.js")],
+  outfile: path.join(outputDirectory, "diff.js"),
+  bundle: true,
+  minify: true,
+  format: "iife",
+  platform: "browser",
+  target: ["es2020"],
+  legalComments: "none"
+});

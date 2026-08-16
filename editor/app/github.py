@@ -54,26 +54,46 @@ class GitHubClient:
         expected: tuple[int, ...] = (200,),
         **kwargs: Any,
     ) -> httpx.Response:
-        async with httpx.AsyncClient(
-            base_url="https://api.github.com",
-            timeout=httpx.Timeout(25.0),
-            follow_redirects=True,
-            headers=self._headers(token),
-        ) as client:
-            response = await client.request(method, path, **kwargs)
+        try:
+            async with httpx.AsyncClient(
+                base_url="https://api.github.com",
+                timeout=httpx.Timeout(25.0),
+                follow_redirects=True,
+                headers=self._headers(token),
+            ) as client:
+                response = await client.request(method, path, **kwargs)
+        except httpx.RequestError as exc:
+            raise GitHubError(
+                "GitHub API 暂时无法连接，请稍后重试",
+                status_code=503,
+            ) from exc
 
         # #region debug-point E:github-response
-        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'E','location':'github.py:_request','msg':'[DEBUG] GitHub API response','data':{'method':method,'path':path,'status':response.status_code,'oauthScopes':response.headers.get('X-OAuth-Scopes'),'acceptedScopes':response.headers.get('X-Accepted-OAuth-Scopes'),'rateRemaining':response.headers.get('X-RateLimit-Remaining')},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'post-fix','hypothesisId':'E','location':'github.py:_request','msg':'[DEBUG] GitHub API response','data':{'method':method,'path':path,'status':response.status_code,'oauthScopes':response.headers.get('X-OAuth-Scopes'),'acceptedScopes':response.headers.get('X-Accepted-OAuth-Scopes'),'rateRemaining':response.headers.get('X-RateLimit-Remaining')},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
         # #endregion
         if response.status_code not in expected:
             try:
                 detail = response.json().get("message", response.text)
             except Exception:
                 detail = response.text
+            if (
+                response.status_code == 403
+                and "personal access token" in str(detail).lower()
+            ):
+                detail = (
+                    "提交 token 缺少仓库写权限；请授予 "
+                    "Contents: Read and write 与 Pull requests: Read and write"
+                )
             raise GitHubError(
                 f"GitHub API {method} {path} failed "
                 f"(HTTP {response.status_code}): {detail}",
-                status_code=409 if response.status_code in {409, 422} else 502,
+                status_code=(
+                    409
+                    if response.status_code in {409, 422}
+                    else response.status_code
+                    if response.status_code in {401, 403, 404, 429}
+                    else 502
+                ),
             )
         return response
 
@@ -145,7 +165,7 @@ class GitHubClient:
         code_verifier: str,
     ) -> str:
         # #region debug-point C:oauth-exchange-start
-        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'C','location':'github.py:exchange_oauth_code','msg':'[DEBUG] OAuth token exchange started','data':{'baseUrl':self.settings.base_url},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'post-fix','hypothesisId':'C','location':'github.py:exchange_oauth_code','msg':'[DEBUG] OAuth token exchange started','data':{'baseUrl':self.settings.base_url},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
         # #endregion
         try:
             async with httpx.AsyncClient(
@@ -169,11 +189,16 @@ class GitHubClient:
                 )
         except Exception as exc:
             # #region debug-point C:oauth-exchange-error
-            exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'C','location':'github.py:exchange_oauth_code-except','msg':'[DEBUG] OAuth token exchange transport error','data':{'errorType':type(exc).__name__,'error':str(exc)[:300]},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+            exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'post-fix','hypothesisId':'C','location':'github.py:exchange_oauth_code-except','msg':'[DEBUG] OAuth token exchange transport error','data':{'errorType':type(exc).__name__,'error':str(exc)[:300]},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
             # #endregion
+            if isinstance(exc, httpx.RequestError):
+                raise GitHubError(
+                    "无法连接 GitHub 授权服务，请重试",
+                    status_code=503,
+                ) from exc
             raise
         # #region debug-point C:oauth-exchange-response
-        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'C','location':'github.py:exchange_oauth_code-response','msg':'[DEBUG] OAuth token exchange response','data':{'status':response.status_code,'hasAccessToken':bool(response.json().get('access_token')),'error':response.json().get('error')},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'post-fix','hypothesisId':'C','location':'github.py:exchange_oauth_code-response','msg':'[DEBUG] OAuth token exchange response','data':{'status':response.status_code,'hasAccessToken':bool(response.json().get('access_token')),'error':response.json().get('error')},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
         # #endregion
         payload = response.json()
         token = payload.get("access_token")

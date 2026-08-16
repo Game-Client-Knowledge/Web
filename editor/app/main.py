@@ -301,7 +301,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def security_middleware(request: Request, call_next):
         if request.url.path.endswith("/api/auth/github/callback"):
             # #region debug-point A:callback-request
-            exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'A','location':'main.py:security_middleware','msg':'[DEBUG] OAuth callback request','data':{'queryKeys':sorted(request.query_params.keys()),'hasError':bool(request.query_params.get('error')),'error':request.query_params.get('error'),'hasStateCookie':bool(request.cookies.get(OAUTH_STATE_COOKIE))},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+            exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'post-fix','hypothesisId':'A','location':'main.py:security_middleware','msg':'[DEBUG] OAuth callback request','data':{'queryKeys':sorted(request.query_params.keys()),'hasError':bool(request.query_params.get('error')),'error':request.query_params.get('error'),'hasStateCookie':bool(request.cookies.get(OAUTH_STATE_COOKIE))},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
             # #endregion
         try:
             content_length = int(
@@ -746,7 +746,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return_path = safe_return_path(return_to)
         # #region debug-point B:oauth-start
-        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'B','location':'main.py:github_login','msg':'[DEBUG] OAuth redirect created','data':{'mode':mode,'bindingUserId':binding_user['id'] if binding_user else None,'returnPath':return_path,'hasSessionCookie':bool(request.cookies.get(SESSION_COOKIE))},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'post-fix','hypothesisId':'B','location':'main.py:github_login','msg':'[DEBUG] OAuth redirect created','data':{'mode':mode,'bindingUserId':binding_user['id'] if binding_user else None,'returnPath':return_path,'hasSessionCookie':bool(request.cookies.get(SESSION_COOKIE))},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
         # #endregion
         state = random_token()
         verifier = random_token()
@@ -804,9 +804,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/auth/github/callback")
     async def github_callback(
         request: Request,
-        code: str,
-        state: str,
+        code: str | None = None,
+        state: str | None = None,
+        error: str | None = None,
     ):
+        if not state:
+            raise HTTPException(status_code=400, detail="OAuth state 缺失")
         cookie_state = request.cookies.get(OAUTH_STATE_COOKIE)
         if not cookie_state or not secrets.compare_digest(
             cookie_state,
@@ -825,15 +828,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 """,
                 (token_hash(state), now),
             ).fetchone()
-            connection.execute(
-                "DELETE FROM oauth_states WHERE state_hash = ?",
-                (token_hash(state),),
-            )
         # #region debug-point A:state-lookup
-        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'A','location':'main.py:github_callback','msg':'[DEBUG] OAuth state lookup','data':{'stateFound':bool(oauth),'purpose':oauth['purpose'] if oauth else None,'bindingUserId':oauth['user_id'] if oauth else None,'cookieMatches':bool(cookie_state and secrets.compare_digest(cookie_state,state))},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'post-fix','hypothesisId':'A','location':'main.py:github_callback','msg':'[DEBUG] OAuth state lookup','data':{'stateFound':bool(oauth),'purpose':oauth['purpose'] if oauth else None,'bindingUserId':oauth['user_id'] if oauth else None,'cookieMatches':bool(cookie_state and secrets.compare_digest(cookie_state,state))},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
         # #endregion
         if not oauth:
             raise HTTPException(status_code=400, detail="OAuth state 已失效")
+        if error:
+            with db.connect() as connection:
+                connection.execute(
+                    "DELETE FROM oauth_states WHERE state_hash = ?",
+                    (token_hash(state),),
+                )
+            target = browser_return_url(oauth["return_to"])
+            separator = "&" if "?" in target else "?"
+            response = RedirectResponse(
+                f"{target}{separator}{urlencode({'github_auth_error': error})}"
+            )
+            response.delete_cookie(
+                OAUTH_STATE_COOKIE,
+                path=settings.cookie_path,
+            )
+            return response
+        if not code:
+            raise HTTPException(status_code=400, detail="OAuth code 缺失")
         binding_user = None
         if oauth["purpose"] == "bind":
             binding_user = read_session(request)
@@ -848,6 +865,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
 
         token = await github.exchange_oauth_code(code, oauth["code_verifier"])
+        with db.connect() as connection:
+            connection.execute(
+                "DELETE FROM oauth_states WHERE state_hash = ?",
+                (token_hash(state),),
+            )
         profile = await github.user_profile(token)
         emails = await github.user_emails(token)
         verified = [item for item in emails if item.get("verified")]
@@ -1304,7 +1326,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not drafts:
             raise HTTPException(status_code=422, detail="没有可提交的草稿")
 
-        if user["auth_provider"] == "github":
+        encrypted = user["github_token_encrypted"]
+        if user["github_verified"] and encrypted:
+            token_source = "github-user"
+            try:
+                submit_token = cipher.decrypt(encrypted)
+            except RuntimeError as exc:
+                raise HTTPException(
+                    status_code=403,
+                    detail="GitHub 登录令牌已失效，请重新绑定",
+                ) from exc
+            author = None
+            actor = f"@{user['github_login']} (GitHub)"
+        elif user["auth_provider"] == "github":
             encrypted = user["github_token_encrypted"]
             if not encrypted:
                 raise HTTPException(
@@ -1318,6 +1352,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status_code=403,
                     detail="GitHub 登录令牌已失效，请重新登录",
                 ) from exc
+            token_source = "github-user"
             author = None
             actor = f"@{user['github_login']} (GitHub)"
         else:
@@ -1326,6 +1361,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status_code=503,
                     detail="服务器提交 Bot 尚未配置",
                 )
+            token_source = "bot"
             submit_token = settings.github_bot_token
             author_email = (
                 user["email"]
@@ -1346,7 +1382,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         # #region debug-point D:submit-start
-        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'D','location':'main.py:submit','msg':'[DEBUG] Submission started','data':{'userId':user['id'],'authProvider':user['auth_provider'],'tokenSource':'github-user' if user['auth_provider']=='github' else 'bot','draftCount':len(drafts),'branch':branch},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'post-fix','hypothesisId':'D','location':'main.py:submit','msg':'[DEBUG] Submission started','data':{'userId':user['id'],'authProvider':user['auth_provider'],'tokenSource':token_source,'draftCount':len(drafts),'branch':branch},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
         # #endregion
         main_ref = await github.main_reference(submit_token)
         base_commit_sha = str(main_ref["object"]["sha"])
@@ -1448,7 +1484,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except GitHubError as exc:
             # #region debug-point D:submit-failed
-            exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'D','location':'main.py:submit-except','msg':'[DEBUG] Submission failed','data':{'statusCode':exc.status_code,'error':str(exc)[:500],'branch':branch},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+            exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'post-fix','hypothesisId':'D','location':'main.py:submit-except','msg':'[DEBUG] Submission failed','data':{'statusCode':exc.status_code,'error':str(exc)[:500],'branch':branch},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
             # #endregion
             with db.connect() as connection:
                 connection.execute(
