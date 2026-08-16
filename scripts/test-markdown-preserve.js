@@ -1,7 +1,10 @@
 const assert = require("node:assert/strict");
 
 global.JsDiff = require("diff");
-const { preserveSourceFormatting } = require(
+const {
+  normalizeEditorHeadingEscapes,
+  preserveSourceFormatting
+} = require(
   "../src/assets/js/markdown-preserve.js"
 );
 
@@ -63,6 +66,24 @@ assert.equal(
   ),
   original.replace("- 内存分配器\n", ""),
   "deleting one visual line must preserve untouched formatting"
+);
+
+assert.equal(
+  normalizeEditorHeadingEscapes(
+    "## 1\\. 原理\n\n1\\. 正文保持原样\n\n```md\n## 2\\. code\n```\n"
+  ),
+  "## 1. 原理\n\n1\\. 正文保持原样\n\n```md\n## 2\\. code\n```\n",
+  "numeric escapes must only be normalized at heading starts"
+);
+
+assert.equal(
+  preserveSourceFormatting(
+    "## 1.xxx\n\n正文\n",
+    "## 1\\.xxx\n\n正文\n",
+    "## 1\\.yyy\n\n正文\n"
+  ),
+  "## 1.yyy\n\n正文\n",
+  "editing a numbered heading must not persist the editor escape"
 );
 
 process.stdout.write("Markdown preservation checks passed\n");

@@ -40,6 +40,31 @@
     return groups;
   }
 
+  function normalizeEditorHeadingEscapes(source) {
+    let fence = "";
+    return source
+      .split("\n")
+      .map(function (line) {
+        const trimmed = line.trimStart();
+        if (fence) {
+          if (trimmed.startsWith(fence)) {
+            fence = "";
+          }
+          return line;
+        }
+        const opening = trimmed.match(/^(`{3,}|~{3,})/);
+        if (opening) {
+          fence = opening[1];
+          return line;
+        }
+        return line.replace(
+          /^(#{1,6}[ \t]+\d+)\\\.(?=\S|[ \t]|$)/,
+          "$1."
+        );
+      })
+      .join("\n");
+  }
+
   function canonicalBoundaries(originalLines, canonicalLines) {
     const boundaries = new Array(canonicalLines.length + 1);
     const parts = diff.diffArrays(originalLines, canonicalLines);
@@ -106,9 +131,14 @@
       return canonical === edited ? original : edited;
     }
 
+    const normalizedCanonical = normalizeEditorHeadingEscapes(canonical);
+    const normalizedEdited = normalizeEditorHeadingEscapes(edited);
+    if (normalizedCanonical === normalizedEdited) {
+      return original;
+    }
     const originalLines = original.split("\n");
-    const canonicalLines = canonical.split("\n");
-    const editedLines = edited.split("\n");
+    const canonicalLines = normalizedCanonical.split("\n");
+    const editedLines = normalizedEdited.split("\n");
     const boundaries = canonicalBoundaries(originalLines, canonicalLines);
     const groups = changedGroups(
       diff.diffArrays(canonicalLines, editedLines)
@@ -124,7 +154,10 @@
     return result.join("\n");
   }
 
-  const api = { preserveSourceFormatting };
+  const api = {
+    normalizeEditorHeadingEscapes,
+    preserveSourceFormatting
+  };
   root.GCKMarkdown = api;
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api;
