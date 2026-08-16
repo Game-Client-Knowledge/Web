@@ -1,0 +1,164 @@
+---
+layout: layouts/base.njk
+title: 代码阅读器
+description: 客户端运行的项目级源码阅读、搜索与符号导航工作区
+pageKind: code-workspace
+activeModule: code
+permalink: code/workspace/index.html
+---
+
+<div class="code-workspace" data-code-workspace>
+  <header class="code-workspace-toolbar">
+    <div class="code-project-identity">
+      <a href="{{ '/code/' | withBase }}" aria-label="返回代码项目">
+        <i data-lucide="panels-top-left" aria-hidden="true"></i>
+      </a>
+      <div>
+        <strong data-code-project-title>正在载入代码项目</strong>
+        <span data-code-project-meta></span>
+      </div>
+    </div>
+    <label class="code-global-search">
+      <i data-lucide="search" aria-hidden="true"></i>
+      <input
+        type="search"
+        placeholder="在项目中搜索关键词"
+        aria-label="在项目中搜索关键词"
+        data-code-global-search
+      >
+      <kbd>⌘⇧F</kbd>
+    </label>
+    <div class="code-toolbar-actions">
+      <button
+        class="icon-button"
+        type="button"
+        data-code-toggle-explorer
+        aria-label="切换文件树"
+        title="切换文件树"
+      >
+        <i data-lucide="panel-left" aria-hidden="true"></i>
+      </button>
+      <button
+        class="icon-button"
+        type="button"
+        data-code-toggle-inspector
+        aria-label="切换代码信息"
+        title="切换代码信息"
+      >
+        <i data-lucide="panel-right" aria-hidden="true"></i>
+      </button>
+      <button
+        class="icon-button"
+        type="button"
+        data-code-copy-link
+        aria-label="复制当前位置"
+        title="复制当前位置"
+      >
+        <i data-lucide="link" aria-hidden="true"></i>
+      </button>
+      <a
+        class="icon-button"
+        href="{{ site.repositoryUrl }}"
+        data-code-repository-link
+        aria-label="在 GitHub 查看"
+        title="在 GitHub 查看"
+      >
+        <i data-lucide="github" aria-hidden="true"></i>
+      </a>
+    </div>
+  </header>
+
+  <div class="code-workspace-main">
+    <aside class="code-explorer" data-code-explorer>
+      <header>
+        <strong>EXPLORER</strong>
+        <span data-code-file-count></span>
+      </header>
+      <label class="code-file-filter">
+        <i data-lucide="list-filter" aria-hidden="true"></i>
+        <input
+          type="search"
+          placeholder="快速打开文件"
+          aria-label="快速打开文件"
+          data-code-file-filter
+        >
+        <kbd>⌘P</kbd>
+      </label>
+      <nav class="code-file-tree" aria-label="项目文件" data-code-file-tree></nav>
+      <section class="code-reading-order" data-code-reading-order>
+        <header>推荐阅读</header>
+        <ol></ol>
+      </section>
+    </aside>
+
+    <main class="code-editor-area">
+      <nav class="code-tabs" aria-label="打开的文件" data-code-tabs></nav>
+      <div class="code-breadcrumbs" data-code-breadcrumbs></div>
+      <section class="code-editor-empty" data-code-empty>
+        <i data-lucide="file-code-2" aria-hidden="true"></i>
+        <strong>选择文件开始阅读</strong>
+        <span>支持项目搜索、符号跳转和引用查找。</span>
+      </section>
+      <section class="code-source-panel" data-code-source-panel hidden>
+        <div class="code-source-scroll" data-code-source-scroll>
+          <pre><code data-code-source></code></pre>
+        </div>
+      </section>
+    </main>
+
+    <aside class="code-inspector" data-code-inspector>
+      <div class="code-inspector-tabs" role="tablist" aria-label="代码信息">
+        <button class="is-active" type="button" data-code-inspector-tab="outline">
+          大纲
+        </button>
+        <button type="button" data-code-inspector-tab="search">
+          搜索
+          <span data-code-search-count></span>
+        </button>
+      </div>
+      <section data-code-inspector-pane="outline">
+        <div class="code-outline" data-code-outline></div>
+      </section>
+      <section data-code-inspector-pane="search" hidden>
+        <div class="code-search-summary" data-code-search-summary>
+          输入关键词搜索当前项目
+        </div>
+        <div class="code-search-results" data-code-search-results></div>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="code-statusbar">
+    <span data-code-index-status>准备客户端索引</span>
+    <span data-code-cursor-status>Ln 1, Col 1</span>
+    <span data-code-language>Text</span>
+    <span>UTF-8</span>
+  </footer>
+
+  <dialog class="code-quick-pick" data-code-quick-pick>
+    <header>
+      <strong data-code-quick-pick-title>选择定义</strong>
+      <button
+        class="icon-button"
+        type="button"
+        data-code-close-quick-pick
+        aria-label="关闭"
+      >
+        <i data-lucide="x" aria-hidden="true"></i>
+      </button>
+    </header>
+    <div data-code-quick-pick-results></div>
+  </dialog>
+</div>
+
+<script>
+  window.GCK_CODE_CONFIG = {
+    indexUrl: {{ ('/code-projects/index.json?v=' ~ catalog.repository.commit) | withBase | json | safe }},
+    rawBase: {{ '/raw/' | withBase | json | safe }},
+    workerUrl: {{ '/assets/js/code-worker.js' | withBase | json | safe }},
+    treeSitterUrl: {{ '/assets/vendor/tree-sitter.js' | withBase | json | safe }},
+    treeSitterWasmUrl: {{ '/assets/vendor/tree-sitter.wasm' | withBase | json | safe }},
+    grammarBase: {{ '/assets/vendor/tree-sitter-' | withBase | json | safe }},
+    repositoryUrl: {{ site.repositoryUrl | json | safe }}
+  };
+</script>

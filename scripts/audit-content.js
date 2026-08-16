@@ -96,6 +96,7 @@ function validateMarkdown(file) {
     if (
       !href ||
       href.startsWith("#") ||
+      href.startsWith("/") ||
       /^(?:[a-z]+:)?\/\//i.test(href) ||
       /^(mailto|tel):/i.test(href)
     ) {
@@ -113,7 +114,12 @@ function validateMarkdown(file) {
   }
 }
 
-for (const requiredDirectory of ["knowledge", "interviews", "examples"]) {
+for (const requiredDirectory of [
+  "knowledge",
+  "interviews",
+  "examples",
+  "code"
+]) {
   const directory = path.join(root, requiredDirectory);
   if (!fs.existsSync(directory)) {
     errors.push(`缺少内容目录：${requiredDirectory}/`);

@@ -28,7 +28,13 @@ eleventyComputed:
         <i data-lucide="{{ module.icon }}" aria-hidden="true"></i>
       </span>
       <div>
-        <p class="eyebrow">{{ module.documentCount }} 篇内容{% if module.codeCount %} · {{ module.codeCount }} 个源码文件{% endif %}</p>
+        <p class="eyebrow">
+          {% if module.key == "code" %}
+            {{ catalog.codeProjects | length }} 个代码工程
+          {% else %}
+            {{ module.documentCount }} 篇内容{% if module.codeCount %} · {{ module.codeCount }} 个源码文件{% endif %}
+          {% endif %}
+        </p>
         <h1>{{ module.title }}</h1>
         <p>{{ module.description }}</p>
       </div>
@@ -78,6 +84,39 @@ eleventyComputed:
     {% endif %}
   </div>
 
+  {% if module.key == "code" %}
+    <section class="code-project-directory" aria-labelledby="code-project-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Client-side code intelligence</p>
+          <h2 id="code-project-title">代码工程</h2>
+        </div>
+        <span>浏览器内搜索与符号解析</span>
+      </div>
+      <div class="code-project-grid">
+        {% for project in catalog.codeProjects %}
+          <article class="code-project-card">
+            <header>
+              <span class="code-project-language">{{ project.language }}</span>
+              <span>{{ project.fileCount }} files · {{ project.lineCount }} lines</span>
+            </header>
+            <h3>{{ project.title }}</h3>
+            <p>{{ project.description }}</p>
+            <dl>
+              <div><dt>入口</dt><dd>{{ project.entry }}</dd></div>
+              <div><dt>解析器</dt><dd>{{ project.parsers | join(", ") }}</dd></div>
+            </dl>
+            <a class="primary-button" href="{{ project.workspaceRoute | withBase }}">
+              <i data-lucide="panels-top-left" aria-hidden="true"></i>
+              打开代码工作区
+            </a>
+          </article>
+        {% else %}
+          <p class="empty-state">暂无符合规范的代码工程。</p>
+        {% endfor %}
+      </div>
+    </section>
+  {% else %}
   <section class="module-directory" aria-labelledby="{{ module.key }}-directory">
     <div class="section-heading">
       <div>
@@ -151,4 +190,5 @@ eleventyComputed:
       {% endfor %}
     </div>
   </section>
+  {% endif %}
 </div>

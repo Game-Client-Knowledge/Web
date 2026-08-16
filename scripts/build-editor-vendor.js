@@ -28,3 +28,14 @@ esbuild.buildSync({
   target: ["es2020"],
   legalComments: "none"
 });
+
+esbuild.buildSync({
+  entryPoints: [path.join(__dirname, "code-reader-vendor-entry.js")],
+  outfile: path.join(outputDirectory, "code-reader-vendor.js"),
+  bundle: true,
+  minify: true,
+  format: "iife",
+  platform: "browser",
+  target: ["es2020"],
+  legalComments: "none"
+});

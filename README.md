@@ -39,12 +39,13 @@ The site reads `../Game-Client-Knowledge` automatically. Use
 
 ## Content contract
 
-The generator recognizes three content roots:
+The generator recognizes four content roots:
 
 ```text
 knowledge/     # interview fundamentals and technical topics
 interviews/    # company, season, and position interview records
 examples/      # runnable examples and source files
+code/          # complete projects with client-side IDE reading
 ```
 
 Navigation is inferred from folders and Markdown headings. Adding a topic requires
@@ -57,3 +58,4 @@ no website code or manifest change.
 - [Build and deployment operations](./docs/operations.md)
 - [Join page](./docs/join-page.md)
 - [Web editing and GitHub contribution design](./docs/web-editing-and-contribution.md)
+- [Code reading workspace](./docs/code-reading-workspace.md)

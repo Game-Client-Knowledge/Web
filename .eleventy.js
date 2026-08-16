@@ -243,9 +243,28 @@ module.exports = function configureEleventy(eleventyConfig) {
     result[module.key] = true;
     return result;
   }, {}))) {
-    eleventyConfig.addPassthroughCopy({
-      [path.join(contentRoot, moduleKey)]: `raw/${moduleKey}`
-    });
+    if (moduleKey === "code") {
+      const publishedCodeFiles = new Set([
+        ...catalog.modules
+          .filter((module) => module.key === "code")
+          .map((module) => module.sourceRelative),
+        ...catalog.documents
+          .filter((document) => document.moduleKey === "code")
+          .map((document) => document.sourceRelative),
+        ...catalog.codeProjects.flatMap((project) =>
+          project.files.map((file) => file.sourcePath)
+        )
+      ]);
+      for (const relative of publishedCodeFiles) {
+        eleventyConfig.addPassthroughCopy({
+          [path.join(contentRoot, relative)]: `raw/${relative}`
+        });
+      }
+    } else {
+      eleventyConfig.addPassthroughCopy({
+        [path.join(contentRoot, moduleKey)]: `raw/${moduleKey}`
+      });
+    }
     eleventyConfig.addWatchTarget(path.join(contentRoot, moduleKey));
   }
   eleventyConfig.addPassthroughCopy({
@@ -259,6 +278,26 @@ module.exports = function configureEleventy(eleventyConfig) {
   });
   eleventyConfig.addPassthroughCopy({
     ".cache/vendor/diff.js": "assets/vendor/diff.js"
+  });
+  eleventyConfig.addPassthroughCopy({
+    ".cache/vendor/code-reader-vendor.js":
+      "assets/vendor/code-reader-vendor.js"
+  });
+  eleventyConfig.addPassthroughCopy({
+    "node_modules/web-tree-sitter/tree-sitter.js":
+      "assets/vendor/tree-sitter.js"
+  });
+  eleventyConfig.addPassthroughCopy({
+    "node_modules/web-tree-sitter/tree-sitter.wasm":
+      "assets/vendor/tree-sitter.wasm"
+  });
+  eleventyConfig.addPassthroughCopy({
+    "node_modules/tree-sitter-wasms/out/tree-sitter-c_sharp.wasm":
+      "assets/vendor/tree-sitter-c_sharp.wasm"
+  });
+  eleventyConfig.addPassthroughCopy({
+    "node_modules/tree-sitter-wasms/out/tree-sitter-cpp.wasm":
+      "assets/vendor/tree-sitter-cpp.wasm"
   });
   eleventyConfig.addPassthroughCopy({
     "node_modules/@toast-ui/editor/dist/toastui-editor.css":

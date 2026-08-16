@@ -84,7 +84,10 @@ async function inspectPage(browser, scenario) {
       layout.documentWidth <= layout.viewportWidth,
     `${scenario.name}: horizontal overflow ${JSON.stringify(layout)}`
   );
-  assert(layout.h1, `${scenario.name}: missing H1`);
+  assert(
+    layout.h1 || scenario.allowNoH1,
+    `${scenario.name}: missing H1`
+  );
   assert(
     runtimeErrors.length === 0,
     `${scenario.name}: browser errors: ${runtimeErrors.join(" | ")}`
@@ -154,6 +157,39 @@ async function inspectPage(browser, scenario) {
     );
   }
 
+  if (scenario.codeWorkspace) {
+    await page.waitForFunction(() => {
+      return document
+        .querySelector("[data-code-index-status]")
+        ?.textContent.includes("索引完成");
+    });
+    const workspace = await page.evaluate(() => {
+      return {
+        files: document.querySelectorAll(
+          "[data-code-file-tree] [data-code-file]"
+        ).length,
+        lines: document.querySelectorAll(".code-line").length,
+        symbols: document.querySelectorAll(".code-symbol").length,
+        generated: Array.from(
+          document.querySelectorAll("[data-code-file]")
+        ).filter((item) => /(^|\/)(bin|obj)\//.test(item.dataset.codeFile))
+          .length
+      };
+    });
+    assert(
+      workspace.files > 0 && workspace.lines > 0,
+      `${scenario.name}: code workspace is empty`
+    );
+    assert(
+      workspace.symbols > 0,
+      `${scenario.name}: symbol navigation is unavailable`
+    );
+    assert(
+      workspace.generated === 0,
+      `${scenario.name}: generated files leaked into the workspace`
+    );
+  }
+
   console.log(
     `${scenario.name}: ${scenario.viewport.width}x${scenario.viewport.height}, ` +
       `body ${layout.bodyWidth}px, H1 "${layout.h1}"`
@@ -214,6 +250,22 @@ async function inspectPage(browser, scenario) {
       route: "/examples/algorithms/mihoyo-third-round/files/main.cpp/",
       viewport: { width: 1440, height: 1000 },
       source: true
+    },
+    {
+      name: "code-workspace-desktop",
+      route:
+        "/code/workspace/?project=csharp-extensible-combat-ecs",
+      viewport: { width: 1440, height: 1000 },
+      allowNoH1: true,
+      codeWorkspace: true
+    },
+    {
+      name: "code-workspace-mobile",
+      route:
+        "/code/workspace/?project=csharp-extensible-combat-ecs",
+      viewport: { width: 390, height: 844 },
+      allowNoH1: true,
+      codeWorkspace: true
     }
   ];
 

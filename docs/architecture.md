@@ -27,18 +27,20 @@ The website repository has no committed copy of knowledge content.
 
 ## Content model
 
-Three stable roots define reader intent:
+Four stable roots define reader intent:
 
 ```text
 knowledge/<topic>/
 interviews/<company>/<event-or-position>/
 examples/<domain>/<example>/
+code/<domain>/<project>/
 ```
 
 A directory containing `README.md` is a content unit. Its first H1 is the unit
 title, and its first paragraph is the default description. Other Markdown files in
-that directory are ordered by numeric filename prefix. Source files below
-`examples/` become code-reader pages.
+that directory are ordered by numeric filename prefix. Small source examples below
+`examples/` become ordinary source pages. Complete projects below `code/` are
+handled by the independent project processor and client-side IDE workspace.
 
 No frontmatter is required. Optional `title`, `description`, and `order` values can
 override inferred metadata for exceptional cases.
@@ -54,7 +56,7 @@ sequenceDiagram
     participant Site as Eleventy
 
     CI->>Content: Download pushed main snapshot
-    CI->>Loader: Scan knowledge, interviews, examples
+    CI->>Loader: Scan knowledge, interviews, examples, code projects
     Loader->>Loader: Infer units, routes, order, headings
     CI->>Audit: Validate Markdown and relative links
     Audit-->>CI: Fail on invalid content
@@ -82,6 +84,7 @@ and downloadable assets continue to work.
 | `knowledge/cpp/README.md` | `/knowledge/cpp/` |
 | `knowledge/cpp/01-cpp98.md` | `/knowledge/cpp/01-cpp98/` |
 | `examples/algorithms/demo/main.cpp` | `/examples/algorithms/demo/files/main.cpp/` |
+| `code/ecs/demo/code-project.json` | `/code/workspace/?project=demo` |
 
 Routes use ASCII filenames for reliable hosting. Document display names remain
 fully localized because they come from Markdown headings.

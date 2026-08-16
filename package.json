@@ -12,12 +12,14 @@
     "test:markdown-preserve": "node scripts/test-markdown-preserve.js",
     "test:source-cache": "node scripts/test-source-cache.js",
     "test:content-loader": "node scripts/test-content-loader.js",
+    "test:code-projects": "node scripts/test-code-project-loader.js",
+    "test:code-intelligence": "node scripts/test-code-intelligence.js",
     "test:reader-diff": "node scripts/test-reader-diff.js",
     "test:visual": "node scripts/visual-check.js",
     "deploy:join": "bash scripts/deploy-join.sh",
     "deploy:editor": "bash scripts/deploy-editor.sh",
     "deploy:server": "bash scripts/deploy-server.sh",
-    "check": "npm run test:markdown-preserve && npm run test:source-cache && npm run test:content-loader && npm run test:reader-diff && npm run audit && npm run build && npm run audit:site"
+    "check": "npm run test:markdown-preserve && npm run test:source-cache && npm run test:content-loader && npm run test:code-projects && npm run test:code-intelligence && npm run test:reader-diff && npm run audit && npm run build && npm run audit:site"
   },
   "engines": {
     "node": ">=20.19"
@@ -32,7 +34,9 @@
     "markdown-it": "15.0.0",
     "markdown-it-anchor": "9.2.1",
     "mermaid": "11.16.1",
-    "prismjs": "1.30.0"
+    "prismjs": "1.30.0",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.20.8"
   },
   "devDependencies": {
     "playwright-core": "1.62.1"

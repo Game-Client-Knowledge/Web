@@ -11,6 +11,9 @@
     >
     <title>{% if title %}{{ title }} · {% endif %}{{ site.name }}</title>
     <link rel="stylesheet" href="{{ '/assets/css/site.css' | assetUrl }}">
+    {% if pageKind == "code-workspace" or activeModule == "code" %}
+      <link rel="stylesheet" href="{{ '/assets/css/code-reader.css' | assetUrl }}">
+    {% endif %}
     {% if pageKind == "document" or pageKind == "module" %}
       <link rel="stylesheet" href="{{ '/assets/vendor/toastui-editor.css' | assetUrl }}">
     {% endif %}
@@ -494,6 +497,10 @@
       or (pageKind == "contribute" and catalog.contribution.hasMermaid)
     %}
       <script src="{{ '/assets/vendor/mermaid.min.js' | assetUrl }}"></script>
+    {% endif %}
+    {% if pageKind == "code-workspace" %}
+      <script src="{{ '/assets/vendor/code-reader-vendor.js' | assetUrl }}"></script>
+      <script src="{{ '/assets/js/code-reader.js' | assetUrl }}"></script>
     {% endif %}
     <script src="{{ '/assets/js/site.js' | assetUrl }}"></script>
     <script src="{{ '/assets/js/search.js' | assetUrl }}"></script>

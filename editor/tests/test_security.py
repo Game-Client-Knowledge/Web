@@ -45,6 +45,14 @@ def test_accepts_expected_paths() -> None:
         validate_content_path("graphics/rendering/README.md")
         == "graphics/rendering/README.md"
     )
+    assert (
+        validate_content_path("code/ecs/demo/src/Demo.csproj")
+        == "code/ecs/demo/src/Demo.csproj"
+    )
+    assert (
+        validate_content_path("code/rendering/demo/main.hlsl")
+        == "code/rendering/demo/main.hlsl"
+    )
 
 
 def test_branch_name_is_namespaced_and_sanitized() -> None:

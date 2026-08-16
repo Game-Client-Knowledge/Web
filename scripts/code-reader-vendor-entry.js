@@ -1,0 +1,23 @@
+const Prism = require("prismjs");
+require("prismjs/components/prism-bash");
+require("prismjs/components/prism-c");
+require("prismjs/components/prism-cpp");
+require("prismjs/components/prism-csharp");
+require("prismjs/components/prism-go");
+require("prismjs/components/prism-glsl");
+require("prismjs/components/prism-hlsl");
+require("prismjs/components/prism-java");
+require("prismjs/components/prism-json");
+require("prismjs/components/prism-kotlin");
+require("prismjs/components/prism-lua");
+require("prismjs/components/prism-markdown");
+require("prismjs/components/prism-python");
+require("prismjs/components/prism-rust");
+require("prismjs/components/prism-swift");
+require("prismjs/components/prism-toml");
+require("prismjs/components/prism-typescript");
+require("prismjs/components/prism-jsx");
+require("prismjs/components/prism-tsx");
+require("prismjs/components/prism-yaml");
+
+window.GCKCodePrism = Prism;
