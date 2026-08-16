@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#1f2926">
+  <meta name="description" content="Game Client Knowledge 在线内容编辑器">
+  <title>在线编辑 · Game Client Knowledge</title>
+  <link rel="stylesheet" href="assets/editor.css">
+  <link
+    rel="icon"
+    href="assets/favicon.svg"
+    type="image/svg+xml"
+  >
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="https://knowledge.chenyurui.top/">
+      <span class="brand-mark" aria-hidden="true">G</span>
+      <span>
+        <strong>Game Client Knowledge</strong>
+        <small>Web Editor</small>
+      </span>
+    </a>
+    <nav class="header-nav">
+      <a href="https://knowledge.chenyurui.top/contribute/">更新规范</a>
+      <a href="https://knowledge.chenyurui.top/">返回知识库</a>
+      <a id="adminLink" href="admin" hidden>管理后台</a>
+      <button id="logoutButton" class="quiet-button" type="button" hidden>退出</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="authView" class="auth-shell">
+      <div class="auth-context">
+        <p class="eyebrow">Authenticated workspace</p>
+        <h1>登录后编辑知识库</h1>
+        <p>
+          每个账号拥有独立草稿工作区。保存不会修改 GitHub；
+          只有点击统一提交后才会创建临时分支和 Draft Pull Request。
+        </p>
+        <ul>
+          <li>新增知识专题、面经或代码示例目录</li>
+          <li>编辑现有 Markdown 并实时预览</li>
+          <li>一次提交当前账号的全部草稿</li>
+        </ul>
+      </div>
+
+      <div class="auth-panel">
+        <div class="tabs" role="tablist" aria-label="账号操作">
+          <button class="tab is-active" type="button" data-auth-tab="login">登录</button>
+          <button class="tab" type="button" data-auth-tab="register">注册</button>
+        </div>
+
+        <form id="loginForm" class="stack-form">
+          <label>
+            邮箱或用户名
+            <input name="identifier" autocomplete="username" required maxlength="254">
+          </label>
+          <label>
+            密码
+            <input name="password" type="password" autocomplete="current-password" required maxlength="256">
+          </label>
+          <button class="primary-button" type="submit">登录</button>
+        </form>
+
+        <form id="registerForm" class="stack-form" hidden>
+          <label>
+            邮箱
+            <input name="email" type="email" autocomplete="email" required maxlength="254">
+          </label>
+          <label>
+            用户名
+            <input name="username" autocomplete="username" required maxlength="32">
+          </label>
+          <label>
+            自定义密码
+            <input name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="256">
+          </label>
+          <button class="primary-button" type="submit">创建账号</button>
+        </form>
+
+        <div class="auth-divider"><span>或</span></div>
+        <a id="githubLogin" class="github-button" href="api/auth/github">
+          使用 GitHub 登录
+        </a>
+        <p id="authPolicyHint" class="form-hint"></p>
+        <div id="authFeedback" class="feedback" role="status" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section id="passwordView" class="single-panel" hidden>
+      <p class="eyebrow">First login</p>
+      <h1>首次登录请修改密码</h1>
+      <p>完成密码更新后才能进入编辑工作区。</p>
+      <form id="passwordForm" class="stack-form">
+        <label>
+          当前密码
+          <input name="current_password" type="password" autocomplete="current-password" required>
+        </label>
+        <label>
+          新密码
+          <input name="new_password" type="password" autocomplete="new-password" minlength="8" required>
+        </label>
+        <button class="primary-button" type="submit">更新密码</button>
+      </form>
+      <div id="passwordFeedback" class="feedback" role="status" aria-live="polite"></div>
+    </section>
+
+    <section id="workspaceView" class="workspace" hidden>
+      <header class="workspace-heading">
+        <div>
+          <p class="eyebrow">Personal draft workspace</p>
+          <h1>内容工作区</h1>
+          <p id="accountSummary"></p>
+        </div>
+        <div class="workspace-status">
+          <span id="policyBadge" class="status-badge"></span>
+          <span id="draftCount">0 个草稿</span>
+        </div>
+      </header>
+
+      <div id="editBlocked" class="notice warning" hidden>
+        当前后台策略要求 GitHub 认证。请退出后使用 GitHub 登录并绑定已验证邮箱。
+      </div>
+
+      <div class="workspace-grid">
+        <aside class="workspace-sidebar">
+          <div class="sidebar-tabs">
+            <button class="is-active" type="button" data-side-tab="drafts">我的草稿</button>
+            <button type="button" data-side-tab="repository">仓库文件</button>
+          </div>
+          <div class="sidebar-actions">
+            <button id="newFileButton" class="secondary-button" type="button">新建文件</button>
+            <button id="newTopicButton" class="secondary-button" type="button">新增专题</button>
+          </div>
+          <div id="draftList" class="file-list"></div>
+          <div id="repositoryList" class="file-list" hidden></div>
+        </aside>
+
+        <section class="editor-panel">
+          <div id="emptyEditor" class="empty-editor">
+            <strong>选择文件开始编辑</strong>
+            <span>也可以新建文件或创建专题目录。</span>
+          </div>
+
+          <div id="activeEditor" hidden>
+            <div class="editor-toolbar">
+              <div>
+                <label for="filePath">文件路径</label>
+                <input id="filePath" maxlength="240">
+              </div>
+              <div class="toolbar-buttons">
+                <button id="previewButton" class="secondary-button" type="button">预览</button>
+                <button id="deleteDraftButton" class="danger-button" type="button">删除草稿</button>
+                <button id="saveDraftButton" class="primary-button" type="button">保存草稿</button>
+              </div>
+            </div>
+            <div class="editor-surface">
+              <textarea id="contentEditor" spellcheck="false" aria-label="Markdown 内容"></textarea>
+              <div id="previewPane" class="preview-pane prose-preview" hidden></div>
+            </div>
+            <div id="editorFeedback" class="feedback" role="status" aria-live="polite"></div>
+          </div>
+        </section>
+
+        <aside class="submit-panel">
+          <h2>统一提交</h2>
+          <p>当前账号的全部草稿将组成一个 commit 和一个 Draft PR。</p>
+          <form id="submitForm" class="stack-form compact">
+            <label>
+              自定义提交头
+              <input name="custom_head" placeholder="cpp-polymorphism" required maxlength="80">
+            </label>
+            <p class="branch-preview">
+              分支：<code id="branchPreview">web/user/update</code>
+            </p>
+            <label>
+              PR 标题
+              <input name="title" required maxlength="180">
+            </label>
+            <label>
+              说明
+              <textarea name="description" rows="5" maxlength="5000"></textarea>
+            </label>
+            <button id="submitAllButton" class="primary-button" type="submit">提交全部更改</button>
+          </form>
+          <div id="submitFeedback" class="feedback" role="status" aria-live="polite"></div>
+
+          <section class="submission-history">
+            <h3>最近提交</h3>
+            <div id="submissionList"></div>
+          </section>
+
+          <section id="adminApplicationSection" class="admin-application">
+            <h3>申请管理员</h3>
+            <form id="adminApplicationForm" class="stack-form compact">
+              <label>
+                申请说明
+                <textarea name="message" rows="4" minlength="10" maxlength="1000" required></textarea>
+              </label>
+              <button class="secondary-button" type="submit">提交申请</button>
+            </form>
+            <div id="adminApplicationFeedback" class="feedback" role="status" aria-live="polite"></div>
+          </section>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="fileDialog">
+    <form id="fileForm" method="dialog" class="dialog-form">
+      <header>
+        <h2>新建内容文件</h2>
+        <button class="icon-button" value="cancel" aria-label="关闭" type="submit">×</button>
+      </header>
+      <label>
+        仓库路径
+        <input name="path" placeholder="knowledge/cpp/polymorphism/README.md" required maxlength="240">
+      </label>
+      <label>
+        一级标题
+        <input name="title" placeholder="C++ 多态" required maxlength="120">
+      </label>
+      <footer>
+        <button class="secondary-button" value="cancel" type="submit">取消</button>
+        <button class="primary-button" value="default" type="submit">创建草稿</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="topicDialog">
+    <form id="topicForm" method="dialog" class="dialog-form">
+      <header>
+        <h2>新增专题或模块</h2>
+        <button class="icon-button" value="cancel" aria-label="关闭" type="submit">×</button>
+      </header>
+      <label>
+        内容类型
+        <select name="root">
+          <option value="knowledge">知识专题</option>
+          <option value="interviews">面经</option>
+          <option value="examples">代码示例</option>
+        </select>
+      </label>
+      <label>
+        父目录
+        <input name="parent" placeholder="cpp">
+      </label>
+      <label>
+        目录名
+        <input name="slug" placeholder="polymorphism" required maxlength="80">
+      </label>
+      <label>
+        展示标题
+        <input name="title" placeholder="C++ 多态" required maxlength="120">
+      </label>
+      <label>
+        一句话说明
+        <textarea name="description" rows="3" maxlength="500"></textarea>
+      </label>
+      <footer>
+        <button class="secondary-button" value="cancel" type="submit">取消</button>
+        <button class="primary-button" value="default" type="submit">创建专题草稿</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <script src="assets/editor.js"></script>
+</body>
+</html>

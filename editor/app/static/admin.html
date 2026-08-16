@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#1f2926">
+  <title>管理后台 · Game Client Knowledge</title>
+  <link rel="stylesheet" href="assets/editor.css">
+  <link
+    rel="icon"
+    href="assets/favicon.svg"
+    type="image/svg+xml"
+  >
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="./">
+      <span class="brand-mark" aria-hidden="true">G</span>
+      <span><strong>Game Client Knowledge</strong><small>Admin</small></span>
+    </a>
+    <nav class="header-nav">
+      <a href="./">返回编辑器</a>
+      <a href="https://knowledge.chenyurui.top/">知识库</a>
+      <button id="logoutButton" class="quiet-button" type="button">退出</button>
+    </nav>
+  </header>
+
+  <main class="admin-shell">
+    <header class="workspace-heading">
+      <div>
+        <p class="eyebrow">Administration</p>
+        <h1>编辑系统管理后台</h1>
+        <p id="adminSummary">加载中</p>
+      </div>
+      <button id="refreshButton" class="secondary-button" type="button">刷新数据</button>
+    </header>
+
+    <div id="adminFeedback" class="feedback" role="status" aria-live="polite"></div>
+
+    <section class="admin-section">
+      <div class="section-title">
+        <div><h2>编辑策略</h2><p>控制普通账号能否进入编辑工作区。</p></div>
+      </div>
+      <form id="settingsForm" class="settings-form">
+        <label>
+          编辑准入
+          <select name="edit_policy">
+            <option value="github_verified">必须通过 GitHub 认证</option>
+            <option value="local_authenticated">本地账号登录即可</option>
+          </select>
+        </label>
+        <label class="check-label">
+          <input name="registration_enabled" type="checkbox">
+          允许本地账号注册
+        </label>
+        <button class="primary-button" type="submit">保存策略</button>
+      </form>
+      <div id="integrationStatus" class="integration-status"></div>
+    </section>
+
+    <section class="admin-section">
+      <div class="section-title">
+        <div><h2>管理员申请</h2><p>审批后用户立即获得管理后台权限。</p></div>
+        <span id="applicationCount" class="count-badge"></span>
+      </div>
+      <div id="applicationList" class="data-list"></div>
+    </section>
+
+    <section class="admin-section">
+      <div class="section-title">
+        <div><h2>提交请求</h2><p>查看分支、PR 与失败原因。</p></div>
+      </div>
+      <div id="adminSubmissionList" class="data-list"></div>
+    </section>
+
+    <section class="admin-section">
+      <div class="section-title">
+        <div><h2>管理员邮件通知</h2><p>SMTP 未配置时通知仍会保留在这里。</p></div>
+      </div>
+      <div id="notificationList" class="data-list"></div>
+    </section>
+
+    <section class="admin-section">
+      <div class="section-title">
+        <div><h2>人员</h2><p>用户身份、GitHub 绑定与账号状态。</p></div>
+        <span id="userCount" class="count-badge"></span>
+      </div>
+      <div id="userList" class="data-list"></div>
+    </section>
+  </main>
+
+  <script src="assets/admin.js"></script>
+</body>
+</html>

@@ -35,6 +35,7 @@
               {{ module.shortTitle }}
             </a>
           {% endfor %}
+          <a href="{{ site.editorUrl }}">在线编辑</a>
           <a
             href="{{ '/contribute/' | withBase }}"
             {% if pageKind == "contribute" %}aria-current="page"{% endif %}
@@ -84,6 +85,10 @@
             {{ module.title }}
           </a>
         {% endfor %}
+        <a href="{{ site.editorUrl }}">
+          <i data-lucide="square-pen" aria-hidden="true"></i>
+          在线编辑
+        </a>
         <a href="{{ '/contribute/' | withBase }}">
           <i data-lucide="notebook-tabs" aria-hidden="true"></i>
           更新规范

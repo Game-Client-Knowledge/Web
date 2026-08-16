@@ -198,7 +198,10 @@ module.exports = function configureEleventy(eleventyConfig) {
     assetVersion,
     searchVersion: `${assetVersion}-${catalog.repository.commit}`,
     repositoryUrl: catalog.repositoryUrl,
-    joinUrl: process.env.JOIN_URL || "https://join.chenyurui.top"
+    joinUrl: process.env.JOIN_URL || "https://join.chenyurui.top",
+    editorUrl:
+      process.env.EDITOR_URL ||
+      "https://knowledge.chenyurui.top/editor/"
   });
 
   eleventyConfig.addFilter("withBase", withBase);

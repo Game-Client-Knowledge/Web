@@ -1,0 +1,9 @@
+argon2-cffi==25.1.0
+bleach==6.4.0
+cryptography==50.0.0
+fastapi==0.141.1
+httpx==0.28.1
+markdown-it-py==3.0.0
+pydantic==2.13.4
+starlette==1.6.0
+uvicorn==0.35.0

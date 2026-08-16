@@ -1,243 +1,228 @@
-# Web Editing and GitHub Contribution Design
+# Web Editing and Contribution Architecture
 
-## Decision
+## Scope
 
-The website can support authenticated editing, commits, and pull requests without
-coupling website code to knowledge content.
+The web editor adds authenticated content authoring without coupling content
+storage to the static website repository.
 
-The recommended first release is:
+- Reading remains public and static.
+- The editor is served at `/editor/`.
+- Content changes target
+  `Game-Client-Knowledge/Game-Client-Knowledge`.
+- The editor never writes directly to `main`.
+- One submission creates one branch, one commit, and one draft pull request.
 
-1. Keep reading public.
-2. Require GitHub login for editing.
-3. Allow edits only under `knowledge/`, `interviews/`, and `examples/`.
-4. Create `web-edit/<login>/<timestamp>-<slug>` from the latest `main`.
-5. Commit the submitted files to that branch.
-6. Open a draft GitHub pull request.
-7. Require repository checks and review before merge.
+## Identity Model
 
-GitHub calls this a **pull request (PR)** rather than a merge request (MR).
-The editor must never push directly to `main`.
+Email is the business identity and is unique. Each account also has a unique
+username used in branch names and UI labels.
 
-## Identity modes
+### Local account
 
-### User-attributed mode
+A local account signs in with email or username and an Argon2-hashed password.
+When it submits:
 
-A GitHub App user access token makes API requests on behalf of the authenticated
-user. GitHub attributes those requests to that user, while audit logs record that a
-GitHub App user-to-server token was used.
+- The server GitHub Bot performs the API request.
+- The commit author uses the account username.
+- A verified account uses its email; an unverified account uses a site noreply
+  address to prevent GitHub identity spoofing.
+- The pull request body records the submitting account.
 
-This mode has an important boundary: effective access is the intersection of:
+### GitHub account
 
-- The GitHub App installation's repository access and permissions.
-- The authenticated user's own repository access and permissions.
+GitHub OAuth requests the user's profile and verified email addresses. A verified
+email links the GitHub identity to an existing local account or creates a new
+account. OAuth tokens are encrypted at rest and never enter browser JavaScript.
 
-Therefore, a repository collaborator with write access can create a branch, commit,
-and open a PR as themselves. A visitor without write access cannot gain write access
-through login.
+When a GitHub-authenticated session submits:
 
-For commits created with the Git Database API, the author defaults to the
-authenticated user when no explicit author is supplied. The backend should use this
-default instead of accepting arbitrary author names or email addresses from the
-browser.
+- The user's OAuth token performs the API request.
+- No custom Git author is supplied.
+- GitHub attributes the operation to the authenticated GitHub user.
 
-### App-attributed mode
+The effective GitHub permission is still limited by that user's repository access.
+A GitHub login does not grant write access to the organization repository.
 
-An installation access token can create an upstream branch and PR for a logged-in
-visitor who does not have repository write access. In this mode:
+## Edit Policy
 
-- The GitHub App is the actor and PR creator.
-- The authenticated user's login and immutable GitHub user ID are recorded in the
-  PR body and the site's audit log.
-- The UI must clearly say that the App submits on the user's behalf.
-- Rate limits, abuse controls, and content validation are mandatory.
+Administrators can switch the active policy without restarting the service:
 
-This is operationally simpler than creating and managing a fork for every visitor,
-but it is not the same as a commit performed with that user's credentials.
+| Policy | Behavior |
+|---|---|
+| `local_authenticated` | Any active local or GitHub account can edit. |
+| `github_verified` | Only administrators or accounts linked to a verified GitHub email can edit. |
 
-### Fork mode
+Registration can be enabled or disabled independently. Existing accounts continue
+to work when registration is disabled.
 
-The strict public-contribution alternative is:
-
-1. Create or reuse a fork under the user's account.
-2. Create the temporary branch in that fork using the user's token.
-3. Open a PR from `<user>:<branch>` to
-   `Game-Client-Knowledge/Game-Client-Knowledge:main`.
-
-This gives the clearest user ownership but introduces fork installation,
-authorization, synchronization, and cleanup complexity. It should be a later phase,
-not the MVP.
-
-## Recommended policy
-
-| User | Submission identity | Destination |
-|---|---|---|
-| Organization collaborator with write access | GitHub user | Temporary upstream branch and PR |
-| Approved contributor without write access | GitHub App | Temporary upstream branch and draft PR |
-| Unknown public user | Disabled initially | GitHub's normal fork workflow |
-
-Start with collaborator-only user-attributed mode. Add App-attributed public
-submissions after moderation, rate limiting, and audit visibility are operating.
-
-## GitHub App configuration
-
-Create one organization-owned GitHub App and install it only on
-`Game-Client-Knowledge/Game-Client-Knowledge`.
-
-Repository permissions:
-
-| Permission | Access | Purpose |
-|---|---|---|
-| Metadata | Read | Repository identity and default branch |
-| Contents | Write | Read files and create blobs, trees, commits, and branches |
-| Pull requests | Write | Create draft PRs and read their status |
-
-Configuration:
-
-```text
-Homepage URL:
-https://knowledge.chenyurui.top
-
-User authorization callback URL:
-https://knowledge.chenyurui.top/api/auth/github/callback
-```
-
-Enable expiring user access tokens. Store the Client Secret and private key only on
-the server. The Client ID may be exposed in the authorization URL, but there is no
-reason to place it in the static bundle.
-
-## Runtime architecture
+## Runtime Architecture
 
 ```mermaid
 flowchart LR
     Browser[Browser]
     Nginx[Nginx :8788]
     Static[Static knowledge site]
-    API[Editor API :8790]
-    Session[(Session store)]
-    GitHub[GitHub App and REST API]
+    API[FastAPI editor :8790]
+    DB[(SQLite WAL)]
+    GitHub[GitHub REST API]
+    SMTP[SMTP server]
 
-    Browser -->|GET articles and editor| Nginx
-    Nginx -->|static paths| Static
-    Nginx -->|/api/*| API
-    API --> Session
-    API -->|OAuth and Git operations| GitHub
+    Browser -->|Public pages| Nginx
+    Nginx --> Static
+    Browser -->|/editor/*| Nginx
+    Nginx --> API
+    API --> DB
+    API --> GitHub
+    API -. optional .-> SMTP
 ```
 
-The existing static site remains unchanged as the read path. A separate Node.js
-service listens only on `127.0.0.1:8790`; Nginx proxies `/api/` to it. Cloudflare
-Tunnel continues to expose only Nginx.
+FastAPI listens only on `127.0.0.1:8790`. Nginx removes the `/editor/` prefix
+before proxying. Cloudflare Tunnel continues to expose only Nginx.
 
-The editor UI can be a generated page at `/edit/`. It calls same-origin `/api/`
-endpoints, so no cross-origin token or CORS design is required.
+## Server-Side Data
 
-## Authentication flow
+SQLite uses WAL mode and stores:
 
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant W as Website
-    participant A as Editor API
-    participant G as GitHub
+- Users and GitHub identity links.
+- Hashed session tokens and CSRF tokens.
+- One isolated draft set per user.
+- Submission and pull request history.
+- Administrator applications.
+- Runtime settings.
+- Notification delivery records.
+- Audit events.
 
-    U->>W: Open editor
-    W->>A: GET /api/session
-    A-->>W: Not authenticated
-    U->>A: GET /api/auth/github
-    A->>G: OAuth web application flow with state and PKCE
-    G-->>A: Callback authorization code
-    A->>G: Exchange code server-side
-    G-->>A: Expiring user access token
-    A-->>U: Secure HttpOnly session cookie
-```
-
-The GitHub token never enters browser JavaScript or local storage.
-
-## Editing and submission flow
-
-1. The browser requests a file and its base blob SHA.
-2. The backend reads the file from the repository API.
-3. The user edits Markdown and sees a local preview.
-4. Submission includes path, base SHA, content, commit title, and PR description.
-5. The backend rechecks the latest `main` and rejects stale edits with `409`.
-6. The backend runs content validation and the repository audit.
-7. The backend creates a temporary branch from the latest `main`.
-8. It creates blobs and a tree, then one commit for all changed files.
-9. It updates the temporary branch reference.
-10. It opens a draft PR and returns the PR URL.
-
-Use the Git Database API rather than one `Contents` API request per file so a
-multi-file edit produces one atomic commit.
-
-## Allowed operations
-
-MVP:
-
-- Create and edit Markdown.
-- Create directories implicitly through file paths.
-- Preview Markdown and Mermaid.
-- Submit one atomic commit and draft PR.
-- Show validation errors and GitHub conflicts.
-
-Later:
-
-- Upload images with MIME and size validation.
-- Edit source examples.
-- Rename or delete files.
-- Fork-based public contributions.
-- Review comments inside the website.
-
-The first version should not support arbitrary binary uploads, workflow changes,
-symlinks, Git submodules, or any path outside the three content roots.
-
-## Security requirements
-
-- Use OAuth `state` and PKCE and reject callback reuse.
-- Store sessions in SQLite or Redis, not process memory.
-- Use `Secure`, `HttpOnly`, `SameSite=Lax` cookies with short expiry.
-- Encrypt refresh and access tokens at rest, or avoid persistence by requiring a new
-  login after the short-lived token expires.
-- Never return a GitHub token to the browser or write it to logs.
-- Validate paths after normalization; reject `..`, absolute paths, hidden files,
-  control characters, and unexpected extensions.
-- Limit request size, file count, and Markdown size.
-- Rate-limit login, preview, and submission endpoints per user and IP.
-- Require the current file SHA to prevent overwriting concurrent edits.
-- Run the existing Markdown and generated-site audits before creating a PR.
-- Record GitHub user ID, login, branch, commit SHA, PR number, source IP hash, and
-  timestamp in an append-only audit log.
-- Protect `main` with required PR reviews and required status checks.
-- Delete abandoned `web-edit/` branches with a scheduled cleanup job.
-
-## Full-site login
-
-It is possible to require login before reading any page by placing Cloudflare Access
-in front of `knowledge.chenyurui.top`. That is separate from GitHub contribution
-authorization and does not remove the need for the GitHub App.
-
-For this public knowledge base, full-site login is not recommended because it
-breaks public sharing, external links, and search indexing. Authentication should
-protect `/edit/` and `/api/`, while reading stays public.
-
-## Required administrator inputs
-
-Implementation can begin after an organization owner creates and installs the
-GitHub App and supplies these values through the server secret store:
+The database is outside all release directories:
 
 ```text
-GITHUB_APP_ID
-GITHUB_APP_CLIENT_ID
-GITHUB_APP_CLIENT_SECRET
-GITHUB_APP_PRIVATE_KEY
-GITHUB_APP_INSTALLATION_ID
-SESSION_ENCRYPTION_KEY
+/var/lib/game-client-knowledge-editor/editor.db
 ```
 
-No value in this list should be committed to the website or content repository.
+Deploying or rolling back application code does not remove user drafts.
 
-## Official references
+## Authentication
 
-- [Authenticating with a GitHub App on behalf of a user](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/authenticating-with-a-github-app-on-behalf-of-a-user)
-- [Generating a user access token for a GitHub App](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app)
-- [REST API endpoints for Git references](https://docs.github.com/en/rest/git/refs)
-- [REST API endpoints for Git commits](https://docs.github.com/en/rest/git/commits)
-- [REST API endpoints for pull requests](https://docs.github.com/en/rest/pulls/pulls#create-a-pull-request)
+Local sessions use a random `HttpOnly`, `Secure`, `SameSite=Lax` cookie. Only a
+SHA-256 digest of the session token is stored. State-changing requests also require
+the session's CSRF token.
+
+GitHub OAuth uses:
+
+- A single-use, expiring `state`.
+- A short-lived `HttpOnly` browser cookie bound to that `state`.
+- PKCE challenge and verifier.
+- A server-side code exchange.
+- A verified GitHub email.
+- Fernet encryption for the stored access token.
+
+The bootstrap administrator is created only when the database contains no users.
+Bootstrap credentials come from the server environment, and the account must
+change its password before accessing the editor or administration page.
+
+## Draft Workflow
+
+Drafts are unique by `(user_id, path)`. Saving a draft never changes GitHub.
+
+Allowed roots:
+
+```text
+knowledge/
+interviews/
+examples/
+```
+
+Knowledge and interview files must be Markdown. Source files under `examples/`
+use an explicit text extension allowlist. Absolute paths, parent traversal, hidden
+segments, control characters, unsupported extensions, non-UTF-8 files, and files
+larger than 512 KiB are rejected.
+
+Users can:
+
+- Create a Markdown file.
+- Create a topic directory through its `README.md`.
+- Load and edit an existing repository file.
+- Preview sanitized Markdown.
+- Save or delete a private draft.
+- Submit all current drafts together.
+
+Each user can keep at most 50 drafts.
+
+## Submission Workflow
+
+The branch format is:
+
+```text
+web/<username>/<custom-head>
+```
+
+For example:
+
+```text
+web/sourcecode/cpp-polymorphism
+```
+
+Submission performs these steps:
+
+1. Load all drafts belonging to the current user.
+2. Resolve and retain the current `main` commit SHA.
+3. Compare every edited file's blob SHA with that snapshot.
+4. Reject new files that now exist or deleted files that no longer exist.
+5. Create blobs and one Git tree.
+6. Recheck that `main` still has the retained SHA.
+7. Create one commit and temporary branch.
+8. Create a draft pull request targeting `main`.
+9. Remove the user's drafts only after pull request creation succeeds.
+10. Record the result and notify every active administrator.
+
+If pull request creation fails after branch creation, the service attempts to remove
+the temporary branch. A failed submission record can be retried with the same
+custom head.
+
+## Administration
+
+The administration page is server-protected and requires an authenticated,
+password-ready administrator session.
+
+Administrators can:
+
+- Switch the edit policy.
+- Enable or disable local registration.
+- Approve or reject administrator applications.
+- Confirm a local email after checking ownership through an external trusted
+  channel.
+- Inspect users, identity links, submissions, failures, and notifications.
+- Open submitted pull requests.
+
+Applications grant the `admin` role only after an existing administrator approves
+them. Submission and application events target every active administrator email.
+When SMTP is not configured, the notification is retained in the administration
+page with status `unconfigured`.
+
+## Security Boundaries
+
+- Request body: 2 MiB maximum.
+- Draft file: 512 KiB maximum.
+- Draft count: 50 per user.
+- Login and registration have in-process sliding-window limits.
+- Markdown preview disables raw HTML and sanitizes rendered output.
+- Repository paths are normalized and allowlisted server-side.
+- Sessions and OAuth tokens are never exposed in browser storage.
+- The service process has a read-only system view and can write only its database
+  directory.
+- `main` remains protected by GitHub review and branch rules.
+
+The current rate limiter is process-local. Multiple API workers would require a
+shared limiter such as Redis; production therefore runs one Uvicorn worker.
+
+## Optional Integrations
+
+The editor starts without GitHub OAuth or SMTP:
+
+- Local login and Bot-attributed submissions remain available when the Bot token is
+  configured.
+- GitHub login is visibly disabled until OAuth credentials and an encryption key are
+  present.
+- Email delivery is marked `unconfigured`, while notifications remain visible to
+  administrators.
+
+The administration page reports each integration's configuration state.
