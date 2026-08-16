@@ -178,6 +178,9 @@ EDITOR_SMTP_STARTTLS
 Without SMTP, submissions still succeed and notification records remain available
 in `/editor/admin`.
 
+See [SMTP Configuration](smtp-configuration.md) for provider examples, production
+commands, verification, and domain deliverability requirements.
+
 ## Backup and Restore
 
 Use SQLite's online backup command while the service is running:
