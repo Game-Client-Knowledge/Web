@@ -1,0 +1,23 @@
+---
+layout: layouts/base.njk
+title: 页面不存在
+pageKind: not-found
+permalink: 404.html
+eleventyExcludeFromCollections: true
+---
+
+<section class="not-found">
+  <span>404</span>
+  <h1>这个知识点还没有收录</h1>
+  <p>链接可能已经调整，使用搜索可以定位迁移后的文档。</p>
+  <div>
+    <button class="primary-button" type="button" data-open-search>
+      <i data-lucide="search" aria-hidden="true"></i>
+      搜索知识库
+    </button>
+    <a class="secondary-button" href="{{ '/' | withBase }}">
+      <i data-lucide="house" aria-hidden="true"></i>
+      返回首页
+    </a>
+  </div>
+</section>

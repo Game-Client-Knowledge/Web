@@ -1,0 +1,165 @@
+---
+layout: layouts/base.njk
+pagination:
+  data: catalog.documents
+  size: 1
+  alias: document
+permalink: "{{ document.outputPath }}"
+eleventyComputed:
+  title: "{{ document.title }}"
+  description: "{{ document.description }}"
+  activeModule: "{{ document.moduleKey }}"
+  pageKind: "document"
+---
+
+{% set currentModule = catalog.modules | moduleByKey(document.moduleKey) %}
+{% set currentUnit = catalog.units | unitById(document.unitDirectory) %}
+
+<div class="reading-layout">
+  <aside class="docs-sidebar" data-docs-sidebar>
+    <div class="docs-sidebar-header">
+      <a href="{{ currentModule.route | withBase }}">
+        <i data-lucide="{{ currentModule.icon }}" aria-hidden="true"></i>
+        <span>{{ currentModule.title }}</span>
+      </a>
+      <button
+        class="icon-button docs-sidebar-close"
+        type="button"
+        data-close-docs
+        aria-label="关闭目录"
+        title="关闭目录"
+      >
+        <i data-lucide="x" aria-hidden="true"></i>
+      </button>
+    </div>
+
+    <nav class="docs-navigation" aria-label="本模块目录">
+      {% for unit in currentModule.units %}
+        <section class="docs-nav-unit">
+          <a
+            class="docs-nav-unit-title"
+            href="{{ unit.route | withBase }}"
+            {% if unit.id == currentUnit.id %}aria-current="true"{% endif %}
+          >
+            {{ unit.title }}
+          </a>
+          {% if unit.id == currentUnit.id %}
+            <ol>
+              {% for item in unit.documents %}
+                <li>
+                  <a
+                    href="{{ item.route | withBase }}"
+                    {% if item.id == document.id %}aria-current="page"{% endif %}
+                  >
+                    <i
+                      data-lucide="{% if item.kind == 'code' %}file-code-2{% else %}file-text{% endif %}"
+                      aria-hidden="true"
+                    ></i>
+                    <span>{{ item.title }}</span>
+                  </a>
+                </li>
+              {% endfor %}
+            </ol>
+          {% endif %}
+        </section>
+      {% endfor %}
+    </nav>
+  </aside>
+
+  <div class="reading-main">
+    <button class="mobile-docs-trigger" type="button" data-open-docs>
+      <i data-lucide="list-tree" aria-hidden="true"></i>
+      本专题目录
+    </button>
+
+    <article class="article">
+      <header class="article-header">
+        <nav class="breadcrumbs" aria-label="面包屑">
+          <a href="{{ currentModule.route | withBase }}">{{ currentModule.title }}</a>
+          <i data-lucide="chevron-right" aria-hidden="true"></i>
+          <a href="{{ currentUnit.route | withBase }}">{{ currentUnit.title }}</a>
+          {% if document.title != currentUnit.title %}
+            <i data-lucide="chevron-right" aria-hidden="true"></i>
+            <span>{{ document.title }}</span>
+          {% endif %}
+        </nav>
+        <p class="article-type">
+          <i
+            data-lucide="{% if document.kind == 'code' %}file-code-2{% else %}file-text{% endif %}"
+            aria-hidden="true"
+          ></i>
+          {% if document.kind == "code" %}源码{% elif document.moduleKey == "interviews" %}面经{% else %}知识文档{% endif %}
+        </p>
+        <h1>{{ document.title }}</h1>
+        <p class="article-description">{{ document.description }}</p>
+        <div class="article-actions">
+          <a
+            href="{{ catalog.repositoryUrl }}/blob/main/{{ document.sourceRelative }}"
+            rel="noreferrer"
+          >
+            <i data-lucide="square-pen" aria-hidden="true"></i>
+            编辑此页
+          </a>
+          <button type="button" data-copy-link>
+            <i data-lucide="link" aria-hidden="true"></i>
+            复制链接
+          </button>
+        </div>
+      </header>
+
+      {% if document.kind == "markdown" %}
+        <div class="prose">
+          {{ document.body | renderMarkdown(document.sourceRelative) | safe }}
+        </div>
+      {% else %}
+        <div class="source-viewer">
+          <div class="source-viewer-bar">
+            <span>{{ document.sourceRelative }}</span>
+            <button type="button" data-copy-source>
+              <i data-lucide="copy" aria-hidden="true"></i>
+              复制源码
+            </button>
+          </div>
+          <pre class="language-{{ document.language }}"><code class="language-{{ document.language }}" data-source-code>{{ document.source | highlightCode(document.language) | safe }}</code></pre>
+        </div>
+      {% endif %}
+
+      <nav class="article-pagination" aria-label="上一篇和下一篇">
+        {% if document.previous %}
+          <a class="previous" href="{{ document.previous.route | withBase }}">
+            <span><i data-lucide="arrow-left" aria-hidden="true"></i> 上一篇</span>
+            <strong>{{ document.previous.title }}</strong>
+          </a>
+        {% else %}
+          <span></span>
+        {% endif %}
+        {% if document.next %}
+          <a class="next" href="{{ document.next.route | withBase }}">
+            <span>下一篇 <i data-lucide="arrow-right" aria-hidden="true"></i></span>
+            <strong>{{ document.next.title }}</strong>
+          </a>
+        {% endif %}
+      </nav>
+    </article>
+  </div>
+
+  <aside class="article-toc" aria-label="页内目录">
+    {% if document.headings.length %}
+      <p>本页目录</p>
+      <ol>
+        {% for heading in document.headings %}
+          <li class="toc-level-{{ heading.level }}">
+            <a href="#{{ heading.id }}">{{ heading.text }}</a>
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <div class="topic-context">
+        <p>所属专题</p>
+        <strong>{{ currentUnit.title }}</strong>
+        <span>{{ currentUnit.articleCount }} 篇文档{% if currentUnit.codeCount %} · {{ currentUnit.codeCount }} 个源码文件{% endif %}</span>
+      </div>
+    {% endif %}
+  </aside>
+</div>
+<div class="sidebar-backdrop" data-sidebar-backdrop></div>

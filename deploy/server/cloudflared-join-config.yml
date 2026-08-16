@@ -1,0 +1,12 @@
+tunnel: a6970e9e-5af4-49f7-8055-2b78e350ce32
+
+credentials-file: /etc/cloudflared-join/a6970e9e-5af4-49f7-8055-2b78e350ce32.json
+
+ingress:
+  - hostname: join.chenyurui.top
+    service: http://127.0.0.1:8787
+
+  - hostname: knowledge.chenyurui.top
+    service: http://127.0.0.1:8788
+
+  - service: http_status:404

@@ -1,0 +1,158 @@
+# Build and Deployment Operations
+
+## Local workflow
+
+The default workspace layout requires no environment variables:
+
+```text
+parent/
+├── Game-Client-Knowledge/
+└── Web/
+```
+
+```bash
+nvm use
+npm install
+npm run check
+npm run dev
+```
+
+For a different location:
+
+```bash
+CONTENT_REPO_PATH=/absolute/path/to/Game-Client-Knowledge npm run dev
+```
+
+## Repository creation
+
+The website repository is `Game-Client-Knowledge/Web`. Connect a local clone with:
+
+```bash
+git remote add origin \
+  https://github.com/Game-Client-Knowledge/Web.git
+git push -u origin main
+```
+
+The local repository is already initialized independently from the content
+repository.
+
+## GitHub Pages
+
+In the website repository settings:
+
+1. Open **Settings → Pages**.
+2. Select **GitHub Actions** as the source.
+3. Keep the workflow's default base path for a project repository.
+4. For a custom domain or organization Pages repository, define the repository
+   variable `SITE_BASE_PATH` as an empty string or the required path prefix.
+
+The deployment workflow checks out both repositories, audits content, builds the
+site, and deploys the `_site/` artifact.
+
+## Production server
+
+The self-hosted production endpoint is:
+
+```text
+https://knowledge.chenyurui.top
+```
+
+The server uses the following path:
+
+```text
+Cloudflare Tunnel
+-> 127.0.0.1:8788
+-> Nginx
+-> /var/www/game-client-knowledge/current
+```
+
+Releases are stored under `/var/www/game-client-knowledge/releases/`. Deployment
+switches the `current` symlink atomically and retains the five newest releases.
+Nginx and Tunnel templates are stored in [`deploy/server/`](../deploy/server/).
+
+After the one-time server bootstrap, deploy from this repository with:
+
+```bash
+nvm use
+npm run deploy:server
+```
+
+The command runs all content and generated-site audits before uploading. Override
+the defaults with `DEPLOY_HOST`, `DEPLOY_KEY`, or `RELEASE_ROOT` when required.
+
+The server also runs `game-client-knowledge-update.timer` every 10 minutes. It
+compares the content repository's remote `main` commit with the last published
+commit. When the commit changes, it fetches content, runs the same audit and build
+pipeline, and publishes a new versioned release. Failed builds do not change the
+`current` symlink, so the last valid site remains online.
+
+The server checks commits through the GitHub API and downloads immutable source
+snapshots from Codeload. This avoids depending on the Git smart HTTPS endpoint,
+which is not reachable from the server network.
+
+Inspect the updater with:
+
+```bash
+systemctl status game-client-knowledge-update.timer
+journalctl -u game-client-knowledge-update.service
+```
+
+## Update behavior
+
+A deployment runs on:
+
+- Every push to the website's `main` branch.
+- Manual workflow dispatch.
+- A `content-updated` repository dispatch event.
+- An hourly schedule at minute 17.
+
+The schedule keeps the content repository free of website workflow files. If an
+immediate rebuild is required, run the website workflow manually. A later
+organization-level automation can send `repository_dispatch` after content merges
+without changing the content format.
+
+## Quality gates
+
+`npm run audit` fails on:
+
+- Missing `knowledge/`, `interviews/`, or `examples/` roots.
+- Missing content-type `README.md` files.
+- Missing or duplicate H1 headings.
+- Skipped Markdown heading levels.
+- Unclosed fenced code blocks.
+- Broken relative links.
+- Generated route collisions.
+- Content files not included by the scanner.
+
+`npm run build` then verifies that every inferred route and template renders.
+`npm run audit:site` checks every generated local `href` and `src`.
+
+For browser-level verification while the development server is running:
+
+```bash
+npm run test:visual
+```
+
+The visual check uses Playwright Core with the locally installed Chrome. It covers
+1440 px desktop, 1024 px tablet, and 390 px mobile viewports; search, mobile
+navigation, Mermaid rendering, source viewing, browser errors, and horizontal
+overflow are asserted.
+
+## Recommended repository policy
+
+- Require the audit and build workflow for website pull requests.
+- Require Markdown review for content pull requests.
+- Protect both `main` branches from force pushes.
+- Do not commit `_site/`, `_content/`, or `node_modules/`.
+- Keep website-specific metadata out of the content repository unless it is an
+  optional Markdown frontmatter override.
+
+## Scaling thresholds
+
+Review the current implementation when either condition is measured:
+
+- `search-index.json` exceeds 1 MB compressed.
+- A full production build exceeds two minutes in GitHub Actions.
+
+At that point, split search by module and cache parsed document metadata by content
+commit. The content directory contract does not need to change.

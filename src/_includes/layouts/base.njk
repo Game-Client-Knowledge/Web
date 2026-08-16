@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <meta name="theme-color" content="#1f2926">
+    <meta
+      name="description"
+      content="{{ description or site.description }}"
+    >
+    <title>{% if title %}{{ title }} · {% endif %}{{ site.name }}</title>
+    <link rel="stylesheet" href="{{ '/assets/css/site.css' | withBase }}">
+    <link rel="icon" href="{{ '/assets/images/favicon.svg' | withBase }}" type="image/svg+xml">
+  </head>
+  <body class="page-{{ pageKind or 'default' }}">
+    <a class="skip-link" href="#main-content">跳到正文</a>
+
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="brand" href="{{ '/' | withBase }}" aria-label="Game Client Knowledge 首页">
+          <span class="brand-mark" aria-hidden="true">G</span>
+          <span class="brand-copy">
+            <strong>Game Client</strong>
+            <span>Knowledge</span>
+          </span>
+        </a>
+
+        <nav class="primary-nav" aria-label="主导航">
+          {% for module in catalog.modules %}
+            <a
+              href="{{ module.route | withBase }}"
+              {% if activeModule == module.key %}aria-current="page"{% endif %}
+            >
+              {{ module.shortTitle }}
+            </a>
+          {% endfor %}
+        </nav>
+
+        <div class="header-actions">
+          <button
+            class="search-trigger"
+            type="button"
+            data-open-search
+            aria-label="搜索知识库"
+          >
+            <i data-lucide="search" aria-hidden="true"></i>
+            <span>搜索</span>
+            <kbd>⌘ K</kbd>
+          </button>
+          <a
+            class="icon-button"
+            href="{{ site.repositoryUrl }}"
+            aria-label="打开内容仓库"
+            title="内容仓库"
+            rel="noreferrer"
+          >
+            <i data-lucide="github" aria-hidden="true"></i>
+          </a>
+          <button
+            class="icon-button mobile-menu-trigger"
+            type="button"
+            data-toggle-menu
+            aria-label="打开导航"
+            aria-expanded="false"
+            title="导航"
+          >
+            <i data-lucide="menu" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
+
+      <nav class="mobile-nav" data-mobile-nav aria-label="移动端导航">
+        {% for module in catalog.modules %}
+          <a href="{{ module.route | withBase }}">
+            <i data-lucide="{{ module.icon }}" aria-hidden="true"></i>
+            {{ module.title }}
+          </a>
+        {% endfor %}
+      </nav>
+    </header>
+
+    <main id="main-content">
+      {{ content | safe }}
+    </main>
+
+    <footer class="site-footer">
+      <div>
+        <strong>{{ site.name }}</strong>
+        <span>内容与展示分离，目录即导航。</span>
+      </div>
+      <div class="footer-meta">
+        <span>内容版本 {{ catalog.repository.commit }}</span>
+        <span>{{ catalog.repository.updatedAt | formatDate }} 更新</span>
+      </div>
+    </footer>
+
+    <dialog class="search-dialog" data-search-dialog>
+      <div class="search-panel">
+        <div class="search-input-wrap">
+          <i data-lucide="search" aria-hidden="true"></i>
+          <input
+            type="search"
+            placeholder="搜索知识点、面试题或代码"
+            autocomplete="off"
+            aria-label="搜索知识库"
+            data-search-input
+          >
+          <button
+            class="icon-button"
+            type="button"
+            data-close-search
+            aria-label="关闭搜索"
+            title="关闭"
+          >
+            <i data-lucide="x" aria-hidden="true"></i>
+          </button>
+        </div>
+        <p class="search-status" data-search-status>输入关键词开始搜索</p>
+        <div class="search-results" data-search-results></div>
+      </div>
+    </dialog>
+
+    <script>
+      window.GCK_CONFIG = {
+        basePath: {{ site.basePath | json | safe }},
+        searchIndex: {{ ('/search-index.json' | withBase) | json | safe }}
+      };
+    </script>
+    <script src="{{ '/assets/vendor/lucide.js' | withBase }}"></script>
+    {% if (document and document.hasMermaid) or (module and module.hasMermaid) %}
+      <script src="{{ '/assets/vendor/mermaid.min.js' | withBase }}"></script>
+    {% endif %}
+    <script src="{{ '/assets/js/site.js' | withBase }}"></script>
+    <script src="{{ '/assets/js/search.js' | withBase }}"></script>
+  </body>
+</html>

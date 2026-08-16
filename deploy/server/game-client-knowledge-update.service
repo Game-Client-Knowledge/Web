@@ -1,0 +1,18 @@
+[Unit]
+Description=Build and publish Game Client Knowledge when content changes
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=sourcecode
+Group=sourcecode
+WorkingDirectory=/home/sourcecode/gck-builder/web
+TimeoutStartSec=5min
+Environment=PATH=/home/sourcecode/.local/node-current/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/home/sourcecode/gck-builder/web/deploy/server/update-site.sh
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ReadWritePaths=/home/sourcecode/gck-builder /var/www/game-client-knowledge

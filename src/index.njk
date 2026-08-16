@@ -1,0 +1,83 @@
+---
+layout: layouts/base.njk
+pageKind: home
+permalink: index.html
+---
+
+<section class="library-intro">
+  <div class="library-intro-overlay">
+    <p class="eyebrow">开放 · 持续更新 · 多人共建</p>
+    <h1>Game Client Knowledge</h1>
+    <p class="intro-copy">
+      游戏客户端开发与面试知识库。按专题学习，按公司复盘面经，
+      直接阅读和运行配套代码。
+    </p>
+    <button class="intro-search" type="button" data-open-search>
+      <i data-lucide="search" aria-hidden="true"></i>
+      搜索全部内容
+      <span>⌘ K</span>
+    </button>
+  </div>
+</section>
+
+<section class="catalog-overview" aria-labelledby="catalog-title">
+  <div class="section-heading">
+    <div>
+      <p class="eyebrow">自动扫描内容仓库</p>
+      <h2 id="catalog-title">知识库目录</h2>
+    </div>
+    <div class="catalog-stats" aria-label="内容统计">
+      <span><strong>{{ catalog.units.length }}</strong> 个专题</span>
+      <span><strong>{{ catalog.documents | length }}</strong> 篇内容</span>
+    </div>
+  </div>
+
+  {% for module in catalog.modules %}
+    <section class="module-band module-{{ module.accent }}" aria-labelledby="module-{{ module.key }}">
+      <div class="module-band-heading">
+        <div class="module-identity">
+          <span class="module-icon">
+            <i data-lucide="{{ module.icon }}" aria-hidden="true"></i>
+          </span>
+          <div>
+            <h3 id="module-{{ module.key }}">{{ module.title }}</h3>
+            <p>{{ module.description }}</p>
+          </div>
+        </div>
+        <a class="text-link" href="{{ module.route | withBase }}">
+          查看全部
+          <i data-lucide="arrow-right" aria-hidden="true"></i>
+        </a>
+      </div>
+
+      <div class="unit-grid">
+        {% for unit in module.units %}
+          <a class="unit-card" href="{{ unit.route | withBase }}">
+            <span class="unit-meta">
+              {% if unit.group %}{{ unit.group }} · {% endif %}
+              {{ unit.articleCount }} 篇
+              {% if unit.codeCount %} · {{ unit.codeCount }} 个源码文件{% endif %}
+            </span>
+            <strong>{{ unit.title }}</strong>
+            <span>{{ unit.description }}</span>
+            <i data-lucide="arrow-up-right" aria-hidden="true"></i>
+          </a>
+        {% else %}
+          <p class="empty-state">该模块暂无内容。</p>
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+</section>
+
+<section class="contribution-band">
+  <div>
+    <p class="eyebrow">目录驱动</p>
+    <h2>新增内容，不改网站代码</h2>
+    <p>在内容仓库添加文件夹和 Markdown，导航、页面与搜索索引会在下次构建时自动更新。</p>
+  </div>
+  <a class="secondary-button" href="{{ site.repositoryUrl }}/blob/main/CONTRIBUTING.md">
+    <i data-lucide="git-pull-request-arrow" aria-hidden="true"></i>
+    查看贡献规范
+  </a>
+</section>
