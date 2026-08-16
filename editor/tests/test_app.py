@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlparse
@@ -26,6 +27,8 @@ def make_settings(tmp_path: Path, *, oauth: bool = False) -> Settings:
         session_hours=24,
         registration_enabled=True,
         default_edit_policy="local_authenticated",
+        pr_auto_close_days=7,
+        pr_sync_interval_seconds=900,
         bootstrap_admin_email="sourcecode@example.test",
         bootstrap_admin_username="sourcecode",
         bootstrap_admin_password=TEST_BOOTSTRAP_PASSWORD,
@@ -251,10 +254,12 @@ def test_admin_can_switch_to_github_required_policy(client: TestClient) -> None:
         json={
             "edit_policy": "github_verified",
             "registration_enabled": True,
+            "pr_auto_close_days": 14,
         },
     )
     assert response.status_code == 200, response.text
     assert response.json()["edit_policy"] == "github_verified"
+    assert response.json()["pr_auto_close_days"] == 14
 
 
 def test_admin_can_save_encrypted_smtp_configuration(
@@ -682,6 +687,160 @@ def test_unknown_remote_branch_cannot_be_overwritten(
     assert detail["code"] == "branch_conflict"
     assert detail["can_overwrite"] is False
     github.submit.assert_not_awaited()
+
+
+def test_submission_queues_verified_contributor_thank_you(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "feedback@example.test",
+            "username": "feedback-user",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    user_id = registered["user"]["id"]
+    with client.app.state.db.connect() as connection:
+        connection.execute(
+            "UPDATE users SET email_verified = 1 WHERE id = ?",
+            (user_id,),
+        )
+    draft = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": "knowledge/cpp/feedback.md",
+            "content": "# Feedback\n",
+            "operation": "upsert",
+        },
+    )
+    assert draft.status_code == 200
+
+    github = client.app.state.github
+    github.main_reference = AsyncMock(
+        return_value={"object": {"sha": "main-commit-sha"}}
+    )
+    github.repository_tree = AsyncMock(return_value=[])
+    github.submit = AsyncMock(
+        return_value=SubmissionResult(
+            branch="web/feedback-user/feedback",
+            commit_sha="feedback-commit",
+            pr_number=61,
+            pr_url="https://github.example/pr/61",
+        )
+    )
+    submitted = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "custom_head": "feedback",
+            "title": "docs: feedback",
+            "description": "",
+        },
+    )
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["feedback_email_queued"] is True
+    submission_id = submitted.json()["id"]
+    with client.app.state.db.connect() as connection:
+        notification = connection.execute(
+            """
+            SELECT * FROM notifications
+            WHERE submission_id = ?
+              AND event_type = 'contributor_submission_received'
+            """,
+            (submission_id,),
+        ).fetchone()
+    assert notification["audience"] == "contributor"
+    assert "感谢你的贡献" in notification["subject"]
+
+
+def test_auto_closed_submission_can_be_restored_and_urged(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "restore@example.test",
+            "username": "restore-user",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    user_id = registered["user"]["id"]
+    now = datetime.now(timezone.utc)
+    with client.app.state.db.connect() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO submissions(
+                user_id, auth_provider, branch_name, title, description,
+                pr_number, pr_url, status, auto_closed, closed_at,
+                created_at, updated_at
+            )
+            VALUES(?, 'local', ?, ?, '', 62, ?, 'closed', 1, ?, ?, ?)
+            """,
+            (
+                user_id,
+                "web/restore-user/restore",
+                "Restore contribution",
+                "https://github.example/pr/62",
+                now.isoformat(),
+                now.isoformat(),
+                now.isoformat(),
+            ),
+        )
+        submission_id = cursor.lastrowid
+
+    github = client.app.state.github
+    github.update_pull_state = AsyncMock(
+        return_value={
+            "state": "open",
+            "updated_at": now.isoformat(),
+        }
+    )
+    restored = client.post(
+        f"/api/submissions/{submission_id}/restore-and-urge",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["status"] == "open"
+    github.update_pull_state.assert_awaited_once_with(
+        62,
+        "open",
+        "test-bot-token",
+    )
+
+    limited = client.post(
+        f"/api/submissions/{submission_id}/urge",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert limited.status_code == 429
+
+    old_urge = (now - timedelta(hours=25)).isoformat()
+    with client.app.state.db.connect() as connection:
+        connection.execute(
+            "UPDATE submissions SET last_urged_at = ? WHERE id = ?",
+            (old_urge, submission_id),
+        )
+    urged = client.post(
+        f"/api/submissions/{submission_id}/urge",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert urged.status_code == 200, urged.text
+    assert urged.json()["urge_count"] == 2
+    with client.app.state.db.connect() as connection:
+        events = {
+            row["event_type"]
+            for row in connection.execute(
+                """
+                SELECT event_type FROM notifications
+                WHERE event_type LIKE 'pull_request_%'
+                """
+            ).fetchall()
+        }
+    assert "pull_request_restored_and_urged" in events
+    assert "pull_request_urged" in events
 
 
 def test_submission_preserves_file_delete_operation(

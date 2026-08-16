@@ -35,6 +35,7 @@ class SubmissionResult:
     commit_sha: str
     pr_number: int
     pr_url: str
+    pr_updated_at: str | None = None
 
 
 class GitHubClient:
@@ -172,6 +173,34 @@ class GitHubClient:
             expected=(200, 404),
         )
         return response.status_code == 200
+
+    async def pull_request(
+        self,
+        number: int,
+        token: str,
+    ) -> dict[str, Any]:
+        response = await self._request(
+            "GET",
+            f"/repos/{self.settings.github_repo}/pulls/{number}",
+            token=token,
+        )
+        return response.json()
+
+    async def update_pull_state(
+        self,
+        number: int,
+        state: str,
+        token: str,
+    ) -> dict[str, Any]:
+        if state not in {"open", "closed"}:
+            raise ValueError("Pull request state must be open or closed")
+        response = await self._request(
+            "PATCH",
+            f"/repos/{self.settings.github_repo}/pulls/{number}",
+            token=token,
+            json={"state": state},
+        )
+        return response.json()
 
     async def user_profile(self, token: str) -> dict[str, Any]:
         response = await self._request("GET", "/user", token=token)
@@ -401,4 +430,5 @@ class GitHubClient:
             commit_sha=commit_sha,
             pr_number=int(payload["number"]),
             pr_url=str(payload["html_url"]),
+            pr_updated_at=payload.get("updated_at"),
         )

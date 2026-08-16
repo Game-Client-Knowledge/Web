@@ -283,6 +283,12 @@ the temporary branch. A failed submission record can be retried with the same
 custom head. See [Submission Head Conflicts](submission-head-conflicts.md) for
 normalization, ownership checks, structured 409 responses, and overwrite behavior.
 
+After submission, verified contributors receive a thank-you email. A background
+task synchronizes open pull requests with GitHub and sends another email when a PR
+is merged, closed, or automatically closed after the configured inactivity period.
+Auto-closed PRs can be restored and urged from the contributor workspace. See
+[Contributor Feedback and PR Lifecycle](contributor-feedback-and-pr-lifecycle.md).
+
 ## Administration
 
 The administration page is server-protected and requires an authenticated,
@@ -295,6 +301,8 @@ Administrators can:
 - Configure QQ Mail, Gmail, Outlook, or custom SMTP from provider templates,
   retain the authorization code encrypted at rest, and send a test message to
   their own administrator email.
+- Configure the PR inactivity threshold, inspect pending PRs, and trigger an
+  immediate GitHub status synchronization.
 - Approve or reject administrator applications.
 - Confirm a local email after checking ownership through an external trusted
   channel.

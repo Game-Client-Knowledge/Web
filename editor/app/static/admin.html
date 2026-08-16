@@ -54,9 +54,30 @@
           <input name="registration_enabled" type="checkbox">
           允许本地账号注册
         </label>
+        <label>
+          PR 自动关闭天数
+          <input
+            name="pr_auto_close_days"
+            type="number"
+            min="0"
+            max="365"
+            required
+          >
+        </label>
         <button class="primary-button" type="submit">保存策略</button>
       </form>
       <div id="integrationStatus" class="integration-status"></div>
+    </section>
+
+    <section class="admin-section">
+      <div class="section-title">
+        <div><h2>待处理 PR</h2><p>当前打开且尚未合并或关闭的贡献。</p></div>
+        <div class="section-actions">
+          <span id="pendingSubmissionCount" class="count-badge"></span>
+          <button id="syncPrButton" class="secondary-button" type="button">同步 GitHub</button>
+        </div>
+      </div>
+      <div id="pendingSubmissionList" class="data-list"></div>
     </section>
 
     <section class="admin-section">
@@ -133,7 +154,7 @@
 
     <section class="admin-section">
       <div class="section-title">
-        <div><h2>管理员邮件通知</h2><p>SMTP 未配置时通知仍会保留在这里。</p></div>
+        <div><h2>邮件通知记录</h2><p>管理员与贡献者邮件的发送状态。</p></div>
       </div>
       <div id="notificationList" class="data-list"></div>
     </section>

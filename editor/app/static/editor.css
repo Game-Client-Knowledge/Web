@@ -1186,6 +1186,25 @@ a[aria-disabled="true"] {
   color: var(--ink-faint);
 }
 
+.submission-item.is-targeted {
+  background: var(--yellow-soft);
+}
+
+.submission-actions {
+  display: flex;
+  margin-top: 7px;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.submission-actions button,
+.submission-actions a {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 10px;
+}
+
 dialog {
   width: min(520px, calc(100% - 28px));
   padding: 0;
@@ -1270,7 +1289,18 @@ dialog::backdrop {
   display: grid;
   align-items: end;
   gap: 16px;
-  grid-template-columns: 280px minmax(220px, 1fr) auto;
+  grid-template-columns:
+    minmax(220px, 1.3fr)
+    minmax(170px, 1fr)
+    minmax(150px, 0.7fr)
+    auto;
+}
+
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
 }
 
 .smtp-form {

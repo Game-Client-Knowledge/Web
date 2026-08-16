@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -8,6 +9,7 @@ import secrets
 import sqlite3
 import urllib.request
 from collections import defaultdict, deque
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
@@ -38,6 +40,13 @@ from .github import (
     GitHubError,
 )
 from .mailer import send_email
+from .notifications import deliver_admin_email, deliver_email
+from .pr_lifecycle import (
+    auto_close_days,
+    parse_github_time,
+    reconcile_submissions,
+    user_action_url,
+)
 from .security import (
     TokenCipher,
     hash_password,
@@ -122,6 +131,7 @@ class AdminDecisionRequest(BaseModel):
 class SettingsRequest(BaseModel):
     edit_policy: str
     registration_enabled: bool
+    pr_auto_close_days: int = Field(ge=0, le=365)
 
 
 class SmtpSettingsRequest(BaseModel):
@@ -267,46 +277,13 @@ def deliver_notification(
     subject: str,
     body: str,
 ) -> None:
-    db = Database(db_path)
-    with db.connect() as connection:
-        recipients = [
-            row["email"]
-            for row in connection.execute(
-                """
-                SELECT email FROM users
-                WHERE role = 'admin' AND status = 'active'
-                ORDER BY id
-                """
-            ).fetchall()
-        ]
-    try:
-        smtp = load_smtp_configuration(
-            db,
-            settings,
-            TokenCipher(settings.encryption_key),
-        )
-        status, error = send_email(smtp, recipients, subject, body)
-    except RuntimeError as exc:
-        status, error = "failed", str(exc)[:500]
-    with db.connect() as connection:
-        connection.execute(
-            """
-            INSERT INTO notifications(
-                event_type, subject, body, recipients, status,
-                error_message, created_at
-            )
-            VALUES(?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                event_type,
-                subject,
-                body,
-                json.dumps(recipients, ensure_ascii=False),
-                status,
-                error,
-                utc_now(),
-            ),
-        )
+    deliver_admin_email(
+        db_path,
+        settings,
+        event_type,
+        subject,
+        body,
+    )
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -316,17 +293,54 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     github = GitHubClient(settings)
     cipher = TokenCipher(settings.encryption_key)
     rate_limiter = SlidingWindowLimiter()
+    pr_sync_lock = asyncio.Lock()
+
+    async def run_pr_sync() -> dict[str, int]:
+        async with pr_sync_lock:
+            return await reconcile_submissions(
+                db,
+                settings,
+                github,
+            )
+
+    async def pr_sync_worker() -> None:
+        await asyncio.sleep(5)
+        while True:
+            try:
+                await run_pr_sync()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                db.audit(
+                    "submission.sync_worker_failed",
+                    "system",
+                    detail=str(exc)[:1000],
+                )
+            await asyncio.sleep(settings.pr_sync_interval_seconds)
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        task = asyncio.create_task(pr_sync_worker())
+        application.state.pr_sync_task = task
+        try:
+            yield
+        finally:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
 
     app = FastAPI(
         title="Game Client Knowledge Editor",
         version="1.0.0",
         docs_url=None,
         redoc_url=None,
+        lifespan=lifespan,
     )
     app.state.settings = settings
     app.state.db = db
     app.state.github = github
     app.state.cipher = cipher
+    app.state.run_pr_sync = run_pr_sync
     app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
     @app.middleware("http")
@@ -502,6 +516,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             subject,
             body,
         )
+
+    def contributor_notification(
+        background_tasks: BackgroundTasks,
+        user: dict[str, Any],
+        submission_id: int,
+        event_type: str,
+        subject: str,
+        body: str,
+    ) -> bool:
+        if not user["email_verified"]:
+            return False
+        background_tasks.add_task(
+            deliver_email,
+            settings.db_path,
+            settings,
+            event_type,
+            [user["email"]],
+            subject,
+            body,
+            audience="contributor",
+            user_id=user["id"],
+            submission_id=submission_id,
+        )
+        return True
 
     base_url_parts = urlsplit(settings.base_url)
     site_origin = (
@@ -1624,19 +1662,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
+        completed_at = utc_now()
         with db.connect() as connection:
             connection.execute(
                 """
                 UPDATE submissions
                 SET status = 'open', commit_sha = ?, pr_number = ?,
-                    pr_url = ?, updated_at = ?
+                    pr_url = ?, pr_updated_at = ?, last_synced_at = ?,
+                    auto_closed = 0, closed_at = NULL, updated_at = ?
                 WHERE id = ?
                 """,
                 (
                     result.commit_sha,
                     result.pr_number,
                     result.pr_url,
-                    utc_now(),
+                    result.pr_updated_at or completed_at,
+                    completed_at,
+                    completed_at,
                     submission_id,
                 ),
             )
@@ -1666,6 +1708,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 f"PR：{result.pr_url}\n"
             ),
         )
+        feedback_email_queued = contributor_notification(
+            background_tasks,
+            user,
+            submission_id,
+            (
+                "contributor_submission_updated"
+                if payload.overwrite
+                else "contributor_submission_received"
+            ),
+            (
+                f"[GCK] 感谢你的贡献：PR #{result.pr_number} "
+                f"{'已更新' if payload.overwrite else '已创建'}"
+            ),
+            (
+                "感谢你为 Game Client Knowledge 提交内容。\n\n"
+                f"标题：{payload.title.strip()}\n"
+                f"PR：{result.pr_url}\n\n"
+                "PR 被合并、关闭或因长期未处理自动关闭时，"
+                "系统会继续发送邮件通知。\n"
+                "查看状态或催办：\n"
+                f"{user_action_url(settings, submission_id)}\n"
+            ),
+        )
         return {
             "id": submission_id,
             "branch": result.branch,
@@ -1673,6 +1738,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "pr_number": result.pr_number,
             "pr_url": result.pr_url,
             "overwritten": payload.overwrite,
+            "feedback_email_queued": feedback_email_queued,
         }
 
     @app.get("/api/submissions")
@@ -1683,7 +1749,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             rows = connection.execute(
                 """
                 SELECT id, branch_name, title, commit_sha, pr_number,
-                       pr_url, status, error_message, created_at, updated_at
+                       pr_url, status, error_message, pr_updated_at,
+                       last_synced_at, auto_closed, closed_at,
+                       last_urged_at, urge_count, created_at, updated_at
                 FROM submissions
                 WHERE user_id = ?
                 ORDER BY created_at DESC
@@ -1692,6 +1760,162 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 (user["id"],),
             ).fetchall()
         return {"items": [dict(row) for row in rows]}
+
+    @app.post("/api/submissions/{submission_id}/urge")
+    async def urge_submission(
+        submission_id: int,
+        request: Request,
+        background_tasks: BackgroundTasks,
+        x_csrf_token: str | None = Header(default=None),
+        user: dict[str, Any] = Depends(require_ready_user),
+    ) -> dict[str, Any]:
+        verify_csrf(user, x_csrf_token)
+        with db.connect() as connection:
+            submission = connection.execute(
+                """
+                SELECT * FROM submissions
+                WHERE id = ? AND user_id = ?
+                """,
+                (submission_id, user["id"]),
+            ).fetchone()
+        if not submission:
+            raise HTTPException(status_code=404, detail="提交记录不存在")
+        if submission["status"] != "open":
+            raise HTTPException(status_code=409, detail="只能催办正在处理的 PR")
+
+        now = datetime.now(timezone.utc)
+        last_urged = parse_github_time(submission["last_urged_at"])
+        if last_urged and now - last_urged < timedelta(hours=24):
+            raise HTTPException(
+                status_code=429,
+                detail="每个 PR 每 24 小时只能催办一次",
+            )
+        now_iso = now.isoformat()
+        with db.connect() as connection:
+            connection.execute(
+                """
+                UPDATE submissions
+                SET last_urged_at = ?, urge_count = urge_count + 1,
+                    updated_at = ?
+                WHERE id = ? AND user_id = ?
+                """,
+                (now_iso, now_iso, submission_id, user["id"]),
+            )
+        admin_notification(
+            background_tasks,
+            "pull_request_urged",
+            f"[GCK] 用户催办 PR #{submission['pr_number']}",
+            (
+                f"提交人：{user['username']} <{user['email']}>\n"
+                f"标题：{submission['title']}\n"
+                f"PR：{submission['pr_url']}\n"
+            ),
+        )
+        db.audit(
+            "submission.urged",
+            request_ip(request),
+            user_id=user["id"],
+            target=submission["pr_url"],
+        )
+        return {
+            "id": submission_id,
+            "status": "open",
+            "last_urged_at": now_iso,
+            "urge_count": int(submission["urge_count"]) + 1,
+        }
+
+    @app.post("/api/submissions/{submission_id}/restore-and-urge")
+    async def restore_and_urge_submission(
+        submission_id: int,
+        request: Request,
+        background_tasks: BackgroundTasks,
+        x_csrf_token: str | None = Header(default=None),
+        user: dict[str, Any] = Depends(require_ready_user),
+    ) -> dict[str, Any]:
+        verify_csrf(user, x_csrf_token)
+        if not settings.github_bot_token:
+            raise HTTPException(
+                status_code=503,
+                detail="服务器提交 Bot 尚未配置",
+            )
+        with db.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM submissions
+                WHERE id = ? AND user_id = ?
+                """,
+                (submission_id, user["id"]),
+            ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="提交记录不存在")
+        submission = dict(row)
+        if submission["status"] != "closed" or not submission["auto_closed"]:
+            raise HTTPException(
+                status_code=409,
+                detail="只有系统自动关闭的 PR 可以恢复",
+            )
+
+        pull = await github.update_pull_state(
+            submission["pr_number"],
+            "open",
+            settings.github_bot_token,
+        )
+        now_iso = utc_now()
+        pr_updated_at = pull.get("updated_at") or now_iso
+        with db.connect() as connection:
+            connection.execute(
+                """
+                UPDATE submissions
+                SET status = 'open', auto_closed = 0, closed_at = NULL,
+                    pr_updated_at = ?, last_synced_at = ?,
+                    last_urged_at = ?, urge_count = urge_count + 1,
+                    updated_at = ?
+                WHERE id = ? AND user_id = ?
+                """,
+                (
+                    pr_updated_at,
+                    now_iso,
+                    now_iso,
+                    now_iso,
+                    submission_id,
+                    user["id"],
+                ),
+            )
+        admin_notification(
+            background_tasks,
+            "pull_request_restored_and_urged",
+            f"[GCK] 用户恢复并催办 PR #{submission['pr_number']}",
+            (
+                f"提交人：{user['username']} <{user['email']}>\n"
+                f"标题：{submission['title']}\n"
+                f"PR：{submission['pr_url']}\n"
+            ),
+        )
+        contributor_notification(
+            background_tasks,
+            user,
+            submission_id,
+            "contributor_pr_restored",
+            f"[GCK] PR #{submission['pr_number']} 已恢复",
+            (
+                f"你的贡献 {submission['title']} 已重新打开，"
+                "并已通知管理员处理。\n\n"
+                f"PR：{submission['pr_url']}\n"
+            ),
+        )
+        db.audit(
+            "submission.restored_and_urged",
+            request_ip(request),
+            user_id=user["id"],
+            target=submission["pr_url"],
+        )
+        return {
+            "id": submission_id,
+            "status": "open",
+            "auto_closed": False,
+            "last_urged_at": now_iso,
+            "urge_count": int(submission["urge_count"]) + 1,
+        }
 
     @app.post("/api/admin-applications")
     async def apply_admin(
@@ -1795,6 +2019,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "registration_enabled": (
                     db.setting("registration_enabled", "1") == "1"
                 ),
+                "pr_auto_close_days": auto_close_days(db, settings),
                 "smtp_enabled": smtp.smtp_enabled,
                 "github_oauth_enabled": settings.github_oauth_enabled,
                 "github_submission_enabled": settings.github_submission_enabled,
@@ -1898,6 +2123,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "registration_enabled": (
                     "1" if payload.registration_enabled else "0"
                 ),
+                "pr_auto_close_days": str(payload.pr_auto_close_days),
             }.items():
                 connection.execute(
                     """
@@ -1919,7 +2145,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "edit_policy": payload.edit_policy,
             "registration_enabled": payload.registration_enabled,
+            "pr_auto_close_days": payload.pr_auto_close_days,
         }
+
+    @app.post("/api/admin/submissions/sync")
+    async def sync_submission_statuses(
+        request: Request,
+        x_csrf_token: str | None = Header(default=None),
+        admin: dict[str, Any] = Depends(require_admin),
+    ) -> dict[str, int]:
+        verify_csrf(admin, x_csrf_token)
+        result = await run_pr_sync()
+        db.audit(
+            "submission.sync_requested",
+            request_ip(request),
+            user_id=admin["id"],
+            detail=json.dumps(result, ensure_ascii=False),
+        )
+        return result
 
     @app.put("/api/admin/smtp")
     async def update_smtp_settings(

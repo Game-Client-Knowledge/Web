@@ -856,17 +856,81 @@ async function loadSubmissions() {
     const meta = document.createElement("span");
     meta.textContent = `${item.status} · ${item.branch_name}`;
     wrapper.append(title, meta);
+    const actions = document.createElement("div");
+    actions.className = "submission-actions";
     if (item.pr_url) {
       const link = document.createElement("a");
       link.href = item.pr_url;
       link.rel = "noreferrer";
       link.textContent = `PR #${item.pr_number}`;
-      wrapper.append(link);
+      actions.append(link);
+    }
+    if (item.status === "open") {
+      const urge = document.createElement("button");
+      urge.type = "button";
+      urge.className = "secondary-button";
+      const lastUrged = item.last_urged_at
+        ? new Date(item.last_urged_at)
+        : null;
+      const coolingDown =
+        lastUrged &&
+        !Number.isNaN(lastUrged.getTime()) &&
+        Date.now() - lastUrged.getTime() < 86400000;
+      urge.textContent = coolingDown ? "已催办" : "催办";
+      urge.disabled = Boolean(coolingDown);
+      urge.addEventListener("click", () =>
+        actOnSubmission(item, "urge", urge)
+      );
+      actions.append(urge);
+    } else if (item.status === "closed" && item.auto_closed) {
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.className = "secondary-button";
+      restore.textContent = "恢复并催办";
+      restore.addEventListener("click", () =>
+        actOnSubmission(item, "restore-and-urge", restore)
+      );
+      actions.append(restore);
+    }
+    wrapper.append(actions);
+    wrapper.dataset.submissionId = String(item.id);
+    if (
+      new URLSearchParams(location.search).get("submission") ===
+      String(item.id)
+    ) {
+      wrapper.classList.add("is-targeted");
     }
     list.append(wrapper);
   }
   if (!payload.items.length) {
     list.textContent = "暂无提交";
+  }
+  const targeted = list.querySelector(".submission-item.is-targeted");
+  targeted?.scrollIntoView({ block: "center" });
+}
+
+async function actOnSubmission(item, action, button) {
+  button.disabled = true;
+  const original = button.textContent;
+  button.textContent =
+    action === "urge" ? "正在催办" : "正在恢复";
+  try {
+    const result = await api(
+      `/submissions/${item.id}/${action}`,
+      { method: "POST" }
+    );
+    feedback(
+      byId("submitFeedback"),
+      result.status === "open" && action === "restore-and-urge"
+        ? "PR 已恢复并通知管理员。"
+        : "已通知管理员处理该 PR。",
+      "success"
+    );
+    await loadSubmissions();
+  } catch (error) {
+    feedback(byId("submitFeedback"), error.message);
+    button.disabled = false;
+    button.textContent = original;
   }
 }
 

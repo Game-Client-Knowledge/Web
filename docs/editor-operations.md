@@ -47,6 +47,16 @@ python3 -c \
   "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
+PR lifecycle defaults can be overridden with:
+
+```dotenv
+EDITOR_PR_AUTO_CLOSE_DAYS=7
+EDITOR_PR_SYNC_INTERVAL_SECONDS=900
+```
+
+The close threshold can also be changed at runtime from the administration page.
+Set it to `0` there to disable automatic close.
+
 The production bootstrap identity is:
 
 ```text
@@ -192,6 +202,9 @@ in `/editor/admin`.
 
 See [SMTP Configuration](smtp-configuration.md) for provider examples, production
 commands, verification, and domain deliverability requirements.
+
+See [Contributor Feedback and PR Lifecycle](contributor-feedback-and-pr-lifecycle.md)
+for status polling, contributor email, automatic close, restore, and urge behavior.
 
 ## Backup and Restore
 

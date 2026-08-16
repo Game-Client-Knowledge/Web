@@ -21,6 +21,8 @@ class Settings:
     session_hours: int
     registration_enabled: bool
     default_edit_policy: str
+    pr_auto_close_days: int
+    pr_sync_interval_seconds: int
     bootstrap_admin_email: str
     bootstrap_admin_username: str
     bootstrap_admin_password: str
@@ -61,6 +63,14 @@ class Settings:
             session_hours=max(1, int(os.getenv("EDITOR_SESSION_HOURS", "24"))),
             registration_enabled=env_bool("EDITOR_REGISTRATION_ENABLED", True),
             default_edit_policy=policy,
+            pr_auto_close_days=max(
+                0,
+                int(os.getenv("EDITOR_PR_AUTO_CLOSE_DAYS", "7")),
+            ),
+            pr_sync_interval_seconds=max(
+                60,
+                int(os.getenv("EDITOR_PR_SYNC_INTERVAL_SECONDS", "900")),
+            ),
             bootstrap_admin_email=os.getenv(
                 "EDITOR_BOOTSTRAP_ADMIN_EMAIL", ""
             ).strip().lower(),

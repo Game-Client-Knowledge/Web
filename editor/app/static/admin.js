@@ -2,7 +2,8 @@ const state = {
   session: null,
   csrf: "",
   smtp: null,
-  smtpTemplates: []
+  smtpTemplates: [],
+  autoCloseDays: 7
 };
 
 const byId = (id) => document.getElementById(id);
@@ -193,6 +194,46 @@ function renderSubmissions(items) {
   if (!items.length) target.textContent = "暂无提交请求";
 }
 
+function renderPendingSubmissions(items, closeDays) {
+  const target = byId("pendingSubmissionList");
+  target.replaceChildren();
+  const pending = items.filter((item) => item.status === "open");
+  byId("pendingSubmissionCount").textContent = `${pending.length} 个待处理`;
+  for (const item of pending) {
+    const actions = [];
+    if (item.pr_url) {
+      const link = document.createElement("a");
+      link.className = "secondary-button";
+      link.href = item.pr_url;
+      link.rel = "noreferrer";
+      link.textContent = `PR #${item.pr_number}`;
+      actions.push(link);
+    }
+    const activity = new Date(
+      item.pr_updated_at || item.updated_at || item.created_at
+    );
+    const elapsedDays = Number.isNaN(activity.getTime())
+      ? 0
+      : Math.max(
+          0,
+          Math.floor((Date.now() - activity.getTime()) / 86400000)
+        );
+    const deadline = closeDays
+      ? elapsedDays >= closeDays
+        ? "等待自动关闭"
+        : `${closeDays - elapsedDays} 天后自动关闭`
+      : "自动关闭已停用";
+    target.append(
+      makeRow(
+        `${item.title} · PR #${item.pr_number}`,
+        `${item.username} · ${elapsedDays} 天未活动 · ${deadline}`,
+        actions
+      )
+    );
+  }
+  if (!pending.length) target.textContent = "暂无待处理 PR";
+}
+
 function renderNotifications(items) {
   const target = byId("notificationList");
   target.replaceChildren();
@@ -200,7 +241,8 @@ function renderNotifications(items) {
     target.append(
       makeRow(
         `${item.subject} · ${item.status}`,
-        item.error_message || item.created_at
+        `${item.audience || "admin"} · ` +
+          (item.error_message || item.created_at)
       )
     );
   }
@@ -266,7 +308,14 @@ async function loadOverview() {
   byId("settingsForm").edit_policy.value = data.settings.edit_policy;
   byId("settingsForm").registration_enabled.checked =
     data.settings.registration_enabled;
+  byId("settingsForm").pr_auto_close_days.value =
+    String(data.settings.pr_auto_close_days);
+  state.autoCloseDays = data.settings.pr_auto_close_days;
   renderIntegrations(data.settings);
+  renderPendingSubmissions(
+    data.submissions,
+    data.settings.pr_auto_close_days
+  );
   renderSmtp(data.smtp, data.smtp_templates);
   renderApplications(data.applications);
   renderSubmissions(data.submissions);
@@ -281,13 +330,37 @@ byId("settingsForm").addEventListener("submit", async (event) => {
       method: "PUT",
       body: JSON.stringify({
         edit_policy: event.currentTarget.edit_policy.value,
-        registration_enabled: event.currentTarget.registration_enabled.checked
+        registration_enabled: event.currentTarget.registration_enabled.checked,
+        pr_auto_close_days: Number(
+          event.currentTarget.pr_auto_close_days.value
+        )
       })
     });
     feedback("编辑策略已保存", "success");
     await loadOverview();
   } catch (error) {
     feedback(error.message);
+  }
+});
+
+byId("syncPrButton").addEventListener("click", async () => {
+  const button = byId("syncPrButton");
+  button.disabled = true;
+  try {
+    const result = await api("/admin/submissions/sync", {
+      method: "POST"
+    });
+    feedback(
+      `已检查 ${result.checked} 个 PR：` +
+        `${result.merged} 个合并，${result.closed} 个关闭，` +
+        `${result.auto_closed} 个自动关闭。`,
+      "success"
+    );
+    await loadOverview();
+  } catch (error) {
+    feedback(error.message);
+  } finally {
+    button.disabled = false;
   }
 });
 

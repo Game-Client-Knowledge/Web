@@ -79,6 +79,12 @@ CREATE TABLE IF NOT EXISTS submissions (
     pr_url TEXT,
     status TEXT NOT NULL CHECK(status IN ('creating', 'open', 'failed', 'merged', 'closed')),
     error_message TEXT,
+    pr_updated_at TEXT,
+    last_synced_at TEXT,
+    auto_closed INTEGER NOT NULL DEFAULT 0,
+    closed_at TEXT,
+    last_urged_at TEXT,
+    urge_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -103,6 +109,9 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_type TEXT NOT NULL,
+    audience TEXT NOT NULL DEFAULT 'admin',
+    user_id INTEGER REFERENCES users(id),
+    submission_id INTEGER REFERENCES submissions(id),
     subject TEXT NOT NULL,
     body TEXT NOT NULL,
     recipients TEXT NOT NULL,
@@ -204,6 +213,89 @@ class Database:
             ]:
                 if statement[0] not in oauth_columns:
                     connection.execute(statement[1])
+            submission_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(submissions)"
+                ).fetchall()
+            }
+            for name, statement in [
+                (
+                    "pr_updated_at",
+                    "ALTER TABLE submissions ADD COLUMN pr_updated_at TEXT",
+                ),
+                (
+                    "last_synced_at",
+                    "ALTER TABLE submissions ADD COLUMN last_synced_at TEXT",
+                ),
+                (
+                    "auto_closed",
+                    """
+                    ALTER TABLE submissions
+                    ADD COLUMN auto_closed INTEGER NOT NULL DEFAULT 0
+                    """,
+                ),
+                (
+                    "closed_at",
+                    "ALTER TABLE submissions ADD COLUMN closed_at TEXT",
+                ),
+                (
+                    "last_urged_at",
+                    "ALTER TABLE submissions ADD COLUMN last_urged_at TEXT",
+                ),
+                (
+                    "urge_count",
+                    """
+                    ALTER TABLE submissions
+                    ADD COLUMN urge_count INTEGER NOT NULL DEFAULT 0
+                    """,
+                ),
+            ]:
+                if name not in submission_columns:
+                    connection.execute(statement)
+            notification_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(notifications)"
+                ).fetchall()
+            }
+            for name, statement in [
+                (
+                    "audience",
+                    """
+                    ALTER TABLE notifications
+                    ADD COLUMN audience TEXT NOT NULL DEFAULT 'admin'
+                    """,
+                ),
+                (
+                    "user_id",
+                    """
+                    ALTER TABLE notifications
+                    ADD COLUMN user_id INTEGER REFERENCES users(id)
+                    """,
+                ),
+                (
+                    "submission_id",
+                    """
+                    ALTER TABLE notifications
+                    ADD COLUMN submission_id INTEGER REFERENCES submissions(id)
+                    """,
+                ),
+            ]:
+                if name not in notification_columns:
+                    connection.execute(statement)
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_submissions_status
+                ON submissions(status, pr_updated_at)
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_notifications_submission
+                ON notifications(submission_id, created_at DESC)
+                """
+            )
             now = utc_now()
             connection.execute(
                 """
@@ -220,6 +312,14 @@ class Database:
                 ON CONFLICT(key) DO NOTHING
                 """,
                 ("1" if settings.registration_enabled else "0", now),
+            )
+            connection.execute(
+                """
+                INSERT INTO settings(key, value, updated_at)
+                VALUES('pr_auto_close_days', ?, ?)
+                ON CONFLICT(key) DO NOTHING
+                """,
+                (str(settings.pr_auto_close_days), now),
             )
 
             count = connection.execute(

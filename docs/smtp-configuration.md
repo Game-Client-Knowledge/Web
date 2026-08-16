@@ -5,12 +5,16 @@
 SMTP (Simple Mail Transfer Protocol) is the standard protocol used to send
 outgoing email.
 
-The editor service uses SMTP only for administrator notifications:
+The editor service uses SMTP for administrator and verified contributor
+notifications:
 
 - A contributor successfully creates a Draft Pull Request.
 - A user submits an administrator application.
+- A contributor receives the submission thank-you message.
+- A contributor's PR is merged, closed, auto-closed, or restored.
 
-Recipients are all active users whose role is `admin`. If SMTP is unavailable,
+Administrator events target all active users whose role is `admin`. Contributor
+events target the verified email of the submission owner. If SMTP is unavailable,
 the contribution workflow still succeeds and the notification is retained in
 `/editor/admin`.
 
