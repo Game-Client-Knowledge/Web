@@ -115,13 +115,21 @@
 
     <section class="admin-section">
       <div class="section-title">
-        <div><h2>待处理 PR</h2><p>当前打开且尚未合并或关闭的贡献。</p></div>
+        <div><h2>待处理 PR</h2><p>网页提交与 GitHub 仓库外部贡献。</p></div>
         <div class="section-actions">
           <span id="pendingSubmissionCount" class="count-badge"></span>
           <button id="syncPrButton" class="secondary-button" type="button">同步 GitHub</button>
         </div>
       </div>
       <div id="pendingSubmissionList" class="data-list"></div>
+    </section>
+
+    <section class="admin-section">
+      <div class="section-title">
+        <div><h2>外部 PR</h2><p>不是通过网页编辑器创建的 GitHub PR。</p></div>
+        <span id="externalPullCount" class="count-badge"></span>
+      </div>
+      <div id="externalPullList" class="data-list"></div>
     </section>
 
     <section class="admin-section">

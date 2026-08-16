@@ -45,7 +45,7 @@ from .notifications import deliver_admin_email, deliver_email
 from .pr_lifecycle import (
     auto_close_days,
     parse_github_time,
-    reconcile_submissions,
+    reconcile_all_pull_requests,
     user_action_url,
 )
 from .security import (
@@ -154,6 +154,10 @@ class VisualSettingsRequest(BaseModel):
     reader_background_style: str = "blueprint"
     pointer_effect_enabled: bool = True
     home_intro_enabled: bool = True
+
+
+class ExternalUrgeRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=256)
 
 
 class SmtpSettingsRequest(BaseModel):
@@ -326,11 +330,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     github = GitHubClient(settings)
     cipher = TokenCipher(settings.encryption_key)
     rate_limiter = SlidingWindowLimiter()
-    pr_sync_lock = asyncio.Lock()
+    pr_sync_lock: asyncio.Lock | None = None
 
     async def run_pr_sync() -> dict[str, int]:
+        nonlocal pr_sync_lock
+        if pr_sync_lock is None:
+            pr_sync_lock = asyncio.Lock()
         async with pr_sync_lock:
-            return await reconcile_submissions(
+            return await reconcile_all_pull_requests(
                 db,
                 settings,
                 github,
@@ -668,6 +675,98 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ):
             return RedirectResponse(f"{settings.base_url}/")
         return FileResponse(STATIC_DIR / "admin.html")
+
+    @app.get("/external-pr/urge")
+    async def external_pr_urge_page():
+        return FileResponse(STATIC_DIR / "external-urge.html")
+
+    @app.post("/api/external-pr/urge")
+    async def urge_external_pull_request(
+        payload: ExternalUrgeRequest,
+        request: Request,
+        background_tasks: BackgroundTasks,
+    ) -> dict[str, Any]:
+        capability_hash = token_hash(payload.token)
+        if not rate_limiter.allow(
+            f"external-urge:{request_ip(request)}",
+            20,
+            3600,
+        ):
+            raise HTTPException(status_code=429, detail="催办请求过多")
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
+        cutoff = (now - timedelta(hours=24)).isoformat()
+        with db.connect() as connection:
+            external = connection.execute(
+                """
+                SELECT p.*
+                FROM external_pr_action_tokens t
+                JOIN external_pull_requests p ON p.id = t.external_pr_id
+                WHERE t.token_hash = ? AND t.action = 'urge'
+                  AND t.expires_at > ?
+                """,
+                (capability_hash, now_iso),
+            ).fetchone()
+            if not external:
+                raise HTTPException(
+                    status_code=404,
+                    detail="催办链接无效或已过期",
+                )
+            if external["status"] == "merged":
+                raise HTTPException(status_code=409, detail="该 PR 已合并")
+            if (
+                external["status"] == "closed"
+                and not external["auto_closed"]
+            ):
+                raise HTTPException(status_code=409, detail="该 PR 已关闭")
+            changed = connection.execute(
+                """
+                UPDATE external_pull_requests
+                SET last_urged_at = ?, urge_count = urge_count + 1,
+                    updated_at = ?
+                WHERE id = ?
+                  AND (last_urged_at IS NULL OR last_urged_at <= ?)
+                """,
+                (
+                    now_iso,
+                    now_iso,
+                    external["id"],
+                    cutoff,
+                ),
+            )
+            if changed.rowcount == 0:
+                raise HTTPException(
+                    status_code=429,
+                    detail="每个 PR 每 24 小时只能催办一次",
+                )
+        background_tasks.add_task(
+            deliver_admin_email,
+            settings.db_path,
+            settings,
+            "external_pull_request_urged",
+            f"[GCK] 外部贡献者催办 PR #{external['pr_number']}",
+            (
+                f"GitHub 用户：@{external['github_login']}\n"
+                f"标题：{external['title']}\n"
+                f"状态：{external['status']}"
+                f"{'（系统自动关闭）' if external['auto_closed'] else ''}\n"
+                f"PR：{external['pr_url']}\n"
+            ),
+            external_pr_id=external["id"],
+        )
+        db.audit(
+            "external_pr.urged",
+            request_ip(request),
+            target=external["pr_url"],
+            detail=f"github_login={external['github_login']}",
+        )
+        return {
+            "pr_number": external["pr_number"],
+            "status": external["status"],
+            "message": "已通知管理员处理该 PR",
+            "last_urged_at": now_iso,
+            "urge_count": int(external["urge_count"]) + 1,
+        }
 
     @app.get("/api/config")
     async def config() -> dict[str, Any]:
@@ -2225,6 +2324,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     """
                 ).fetchall()
             ]
+            external_pull_requests = [
+                dict(row)
+                for row in connection.execute(
+                    """
+                    SELECT * FROM external_pull_requests
+                    ORDER BY created_at DESC LIMIT 100
+                    """
+                ).fetchall()
+            ]
             notifications = [
                 dict(row)
                 for row in connection.execute(
@@ -2239,6 +2347,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "users": users,
             "applications": applications,
             "submissions": submissions,
+            "external_pull_requests": external_pull_requests,
             "notifications": notifications,
             "settings": {
                 "edit_policy": db.setting(

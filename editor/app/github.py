@@ -186,6 +186,53 @@ class GitHubClient:
         )
         return response.json()
 
+    async def list_pull_requests(
+        self,
+        token: str,
+        *,
+        state: str = "all",
+        per_page: int = 100,
+    ) -> list[dict[str, Any]]:
+        if state not in {"open", "closed", "all"}:
+            raise ValueError("Pull request state must be open, closed, or all")
+        response = await self._request(
+            "GET",
+            f"/repos/{self.settings.github_repo}/pulls",
+            token=token,
+            params={
+                "state": state,
+                "sort": "updated",
+                "direction": "desc",
+                "per_page": max(1, min(100, per_page)),
+            },
+        )
+        return list(response.json())
+
+    async def pull_request_commits(
+        self,
+        number: int,
+        token: str,
+    ) -> list[dict[str, Any]]:
+        response = await self._request(
+            "GET",
+            f"/repos/{self.settings.github_repo}/pulls/{number}/commits",
+            token=token,
+            params={"per_page": 100},
+        )
+        return list(response.json())
+
+    async def public_user(
+        self,
+        login: str,
+        token: str,
+    ) -> dict[str, Any]:
+        response = await self._request(
+            "GET",
+            f"/users/{quote(login, safe='')}",
+            token=token,
+        )
+        return response.json()
+
     async def update_pull_state(
         self,
         number: int,

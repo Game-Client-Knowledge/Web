@@ -110,6 +110,26 @@ def test_other_providers_keep_default_login(monkeypatch) -> None:
     ]
 
 
+def test_html_email_keeps_plain_text_fallback(monkeypatch) -> None:
+    monkeypatch.setattr("app.mailer.smtplib.SMTP", FakeSmtp)
+    status, error = send_email(
+        smtp_configuration("gmail"),
+        ["contributor@example.test"],
+        "Thank you",
+        "Plain text fallback",
+        "<p>Thank you</p><a href=\"https://example.test\">Urge</a>",
+    )
+
+    message = FakeSmtp.instance.message
+    assert (status, error) == ("sent", None)
+    assert message.is_multipart()
+    parts = message.get_payload()
+    assert parts[0].get_content_type() == "text/plain"
+    assert "Plain text fallback" in parts[0].get_content()
+    assert parts[1].get_content_type() == "text/html"
+    assert ">Urge</a>" in parts[1].get_content()
+
+
 def test_authentication_failure_is_actionable(monkeypatch) -> None:
     class RejectingSmtp(FakeSmtp):
         authentication_error = True

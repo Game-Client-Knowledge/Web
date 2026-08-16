@@ -39,6 +39,40 @@ def test_repository_file_accepts_github_wrapped_base64() -> None:
     )
 
 
+def test_external_pull_discovery_uses_bounded_github_queries() -> None:
+    settings = SimpleNamespace(github_repo="owner/repository")
+    client = GitHubClient(settings)
+    client._request = AsyncMock(
+        side_effect=[
+            httpx.Response(200, json=[{"number": 4}]),
+            httpx.Response(200, json=[{"sha": "commit"}]),
+            httpx.Response(
+                200,
+                json={"login": "contributor", "email": "user@example.test"},
+            ),
+        ]
+    )
+
+    pulls = asyncio.run(
+        client.list_pull_requests("token", state="all", per_page=500)
+    )
+    commits = asyncio.run(client.pull_request_commits(4, "token"))
+    profile = asyncio.run(client.public_user("contributor", "token"))
+
+    assert pulls == [{"number": 4}]
+    assert commits == [{"sha": "commit"}]
+    assert profile["email"] == "user@example.test"
+    calls = client._request.await_args_list
+    assert calls[0].kwargs["params"] == {
+        "state": "all",
+        "sort": "updated",
+        "direction": "desc",
+        "per_page": 100,
+    }
+    assert calls[1].args[1].endswith("/pulls/4/commits")
+    assert calls[2].args[1].endswith("/users/contributor")
+
+
 def test_submit_rejects_existing_branch_without_overwrite() -> None:
     settings = SimpleNamespace(
         github_repo="owner/repository",

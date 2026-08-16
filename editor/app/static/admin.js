@@ -194,10 +194,21 @@ function renderSubmissions(items) {
   if (!items.length) target.textContent = "暂无提交请求";
 }
 
-function renderPendingSubmissions(items, closeDays) {
+function renderPendingSubmissions(items, externalItems, closeDays) {
   const target = byId("pendingSubmissionList");
   target.replaceChildren();
-  const pending = items.filter((item) => item.status === "open");
+  const pending = [
+    ...items
+      .filter((item) => item.status === "open")
+      .map((item) => ({ ...item, source: "web", actor: item.username })),
+    ...externalItems
+      .filter((item) => item.status === "open")
+      .map((item) => ({
+        ...item,
+        source: "github",
+        actor: `GitHub @${item.github_login}`
+      }))
+  ];
   byId("pendingSubmissionCount").textContent = `${pending.length} 个待处理`;
   for (const item of pending) {
     const actions = [];
@@ -226,12 +237,42 @@ function renderPendingSubmissions(items, closeDays) {
     target.append(
       makeRow(
         `${item.title} · PR #${item.pr_number}`,
-        `${item.username} · ${elapsedDays} 天未活动 · ${deadline}`,
+        `${item.actor} · ${item.source === "github" ? "外部 PR · " : ""}` +
+          `${elapsedDays} 天未活动 · ${deadline}`,
         actions
       )
     );
   }
   if (!pending.length) target.textContent = "暂无待处理 PR";
+}
+
+function renderExternalPullRequests(items) {
+  const target = byId("externalPullList");
+  target.replaceChildren();
+  byId("externalPullCount").textContent = `${items.length} 个`;
+  for (const item of items) {
+    const actions = [];
+    if (item.pr_url) {
+      const link = document.createElement("a");
+      link.className = "secondary-button";
+      link.href = item.pr_url;
+      link.rel = "noreferrer";
+      link.textContent = `PR #${item.pr_number}`;
+      actions.push(link);
+    }
+    const email = item.contributor_email
+      ? `${item.contributor_email} · ${item.email_source}`
+      : "未找到可投递邮箱";
+    target.append(
+      makeRow(
+        `${item.title} · ${item.status}`,
+        `GitHub @${item.github_login} · ${email}` +
+          (item.auto_closed ? " · 系统自动关闭" : ""),
+        actions
+      )
+    );
+  }
+  if (!items.length) target.textContent = "暂无外部 PR";
 }
 
 function renderNotifications(items) {
@@ -326,11 +367,13 @@ async function loadOverview() {
   renderIntegrations(data.settings);
   renderPendingSubmissions(
     data.submissions,
+    data.external_pull_requests,
     data.settings.pr_auto_close_days
   );
   renderSmtp(data.smtp, data.smtp_templates);
   renderApplications(data.applications);
   renderSubmissions(data.submissions);
+  renderExternalPullRequests(data.external_pull_requests);
   renderNotifications(data.notifications);
   renderUsers(data.users);
 }
@@ -388,7 +431,9 @@ byId("syncPrButton").addEventListener("click", async () => {
     feedback(
       `已检查 ${result.checked} 个 PR：` +
         `${result.merged} 个合并，${result.closed} 个关闭，` +
-        `${result.auto_closed} 个自动关闭。`,
+        `${result.auto_closed} 个自动关闭；` +
+        `发现 ${result.external_discovered || 0} 个外部 PR，` +
+        `检查 ${result.external_checked || 0} 个外部 PR。`,
       "success"
     );
     await loadOverview();

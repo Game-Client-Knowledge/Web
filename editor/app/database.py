@@ -91,6 +91,40 @@ CREATE TABLE IF NOT EXISTS submissions (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS external_pull_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pr_number INTEGER NOT NULL UNIQUE,
+    pr_url TEXT NOT NULL,
+    title TEXT NOT NULL,
+    github_login TEXT NOT NULL,
+    contributor_email TEXT,
+    email_source TEXT,
+    head_ref TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('open', 'merged', 'closed')),
+    is_draft INTEGER NOT NULL DEFAULT 0,
+    auto_closed INTEGER NOT NULL DEFAULT 0,
+    github_created_at TEXT NOT NULL,
+    pr_updated_at TEXT NOT NULL,
+    last_synced_at TEXT,
+    closed_at TEXT,
+    last_urged_at TEXT,
+    urge_count INTEGER NOT NULL DEFAULT 0,
+    thank_you_attempted_at TEXT,
+    thank_you_sent_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS external_pr_action_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    external_pr_id INTEGER NOT NULL
+        REFERENCES external_pull_requests(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    action TEXT NOT NULL CHECK(action IN ('urge')),
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS admin_applications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -114,6 +148,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     audience TEXT NOT NULL DEFAULT 'admin',
     user_id INTEGER REFERENCES users(id),
     submission_id INTEGER REFERENCES submissions(id),
+    external_pr_id INTEGER REFERENCES external_pull_requests(id),
     subject TEXT NOT NULL,
     body TEXT NOT NULL,
     recipients TEXT NOT NULL,
@@ -180,6 +215,10 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_drafts_user ON drafts(user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_submissions_created ON submissions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_external_pr_status
+ON external_pull_requests(status, pr_updated_at);
+CREATE INDEX IF NOT EXISTS idx_external_pr_tokens_expiry
+ON external_pr_action_tokens(expires_at);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_line_authors_user ON line_authors(user_id);
 CREATE INDEX IF NOT EXISTS idx_comments_path
@@ -315,6 +354,19 @@ class Database:
             ]:
                 if name not in submission_columns:
                     connection.execute(statement)
+            external_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(external_pull_requests)"
+                ).fetchall()
+            }
+            if "thank_you_attempted_at" not in external_columns:
+                connection.execute(
+                    """
+                    ALTER TABLE external_pull_requests
+                    ADD COLUMN thank_you_attempted_at TEXT
+                    """
+                )
             notification_columns = {
                 row["name"]
                 for row in connection.execute(
@@ -343,6 +395,14 @@ class Database:
                     ADD COLUMN submission_id INTEGER REFERENCES submissions(id)
                     """,
                 ),
+                (
+                    "external_pr_id",
+                    """
+                    ALTER TABLE notifications
+                    ADD COLUMN external_pr_id
+                    INTEGER REFERENCES external_pull_requests(id)
+                    """,
+                ),
             ]:
                 if name not in notification_columns:
                     connection.execute(statement)
@@ -356,6 +416,12 @@ class Database:
                 """
                 CREATE INDEX IF NOT EXISTS idx_notifications_submission
                 ON notifications(submission_id, created_at DESC)
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_notifications_external_pr
+                ON notifications(external_pr_id, created_at DESC)
                 """
             )
             now = utc_now()

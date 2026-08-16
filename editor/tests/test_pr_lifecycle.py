@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -10,7 +11,11 @@ from cryptography.fernet import Fernet
 
 from app.config import Settings
 from app.database import Database
-from app.pr_lifecycle import reconcile_submissions
+from app.pr_lifecycle import (
+    reconcile_external_pull_requests,
+    reconcile_submissions,
+    resolve_external_contributor_email,
+)
 from app.security import hash_password
 
 
@@ -90,6 +95,30 @@ def insert_open_submission(
             ),
         )
         return int(submission.lastrowid)
+
+
+def external_pull(
+    number: int,
+    *,
+    state: str = "open",
+    merged_at: str | None = None,
+    updated_at: str = "2026-08-17T00:00:00Z",
+    body: str = "",
+    head: str = "feature/external",
+) -> dict:
+    return {
+        "number": number,
+        "html_url": f"https://github.example/pull/{number}",
+        "title": f"External contribution {number}",
+        "body": body,
+        "state": state,
+        "merged_at": merged_at,
+        "draft": False,
+        "created_at": "2026-08-17T00:00:00Z",
+        "updated_at": updated_at,
+        "user": {"login": f"contributor-{number}"},
+        "head": {"ref": head},
+    }
 
 
 def test_reconcile_marks_merged_and_notifies_contributor(
@@ -276,6 +305,225 @@ def test_recent_pull_is_not_auto_closed(tmp_path: Path) -> None:
     assert submission["last_synced_at"]
 
 
+def test_external_pull_is_discovered_and_both_audiences_are_notified(
+    tmp_path: Path,
+) -> None:
+    settings = make_settings(tmp_path)
+    db = Database(settings.db_path)
+    db.initialize(settings)
+    github = AsyncMock()
+    github.list_pull_requests.return_value = [external_pull(80)]
+    github.public_user.return_value = {
+        "login": "contributor-80",
+        "email": "external@example.test",
+    }
+
+    result = asyncio.run(
+        reconcile_external_pull_requests(
+            db,
+            settings,
+            github,
+            now=datetime(2026, 8, 17, 1, 0, tzinfo=timezone.utc),
+        )
+    )
+
+    assert result["external_discovered"] == 1
+    assert result["external_checked"] == 1
+    with db.connect() as connection:
+        external = connection.execute(
+            "SELECT * FROM external_pull_requests WHERE pr_number = 80"
+        ).fetchone()
+        notifications = connection.execute(
+            """
+            SELECT event_type, audience, recipients
+            FROM notifications WHERE external_pr_id = ?
+            ORDER BY id
+            """,
+            (external["id"],),
+        ).fetchall()
+        token_count = connection.execute(
+            """
+            SELECT COUNT(*) AS count FROM external_pr_action_tokens
+            WHERE external_pr_id = ?
+            """,
+            (external["id"],),
+        ).fetchone()["count"]
+    assert external["status"] == "open"
+    assert external["contributor_email"] == "external@example.test"
+    assert external["email_source"] == "github_profile"
+    assert [row["event_type"] for row in notifications] == [
+        "external_pr_discovered",
+        "external_contributor_pr_received",
+    ]
+    assert [row["audience"] for row in notifications] == [
+        "admin",
+        "external_contributor",
+    ]
+    assert json.loads(notifications[1]["recipients"]) == [
+        "external@example.test"
+    ]
+    assert token_count == 1
+
+
+def test_web_editor_pull_is_not_registered_as_external(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    db = Database(settings.db_path)
+    db.initialize(settings)
+    insert_open_submission(
+        db,
+        pr_number=81,
+        updated_at="2026-08-17T00:00:00Z",
+    )
+    github = AsyncMock()
+    github.list_pull_requests.return_value = [
+        external_pull(81),
+        external_pull(
+            82,
+            body=(
+                "Submitted from Game Client Knowledge Web Editor by user."
+            ),
+        ),
+        external_pull(83, head="web/user/topic"),
+    ]
+
+    result = asyncio.run(
+        reconcile_external_pull_requests(db, settings, github)
+    )
+
+    assert result["external_discovered"] == 0
+    with db.connect() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) AS count FROM external_pull_requests"
+        ).fetchone()["count"]
+    assert count == 0
+
+
+def test_external_email_falls_back_to_matching_commit_author(
+    tmp_path: Path,
+) -> None:
+    settings = make_settings(tmp_path)
+    db = Database(settings.db_path)
+    db.initialize(settings)
+    github = AsyncMock()
+    github.public_user.return_value = {"email": None}
+    github.pull_request_commits.return_value = [
+        {
+            "author": {"login": "someone-else"},
+            "commit": {"author": {"email": "other@example.test"}},
+        },
+        {
+            "author": {"login": "contributor-84"},
+            "commit": {
+                "author": {
+                    "email": "84+contributor@users.noreply.github.com"
+                }
+            },
+        },
+        {
+            "author": {"login": "contributor-84"},
+            "commit": {"author": {"email": "author@example.test"}},
+        },
+    ]
+
+    email, source = asyncio.run(
+        resolve_external_contributor_email(
+            db,
+            github,
+            external_pull(84),
+            "bot-token",
+        )
+    )
+
+    assert (email, source) == ("author@example.test", "commit_author")
+
+
+def test_external_pull_merge_and_timeout_follow_lifecycle(
+    tmp_path: Path,
+) -> None:
+    settings = make_settings(tmp_path)
+    db = Database(settings.db_path)
+    db.initialize(settings)
+    github = AsyncMock()
+    first_pull = external_pull(85)
+    github.list_pull_requests.return_value = [first_pull]
+    github.public_user.return_value = {
+        "email": "lifecycle@example.test"
+    }
+    asyncio.run(
+        reconcile_external_pull_requests(
+            db,
+            settings,
+            github,
+            now=datetime(2026, 8, 17, 1, 0, tzinfo=timezone.utc),
+        )
+    )
+
+    merged = external_pull(
+        85,
+        state="closed",
+        merged_at="2026-08-17T02:00:00Z",
+        updated_at="2026-08-17T02:00:00Z",
+    )
+    github.list_pull_requests.return_value = [merged]
+    merged_result = asyncio.run(
+        reconcile_external_pull_requests(
+            db,
+            settings,
+            github,
+            now=datetime(2026, 8, 17, 2, 5, tzinfo=timezone.utc),
+        )
+    )
+    assert merged_result["external_merged"] == 1
+
+    stale = external_pull(
+        86,
+        updated_at="2026-08-01T00:00:00Z",
+    )
+    github.list_pull_requests.return_value = [stale]
+    github.public_user.return_value = {
+        "email": "stale@example.test"
+    }
+    github.update_pull_state.return_value = {
+        "state": "closed",
+        "updated_at": "2026-08-17T03:00:00Z",
+    }
+    timeout_result = asyncio.run(
+        reconcile_external_pull_requests(
+            db,
+            settings,
+            github,
+            now=datetime(2026, 8, 17, 3, 0, tzinfo=timezone.utc),
+        )
+    )
+    assert timeout_result["external_discovered"] == 1
+    assert timeout_result["external_auto_closed"] == 1
+    github.update_pull_state.assert_awaited_with(86, "closed", "bot-token")
+    with db.connect() as connection:
+        events = {
+            row["event_type"]
+            for row in connection.execute(
+                """
+                SELECT event_type FROM notifications
+                WHERE external_pr_id IS NOT NULL
+                """
+            ).fetchall()
+        }
+        timed_out = connection.execute(
+            "SELECT * FROM external_pull_requests WHERE pr_number = 86"
+        ).fetchone()
+        token_count = connection.execute(
+            """
+            SELECT COUNT(*) AS count FROM external_pr_action_tokens
+            WHERE external_pr_id = ?
+            """,
+            (timed_out["id"],),
+        ).fetchone()["count"]
+    assert "external_contributor_pr_merged" in events
+    assert "external_contributor_pr_auto_closed" in events
+    assert timed_out["auto_closed"] == 1
+    assert token_count == 2
+
+
 def test_legacy_submission_and_notification_tables_are_migrated(
     tmp_path: Path,
 ) -> None:
@@ -328,6 +576,15 @@ def test_legacy_submission_and_notification_tables_are_migrated(
             "PRAGMA table_info(notifications)"
         ).fetchall()
     }
+    external_tables = {
+        row[0]
+        for row in connection.execute(
+            """
+            SELECT name FROM sqlite_master
+            WHERE type = 'table'
+            """
+        ).fetchall()
+    }
     connection.close()
     assert {
         "pr_updated_at",
@@ -337,4 +594,13 @@ def test_legacy_submission_and_notification_tables_are_migrated(
         "last_urged_at",
         "urge_count",
     } <= submission_columns
-    assert {"audience", "user_id", "submission_id"} <= notification_columns
+    assert {
+        "audience",
+        "user_id",
+        "submission_id",
+        "external_pr_id",
+    } <= notification_columns
+    assert {
+        "external_pull_requests",
+        "external_pr_action_tokens",
+    } <= external_tables

@@ -11,6 +11,7 @@ def send_email(
     recipients: list[str],
     subject: str,
     body: str,
+    html_body: str | None = None,
 ) -> tuple[str, str | None]:
     if not settings.smtp_enabled:
         return "unconfigured", "SMTP 尚未配置"
@@ -22,6 +23,8 @@ def send_email(
     message["To"] = ", ".join(recipients)
     message["Subject"] = subject
     message.set_content(body)
+    if html_body:
+        message.add_alternative(html_body, subtype="html")
 
     _debug_stage = "connect"
     # #region debug-point A:smtp-config

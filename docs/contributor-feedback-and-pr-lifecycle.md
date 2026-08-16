@@ -84,3 +84,7 @@ The administration page shows a dedicated pending list containing every open PR:
 
 The general submissions list remains available for open, merged, closed, creating,
 and failed records.
+
+Pull requests created directly on GitHub use a separate accountless lifecycle.
+See [External GitHub Pull Request Lifecycle](./external-github-pr-lifecycle.md)
+for discovery, email resolution, timeout, and signed urge links.

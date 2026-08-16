@@ -21,6 +21,8 @@ def deliver_email(
     audience: str,
     user_id: int | None = None,
     submission_id: int | None = None,
+    external_pr_id: int | None = None,
+    html_body: str | None = None,
 ) -> tuple[str, str | None]:
     db = Database(db_path)
     try:
@@ -34,6 +36,7 @@ def deliver_email(
             recipients,
             subject,
             body,
+            html_body,
         )
     except RuntimeError as exc:
         status, error = "failed", str(exc)[:500]
@@ -41,17 +44,18 @@ def deliver_email(
         connection.execute(
             """
             INSERT INTO notifications(
-                event_type, audience, user_id, submission_id,
+                event_type, audience, user_id, submission_id, external_pr_id,
                 subject, body, recipients, status,
                 error_message, created_at
             )
-            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event_type,
                 audience,
                 user_id,
                 submission_id,
+                external_pr_id,
                 subject,
                 body,
                 json.dumps(recipients, ensure_ascii=False),
@@ -71,6 +75,8 @@ def deliver_admin_email(
     body: str,
     *,
     submission_id: int | None = None,
+    external_pr_id: int | None = None,
+    html_body: str | None = None,
 ) -> tuple[str, str | None]:
     db = Database(db_path)
     with db.connect() as connection:
@@ -93,4 +99,6 @@ def deliver_admin_email(
         body,
         audience="admin",
         submission_id=submission_id,
+        external_pr_id=external_pr_id,
+        html_body=html_body,
     )

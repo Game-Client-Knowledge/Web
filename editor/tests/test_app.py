@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.github import GitHubError, SubmissionResult
 from app.main import create_app
+from app.pr_lifecycle import issue_external_urge_token
 
 TEST_BOOTSTRAP_PASSWORD = "test-bootstrap-password"
 
@@ -1290,6 +1291,78 @@ def test_auto_closed_submission_can_be_restored_and_urged(
         }
     assert "pull_request_restored_and_urged" in events
     assert "pull_request_urged" in events
+
+
+def test_external_contributor_can_urge_without_an_account(
+    client: TestClient,
+) -> None:
+    now = datetime.now(timezone.utc)
+    with client.app.state.db.connect() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO external_pull_requests(
+                pr_number, pr_url, title, github_login,
+                contributor_email, email_source, head_ref,
+                status, is_draft, auto_closed,
+                github_created_at, pr_updated_at,
+                created_at, updated_at
+            )
+            VALUES(
+                91, 'https://github.example/pull/91', 'External PR',
+                'outside-user', 'outside@example.test', 'github_profile',
+                'feature/outside', 'open', 0, 0, ?, ?, ?, ?
+            )
+            """,
+            (
+                now.isoformat(),
+                now.isoformat(),
+                now.isoformat(),
+                now.isoformat(),
+            ),
+        )
+        external_id = cursor.lastrowid
+    token = issue_external_urge_token(
+        client.app.state.db,
+        external_id,
+        now=now,
+    )
+
+    landing = client.get(
+        "/external-pr/urge",
+        params={"token": token},
+    )
+    assert landing.status_code == 200
+    assert "正在通知管理员" in landing.text
+    with client.app.state.db.connect() as connection:
+        before = connection.execute(
+            "SELECT urge_count FROM external_pull_requests WHERE id = ?",
+            (external_id,),
+        ).fetchone()["urge_count"]
+    assert before == 0, "GET must not trigger email-scanner side effects"
+
+    urged = client.post(
+        "/api/external-pr/urge",
+        json={"token": token},
+    )
+    assert urged.status_code == 200, urged.text
+    assert urged.json()["urge_count"] == 1
+    limited = client.post(
+        "/api/external-pr/urge",
+        json={"token": token},
+    )
+    assert limited.status_code == 429
+
+    with client.app.state.db.connect() as connection:
+        notification = connection.execute(
+            """
+            SELECT * FROM notifications
+            WHERE external_pr_id = ?
+              AND event_type = 'external_pull_request_urged'
+            """,
+            (external_id,),
+        ).fetchone()
+    assert notification["audience"] == "admin"
+    assert "outside-user" in notification["body"]
 
 
 def test_submission_preserves_file_delete_operation(
