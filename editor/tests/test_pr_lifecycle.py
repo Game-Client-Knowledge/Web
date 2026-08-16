@@ -34,6 +34,7 @@ def make_settings(tmp_path: Path) -> Settings:
         github_client_id="",
         github_client_secret="",
         github_bot_token="bot-token",
+        attribution_sync_token="test-sync-token",
         smtp_host="",
         smtp_port=587,
         smtp_username="",

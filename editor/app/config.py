@@ -32,6 +32,7 @@ class Settings:
     github_client_id: str
     github_client_secret: str
     github_bot_token: str
+    attribution_sync_token: str
     smtp_host: str
     smtp_port: int
     smtp_username: str
@@ -92,6 +93,9 @@ class Settings:
                 "EDITOR_GITHUB_CLIENT_SECRET", ""
             ).strip(),
             github_bot_token=os.getenv("EDITOR_GITHUB_BOT_TOKEN", "").strip(),
+            attribution_sync_token=os.getenv(
+                "EDITOR_ATTRIBUTION_SYNC_TOKEN", ""
+            ).strip(),
             smtp_host=os.getenv("EDITOR_SMTP_HOST", "").strip(),
             smtp_port=int(os.getenv("EDITOR_SMTP_PORT", "587")),
             smtp_username=os.getenv("EDITOR_SMTP_USERNAME", "").strip(),

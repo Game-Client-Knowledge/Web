@@ -31,6 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from markdown_it import MarkdownIt
 from pydantic import BaseModel, Field
 
+from .comments import create_comments_router
 from .config import Settings
 from .database import Database, utc_now
 from .github import (
@@ -216,6 +217,9 @@ def public_user(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
         "role": row["role"],
         "status": row["status"],
         "must_change_password": bool(row["must_change_password"]),
+        "email_notifications_enabled": bool(
+            row["email_notifications_enabled"]
+        ),
         "needs_onboarding": not bool(row["onboarding_completed_at"]),
     }
 
@@ -573,6 +577,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def smtp_configuration():
         return load_smtp_configuration(db, settings, cipher)
+
+    app.include_router(
+        create_comments_router(
+            db,
+            settings,
+            read_session,
+            require_ready_user,
+            verify_csrf,
+            rate_limiter.allow,
+        )
+    )
 
     def config_payload() -> dict[str, Any]:
         return {

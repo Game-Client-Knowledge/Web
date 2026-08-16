@@ -38,6 +38,7 @@ def make_settings(tmp_path: Path, *, oauth: bool = False) -> Settings:
         github_client_id="client-id" if oauth else "",
         github_client_secret="client-secret" if oauth else "",
         github_bot_token="test-bot-token",
+        attribution_sync_token="test-sync-token",
         smtp_host="",
         smtp_port=587,
         smtp_username="",
@@ -251,6 +252,212 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
         "knowledge/cpp/bootstrap/README.md"
     ]
     assert "Immediate draft content." in payload["active_draft_html"]
+
+
+def test_line_attribution_and_comment_threads(client: TestClient) -> None:
+    author = client.post(
+        "/api/auth/register",
+        json={
+            "email": "author@example.test",
+            "username": "line-author",
+            "password": "local-password-123",
+        },
+    ).json()
+    client.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": author["csrf_token"]},
+    )
+    commenter = client.post(
+        "/api/auth/register",
+        json={
+            "email": "reader@example.test",
+            "username": "reader",
+            "password": "local-password-123",
+        },
+    ).json()
+
+    sync = client.post(
+        "/api/internal/attribution-sync",
+        headers={"Authorization": "Bearer test-sync-token"},
+        json={
+            "revision": "a" * 40,
+            "deleted": [],
+            "files": [
+                {
+                    "path": "knowledge/cpp/example.md",
+                    "commit": "a" * 40,
+                    "line_count": 2,
+                    "lines": [
+                        {
+                            "line": 1,
+                            "commit": "b" * 40,
+                            "name": "Line Author",
+                            "email": "author@example.test",
+                        },
+                        {
+                            "line": 2,
+                            "commit": "c" * 40,
+                            "name": "Line Author",
+                            "email": "author@example.test",
+                        },
+                    ],
+                }
+            ],
+        },
+    )
+    assert sync.status_code == 200, sync.text
+
+    created = client.post(
+        "/api/comments",
+        headers={"X-CSRF-Token": commenter["csrf_token"]},
+        json={
+            "path": "knowledge/cpp/example.md",
+            "revision_sha": "a" * 40,
+            "start_line": 1,
+            "end_line": 2,
+            "quote": "Selected text",
+            "body": "Could you clarify this?",
+            "render_segments": [
+                {
+                    "block_start_line": 1,
+                    "block_end_line": 2,
+                    "start_offset": 0,
+                    "end_offset": 13,
+                    "quote": "Selected text",
+                }
+            ],
+        },
+    )
+    assert created.status_code == 200, created.text
+    root = created.json()
+    assert root["start_line"] == 1
+    assert root["author"]["username"] == "reader"
+
+    listing = client.get(
+        "/api/comments",
+        params={"path": "knowledge/cpp/example.md"},
+    ).json()
+    assert listing["revision"]["commit_sha"] == "a" * 40
+    assert listing["authors"][0]["start_line"] == 1
+    assert listing["authors"][0]["end_line"] == 2
+    assert listing["authors"][0]["author"]["user_id"] == author["user"]["id"]
+    assert [item["id"] for item in listing["comments"]] == [root["id"]]
+
+    with client.app.state.db.connect() as connection:
+        notification = connection.execute(
+            """
+            SELECT recipients FROM notifications
+            WHERE event_type = 'comment.created'
+            """
+        ).fetchone()
+    assert "author@example.test" in notification["recipients"]
+
+    first_reply = client.post(
+        "/api/comments",
+        headers={"X-CSRF-Token": commenter["csrf_token"]},
+        json={
+            "path": "knowledge/cpp/example.md",
+            "revision_sha": "a" * 40,
+            "start_line": 1,
+            "end_line": 2,
+            "quote": "Selected text",
+            "body": "First reply",
+            "parent_id": root["id"],
+            "reply_to_id": root["id"],
+        },
+    ).json()
+    nested_reply = client.post(
+        "/api/comments",
+        headers={"X-CSRF-Token": commenter["csrf_token"]},
+        json={
+            "path": "knowledge/cpp/example.md",
+            "revision_sha": "a" * 40,
+            "start_line": 2,
+            "end_line": 2,
+            "quote": "Untrusted replacement anchor",
+            "body": "Displayed as another second-level reply",
+            "parent_id": first_reply["id"],
+            "reply_to_id": first_reply["id"],
+        },
+    ).json()
+    assert nested_reply["parent_id"] == root["id"]
+    assert nested_reply["reply_to_id"] == first_reply["id"]
+    assert nested_reply["quote"] == root["quote"]
+    assert nested_reply["start_line"] == root["start_line"]
+
+
+def test_comment_email_preference_disables_author_mail(
+    client: TestClient,
+) -> None:
+    author = client.post(
+        "/api/auth/register",
+        json={
+            "email": "quiet-author@example.test",
+            "username": "quiet-author",
+            "password": "local-password-123",
+        },
+    ).json()
+    preference = client.put(
+        "/api/account/notification-preferences",
+        headers={"X-CSRF-Token": author["csrf_token"]},
+        json={"email_notifications_enabled": False},
+    )
+    assert preference.status_code == 200
+    client.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": author["csrf_token"]},
+    )
+    reader = client.post(
+        "/api/auth/register",
+        json={
+            "email": "second-reader@example.test",
+            "username": "second-reader",
+            "password": "local-password-123",
+        },
+    ).json()
+    client.post(
+        "/api/internal/attribution-sync",
+        headers={"Authorization": "Bearer test-sync-token"},
+        json={
+            "revision": "d" * 40,
+            "files": [
+                {
+                    "path": "knowledge/cpp/quiet.md",
+                    "commit": "d" * 40,
+                    "line_count": 1,
+                    "lines": [
+                        {
+                            "line": 1,
+                            "commit": "d" * 40,
+                            "name": "Quiet Author",
+                            "email": "quiet-author@example.test",
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    response = client.post(
+        "/api/comments",
+        headers={"X-CSRF-Token": reader["csrf_token"]},
+        json={
+            "path": "knowledge/cpp/quiet.md",
+            "revision_sha": "d" * 40,
+            "start_line": 1,
+            "end_line": 1,
+            "quote": "Quiet",
+            "body": "No email is expected.",
+        },
+    )
+    assert response.status_code == 200, response.text
+    with client.app.state.db.connect() as connection:
+        count = connection.execute(
+            """
+            SELECT COUNT(*) AS count FROM notifications
+            WHERE event_type = 'comment.created'
+            """
+        ).fetchone()["count"]
+    assert count == 0
 
 
 def test_onboarding_is_completed_once_per_user(client: TestClient) -> None:

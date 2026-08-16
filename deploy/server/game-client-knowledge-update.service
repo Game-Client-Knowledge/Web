@@ -10,6 +10,7 @@ Group=sourcecode
 WorkingDirectory=/home/sourcecode/gck-builder/web
 TimeoutStartSec=5min
 Environment=PATH=/home/sourcecode/.local/node-current/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=-/etc/game-client-knowledge-editor.env
 ExecStart=/home/sourcecode/gck-builder/web/deploy/server/update-site.sh
 
 NoNewPrivileges=true

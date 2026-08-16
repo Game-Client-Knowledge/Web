@@ -7,6 +7,8 @@ WEB_ROOT="${WEB_ROOT:-${BUILDER_ROOT}/web}"
 RELEASE_ROOT="${RELEASE_ROOT:-/var/www/game-client-knowledge}"
 CONTENT_STATE_FILE="${CONTENT_STATE_FILE:-${BUILDER_ROOT}/last-content-commit}"
 WEB_STATE_FILE="${WEB_STATE_FILE:-${BUILDER_ROOT}/last-web-commit}"
+ATTRIBUTION_STATE_FILE="${ATTRIBUTION_STATE_FILE:-${BUILDER_ROOT}/last-attribution-commit}"
+CONTENT_GIT_MIRROR="${CONTENT_GIT_MIRROR:-${BUILDER_ROOT}/content.git}"
 LOCK_FILE="${LOCK_FILE:-${BUILDER_ROOT}/update.lock}"
 CONTENT_REPOSITORY="${CONTENT_REPOSITORY:-Game-Client-Knowledge/Game-Client-Knowledge}"
 WEB_REPOSITORY="${WEB_REPOSITORY:-Game-Client-Knowledge/Web}"
@@ -59,6 +61,19 @@ download_snapshot() {
   rm -f "$archive"
 }
 
+update_git_mirror() {
+  local repository="$1"
+  local destination="$2"
+  local remote="https://github.com/${repository}.git"
+
+  if [[ ! -d "$destination" ]]; then
+    git clone --mirror "$remote" "$destination"
+  else
+    git --git-dir="$destination" fetch --prune origin \
+      '+refs/heads/*:refs/heads/*'
+  fi
+}
+
 read -r content_commit content_updated_at < <(
   github_commit_metadata "$CONTENT_REPOSITORY"
 )
@@ -78,6 +93,8 @@ if [[
   -f "${RELEASE_ROOT}/current/index.html"
   && -f "${RELEASE_ROOT}/current/.release-source"
   && "$(cat "${RELEASE_ROOT}/current/.release-source")" == "$(cat "$expected_source")"
+  && -f "$ATTRIBUTION_STATE_FILE"
+  && "$(cat "$ATTRIBUTION_STATE_FILE")" == "$content_commit"
 ]]; then
   printf '%s\n' "$content_commit" >"$CONTENT_STATE_FILE"
   printf '%s\n' "$web_commit" >"$WEB_STATE_FILE"
@@ -93,6 +110,7 @@ content_snapshot="${workspace}/content"
 
 download_snapshot "$WEB_REPOSITORY" "$web_commit" "$web_snapshot"
 download_snapshot "$CONTENT_REPOSITORY" "$content_commit" "$content_snapshot"
+update_git_mirror "$CONTENT_REPOSITORY" "$CONTENT_GIT_MIRROR"
 
 cd "$web_snapshot"
 npm ci \
@@ -105,6 +123,18 @@ CONTENT_COMMIT="$content_commit" \
 CONTENT_UPDATED_AT="$content_updated_at" \
 WEB_COMMIT="$web_commit" \
   npm run check
+
+previous_attribution_commit=""
+if [[ -f "$ATTRIBUTION_STATE_FILE" ]]; then
+  candidate="$(cat "$ATTRIBUTION_STATE_FILE")"
+  if git --git-dir="$CONTENT_GIT_MIRROR" cat-file -e "${candidate}^{commit}" 2>/dev/null; then
+    previous_attribution_commit="$candidate"
+  fi
+fi
+python3 scripts/sync-line-authors.py \
+  --repo "$CONTENT_GIT_MIRROR" \
+  --revision "$content_commit" \
+  --previous "$previous_attribution_commit"
 
 release_id="$(
   printf '%s-%s-%s' \
@@ -122,6 +152,7 @@ ln -sfn "$release_dir" "${RELEASE_ROOT}/current.next"
 mv -Tf "${RELEASE_ROOT}/current.next" "${RELEASE_ROOT}/current"
 printf '%s\n' "$content_commit" >"$CONTENT_STATE_FILE"
 printf '%s\n' "$web_commit" >"$WEB_STATE_FILE"
+printf '%s\n' "$content_commit" >"$ATTRIBUTION_STATE_FILE"
 
 # Keep the installed updater aligned with the pushed Web commit for the next run.
 mkdir -p "$WEB_ROOT"

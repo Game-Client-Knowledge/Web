@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'admin')),
     status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'disabled')),
     must_change_password INTEGER NOT NULL DEFAULT 0,
+    email_notifications_enabled INTEGER NOT NULL DEFAULT 1,
     onboarding_completed_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -121,6 +122,50 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS content_revisions (
+    path TEXT PRIMARY KEY,
+    commit_sha TEXT NOT NULL,
+    line_count INTEGER NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS line_authors (
+    path TEXT NOT NULL REFERENCES content_revisions(path) ON DELETE CASCADE,
+    line_number INTEGER NOT NULL,
+    commit_sha TEXT NOT NULL,
+    author_name TEXT NOT NULL,
+    author_email TEXT NOT NULL,
+    github_login TEXT,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    PRIMARY KEY(path, line_number)
+);
+
+CREATE TABLE IF NOT EXISTS comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL,
+    revision_sha TEXT NOT NULL,
+    start_line INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL DEFAULT 0,
+    end_column INTEGER NOT NULL DEFAULT 0,
+    quote TEXT NOT NULL,
+    render_segments TEXT NOT NULL DEFAULT '[]',
+    author_id INTEGER NOT NULL REFERENCES users(id),
+    parent_id INTEGER REFERENCES comments(id) ON DELETE CASCADE,
+    reply_to_id INTEGER REFERENCES comments(id) ON DELETE SET NULL,
+    body TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active'
+        CHECK(status IN ('active', 'deleted')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS comment_mentions (
+    comment_id INTEGER NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY(comment_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER REFERENCES users(id),
@@ -136,6 +181,10 @@ CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_drafts_user ON drafts(user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_submissions_created ON submissions(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_line_authors_user ON line_authors(user_id);
+CREATE INDEX IF NOT EXISTS idx_comments_path
+ON comments(path, start_line, created_at);
+CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_application_pending
 ON admin_applications(user_id) WHERE status = 'pending';
 """
@@ -189,6 +238,14 @@ class Database:
             if "onboarding_completed_at" not in columns:
                 connection.execute(
                     "ALTER TABLE users ADD COLUMN onboarding_completed_at TEXT"
+                )
+            if "email_notifications_enabled" not in columns:
+                connection.execute(
+                    """
+                    ALTER TABLE users
+                    ADD COLUMN email_notifications_enabled
+                    INTEGER NOT NULL DEFAULT 1
+                    """
                 )
             oauth_columns = {
                 row["name"]
