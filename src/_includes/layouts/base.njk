@@ -10,8 +10,8 @@
       content="{{ description or site.description }}"
     >
     <title>{% if title %}{{ title }} · {% endif %}{{ site.name }}</title>
-    <link rel="stylesheet" href="{{ '/assets/css/site.css' | withBase }}">
-    <link rel="icon" href="{{ '/assets/images/favicon.svg' | withBase }}" type="image/svg+xml">
+    <link rel="stylesheet" href="{{ '/assets/css/site.css' | assetUrl }}">
+    <link rel="icon" href="{{ '/assets/images/favicon.svg' | assetUrl }}" type="image/svg+xml">
   </head>
   <body class="page-{{ pageKind or 'default' }}">
     <a class="skip-link" href="#main-content">跳到正文</a>
@@ -139,18 +139,18 @@
     <script>
       window.GCK_CONFIG = {
         basePath: {{ site.basePath | json | safe }},
-        searchIndex: {{ ('/search-index.json' | withBase) | json | safe }}
+        searchIndex: {{ (('/search-index.json' | withBase) + '?v=' + site.searchVersion) | json | safe }}
       };
     </script>
-    <script src="{{ '/assets/vendor/lucide.js' | withBase }}"></script>
+    <script src="{{ '/assets/vendor/lucide.js' | assetUrl }}"></script>
     {% if
       (document and document.hasMermaid)
       or (module and module.hasMermaid)
       or (pageKind == "contribute" and catalog.contribution.hasMermaid)
     %}
-      <script src="{{ '/assets/vendor/mermaid.min.js' | withBase }}"></script>
+      <script src="{{ '/assets/vendor/mermaid.min.js' | assetUrl }}"></script>
     {% endif %}
-    <script src="{{ '/assets/js/site.js' | withBase }}"></script>
-    <script src="{{ '/assets/js/search.js' | withBase }}"></script>
+    <script src="{{ '/assets/js/site.js' | assetUrl }}"></script>
+    <script src="{{ '/assets/js/search.js' | assetUrl }}"></script>
   </body>
 </html>

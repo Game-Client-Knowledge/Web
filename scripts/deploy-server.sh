@@ -33,6 +33,7 @@ REMOTE_RELEASE="${RELEASE_ROOT}/releases/${RELEASE_ID}"
 export CONTENT_REPO_PATH
 export CONTENT_COMMIT
 export CONTENT_UPDATED_AT
+export WEB_COMMIT
 npm run check
 printf 'web=%s\ncontent=%s\n' "$WEB_COMMIT" "$CONTENT_COMMIT" >_site/.release-source
 

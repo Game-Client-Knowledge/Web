@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { execFileSync } = require("child_process");
 const MarkdownIt = require("markdown-it");
 const markdownItAnchor = require("markdown-it-anchor");
 const Prism = require("prismjs");
@@ -48,10 +49,29 @@ function normalizeBasePath(value) {
   return `/${value.replace(/^\/|\/$/g, "")}`;
 }
 
+function resolveWebCommit() {
+  if (process.env.WEB_COMMIT) {
+    return process.env.WEB_COMMIT;
+  }
+  if (process.env.GITHUB_SHA) {
+    return process.env.GITHUB_SHA;
+  }
+
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: process.cwd(),
+      encoding: "utf8"
+    }).trim();
+  } catch {
+    return "local";
+  }
+}
+
 module.exports = function configureEleventy(eleventyConfig) {
   const catalog = loadCatalog();
   const contentRoot = resolveContentRoot();
   const basePath = normalizeBasePath(process.env.SITE_BASE_PATH);
+  const assetVersion = resolveWebCommit().slice(0, 12);
 
   function withBase(route) {
     if (!route) {
@@ -175,11 +195,16 @@ module.exports = function configureEleventy(eleventyConfig) {
     shortName: "GCK",
     description: "游戏客户端开发与面试知识库",
     basePath,
+    assetVersion,
+    searchVersion: `${assetVersion}-${catalog.repository.commit}`,
     repositoryUrl: catalog.repositoryUrl,
     joinUrl: process.env.JOIN_URL || "https://join.chenyurui.top"
   });
 
   eleventyConfig.addFilter("withBase", withBase);
+  eleventyConfig.addFilter("assetUrl", (route) => {
+    return `${withBase(route)}?v=${encodeURIComponent(assetVersion)}`;
+  });
   eleventyConfig.addFilter("renderMarkdown", (value, sourceRelative) => {
     return createMarkdownRenderer(sourceRelative).render(value || "");
   });
