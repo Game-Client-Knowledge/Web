@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
+import urllib.request
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
 
@@ -59,6 +62,9 @@ class GitHubClient:
         ) as client:
             response = await client.request(method, path, **kwargs)
 
+        # #region debug-point E:github-response
+        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'E','location':'github.py:_request','msg':'[DEBUG] GitHub API response','data':{'method':method,'path':path,'status':response.status_code,'oauthScopes':response.headers.get('X-OAuth-Scopes'),'acceptedScopes':response.headers.get('X-Accepted-OAuth-Scopes'),'rateRemaining':response.headers.get('X-RateLimit-Remaining')},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+        # #endregion
         if response.status_code not in expected:
             try:
                 detail = response.json().get("message", response.text)
@@ -138,25 +144,37 @@ class GitHubClient:
         code: str,
         code_verifier: str,
     ) -> str:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(20.0),
-            headers={
-                "Accept": "application/json",
-                "User-Agent": "game-client-knowledge-editor/1.0",
-            },
-        ) as client:
-            response = await client.post(
-                "https://github.com/login/oauth/access_token",
-                data={
-                    "client_id": self.settings.github_client_id,
-                    "client_secret": self.settings.github_client_secret,
-                    "code": code,
-                    "redirect_uri": (
-                        f"{self.settings.base_url}/api/auth/github/callback"
-                    ),
-                    "code_verifier": code_verifier,
+        # #region debug-point C:oauth-exchange-start
+        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'C','location':'github.py:exchange_oauth_code','msg':'[DEBUG] OAuth token exchange started','data':{'baseUrl':self.settings.base_url},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+        # #endregion
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(20.0),
+                headers={
+                    "Accept": "application/json",
+                    "User-Agent": "game-client-knowledge-editor/1.0",
                 },
-            )
+            ) as client:
+                response = await client.post(
+                    "https://github.com/login/oauth/access_token",
+                    data={
+                        "client_id": self.settings.github_client_id,
+                        "client_secret": self.settings.github_client_secret,
+                        "code": code,
+                        "redirect_uri": (
+                            f"{self.settings.base_url}/api/auth/github/callback"
+                        ),
+                        "code_verifier": code_verifier,
+                    },
+                )
+        except Exception as exc:
+            # #region debug-point C:oauth-exchange-error
+            exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'C','location':'github.py:exchange_oauth_code-except','msg':'[DEBUG] OAuth token exchange transport error','data':{'errorType':type(exc).__name__,'error':str(exc)[:300]},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+            # #endregion
+            raise
+        # #region debug-point C:oauth-exchange-response
+        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'C','location':'github.py:exchange_oauth_code-response','msg':'[DEBUG] OAuth token exchange response','data':{'status':response.status_code,'hasAccessToken':bool(response.json().get('access_token')),'error':response.json().get('error')},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+        # #endregion
         payload = response.json()
         token = payload.get("access_token")
         if response.status_code != 200 or not token:

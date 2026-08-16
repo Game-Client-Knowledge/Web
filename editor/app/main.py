@@ -6,6 +6,7 @@ import json
 import re
 import secrets
 import sqlite3
+import urllib.request
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -298,6 +299,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def security_middleware(request: Request, call_next):
+        if request.url.path.endswith("/api/auth/github/callback"):
+            # #region debug-point A:callback-request
+            exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'A','location':'main.py:security_middleware','msg':'[DEBUG] OAuth callback request','data':{'queryKeys':sorted(request.query_params.keys()),'hasError':bool(request.query_params.get('error')),'error':request.query_params.get('error'),'hasStateCookie':bool(request.cookies.get(OAUTH_STATE_COOKIE))},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+            # #endregion
         try:
             content_length = int(
                 request.headers.get("content-length", "0") or "0"
@@ -740,6 +745,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             else None
         )
         return_path = safe_return_path(return_to)
+        # #region debug-point B:oauth-start
+        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'B','location':'main.py:github_login','msg':'[DEBUG] OAuth redirect created','data':{'mode':mode,'bindingUserId':binding_user['id'] if binding_user else None,'returnPath':return_path,'hasSessionCookie':bool(request.cookies.get(SESSION_COOKIE))},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+        # #endregion
         state = random_token()
         verifier = random_token()
         challenge = base64.urlsafe_b64encode(
@@ -821,6 +829,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "DELETE FROM oauth_states WHERE state_hash = ?",
                 (token_hash(state),),
             )
+        # #region debug-point A:state-lookup
+        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'A','location':'main.py:github_callback','msg':'[DEBUG] OAuth state lookup','data':{'stateFound':bool(oauth),'purpose':oauth['purpose'] if oauth else None,'bindingUserId':oauth['user_id'] if oauth else None,'cookieMatches':bool(cookie_state and secrets.compare_digest(cookie_state,state))},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+        # #endregion
         if not oauth:
             raise HTTPException(status_code=400, detail="OAuth state 已失效")
         binding_user = None
@@ -1334,6 +1345,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 f"{verification}"
             )
 
+        # #region debug-point D:submit-start
+        exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'D','location':'main.py:submit','msg':'[DEBUG] Submission started','data':{'userId':user['id'],'authProvider':user['auth_provider'],'tokenSource':'github-user' if user['auth_provider']=='github' else 'bot','draftCount':len(drafts),'branch':branch},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+        # #endregion
         main_ref = await github.main_reference(submit_token)
         base_commit_sha = str(main_ref["object"]["sha"])
         tree = {
@@ -1433,6 +1447,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 expected_parent_sha=base_commit_sha,
             )
         except GitHubError as exc:
+            # #region debug-point D:submit-failed
+            exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'pre-fix','hypothesisId':'D','location':'main.py:submit-except','msg':'[DEBUG] Submission failed','data':{'statusCode':exc.status_code,'error':str(exc)[:500],'branch':branch},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+            # #endregion
             with db.connect() as connection:
                 connection.execute(
                     """
