@@ -35,6 +35,31 @@ Instrumentation points:
 - E: Failure stage, exception type, SMTP status code, and sanitized server
   response.
 
+Pre-fix evidence:
+
+- Line 1: QQ template, `smtp.qq.com:587`, STARTTLS, username, sender, and
+  encrypted credential presence are all complete; username and sender match.
+- Line 2: STARTTLS is established successfully.
+- Line 3: Python's default login path is disconnected during authentication
+  with `SMTPServerDisconnected: Connection unexpectedly closed`.
+- A protocol probe confirms QQ advertises both `LOGIN` and `PLAIN`.
+- Forcing `AUTH LOGIN` with the same stored credential reaches QQ and receives
+  SMTP `535 Login fail`. QQ's response identifies an abnormal account, disabled
+  SMTP service, invalid authorization code, frequency limiting, or temporary
+  provider failure.
+
 ## Verification Conclusion
 
-Pending.
+| ID | Status | Conclusion |
+|----|--------|------------|
+| A | Rejected | Persisted endpoint and account fields are complete and consistent |
+| B | Rejected | TCP and STARTTLS succeed |
+| C | Confirmed | QQ rejects the account/service/authorization state with SMTP 535 |
+| D | Rejected as current cause | Authentication fails before `MAIL FROM` |
+| E | Confirmed | Default `AUTH PLAIN` disconnect hides QQ's actionable 535 response |
+
+Minimal fix:
+
+- Force `AUTH LOGIN` for the QQ provider.
+- Convert SMTP 535 into an actionable Chinese authentication message.
+- Retain all instrumentation for post-fix comparison.
