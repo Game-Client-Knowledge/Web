@@ -248,6 +248,10 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert payload["config"]["edit_policy"] == "local_authenticated"
     assert payload["config"]["reader_edit_mode"] == "new"
     assert payload["config"]["reader_diff_enabled"] is True
+    assert payload["config"]["catalog_background_style"] == "circuit"
+    assert payload["config"]["reader_background_style"] == "blueprint"
+    assert payload["config"]["pointer_effect_enabled"] is True
+    assert payload["config"]["home_intro_enabled"] is True
     assert [item["path"] for item in payload["drafts"]] == [
         "knowledge/cpp/bootstrap/README.md"
     ]
@@ -643,6 +647,68 @@ def test_admin_can_switch_to_github_required_policy(client: TestClient) -> None:
         },
     )
     assert invalid.status_code == 422
+
+
+def test_admin_can_configure_client_visual_effects(
+    client: TestClient,
+) -> None:
+    payload = login(client, "sourcecode", TEST_BOOTSTRAP_PASSWORD)
+    changed = client.post(
+        "/api/auth/change-password",
+        headers={"X-CSRF-Token": payload["csrf_token"]},
+        json={
+            "current_password": TEST_BOOTSTRAP_PASSWORD,
+            "new_password": "a-new-strong-password",
+        },
+    ).json()
+    csrf = changed["csrf_token"]
+
+    response = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "catalog_background_style": "constellation",
+            "reader_background_style": "clean",
+            "pointer_effect_enabled": False,
+            "home_intro_enabled": False,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "catalog_background_style": "constellation",
+        "reader_background_style": "clean",
+        "pointer_effect_enabled": False,
+        "home_intro_enabled": False,
+    }
+    config = client.get("/api/config").json()
+    assert config["catalog_background_style"] == "constellation"
+    assert config["reader_background_style"] == "clean"
+    assert config["pointer_effect_enabled"] is False
+    assert config["home_intro_enabled"] is False
+
+    invalid_catalog = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "catalog_background_style": "unsupported",
+            "reader_background_style": "blueprint",
+            "pointer_effect_enabled": True,
+            "home_intro_enabled": True,
+        },
+    )
+    assert invalid_catalog.status_code == 422
+
+    invalid_reader = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "catalog_background_style": "circuit",
+            "reader_background_style": "unsupported",
+            "pointer_effect_enabled": True,
+            "home_intro_enabled": True,
+        },
+    )
+    assert invalid_reader.status_code == 422
 
 
 def test_admin_can_save_encrypted_smtp_configuration(

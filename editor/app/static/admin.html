@@ -82,6 +82,39 @@
 
     <section class="admin-section">
       <div class="section-title">
+        <div><h2>网站视觉</h2><p>目录、阅读与主页动态效果。</p></div>
+      </div>
+      <form id="visualSettingsForm" class="visual-settings-form">
+        <label>
+          目录背景
+          <select name="catalog_background_style">
+            <option value="circuit">电路网格</option>
+            <option value="constellation">星图网络</option>
+            <option value="clean">纯净</option>
+          </select>
+        </label>
+        <label>
+          阅读背景
+          <select name="reader_background_style">
+            <option value="blueprint">蓝图曲线</option>
+            <option value="constellation">星图网络</option>
+            <option value="clean">纯净</option>
+          </select>
+        </label>
+        <label class="check-label">
+          <input name="pointer_effect_enabled" type="checkbox">
+          鼠标跟随效果
+        </label>
+        <label class="check-label">
+          <input name="home_intro_enabled" type="checkbox">
+          主页入场动画
+        </label>
+        <button class="primary-button" type="submit">保存视觉设置</button>
+      </form>
+    </section>
+
+    <section class="admin-section">
+      <div class="section-title">
         <div><h2>待处理 PR</h2><p>当前打开且尚未合并或关闭的贡献。</p></div>
         <div class="section-actions">
           <span id="pendingSubmissionCount" class="count-badge"></span>

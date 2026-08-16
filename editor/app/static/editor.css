@@ -1424,6 +1424,20 @@ dialog::backdrop {
   justify-self: start;
 }
 
+.visual-settings-form {
+  display: grid;
+  align-items: end;
+  gap: 16px;
+  grid-template-columns:
+    repeat(2, minmax(190px, 1fr))
+    repeat(2, minmax(160px, 0.8fr))
+    auto;
+}
+
+.visual-settings-form > .primary-button {
+  justify-self: start;
+}
+
 .section-actions {
   display: flex;
   align-items: center;
@@ -1552,6 +1566,16 @@ dialog::backdrop {
     grid-column: 1 / -1;
     border-top: 1px solid var(--line);
     border-left: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .visual-settings-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .visual-settings-form > .primary-button {
+    grid-column: 1 / -1;
   }
 }
 
@@ -1687,6 +1711,10 @@ dialog::backdrop {
   }
 
   .settings-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .visual-settings-form {
     grid-template-columns: minmax(0, 1fr);
   }
 

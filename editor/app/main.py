@@ -149,6 +149,13 @@ class SettingsRequest(BaseModel):
     reader_diff_enabled: bool = True
 
 
+class VisualSettingsRequest(BaseModel):
+    catalog_background_style: str = "circuit"
+    reader_background_style: str = "blueprint"
+    pointer_effect_enabled: bool = True
+    home_intro_enabled: bool = True
+
+
 class SmtpSettingsRequest(BaseModel):
     enabled: bool
     provider: str = Field(max_length=32)
@@ -602,6 +609,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "reader_edit_mode": db.setting("reader_edit_mode", "new"),
             "reader_diff_enabled": (
                 db.setting("reader_diff_enabled", "1") == "1"
+            ),
+            "catalog_background_style": db.setting(
+                "catalog_background_style", "circuit"
+            ),
+            "reader_background_style": db.setting(
+                "reader_background_style", "blueprint"
+            ),
+            "pointer_effect_enabled": (
+                db.setting("pointer_effect_enabled", "1") == "1"
+            ),
+            "home_intro_enabled": (
+                db.setting("home_intro_enabled", "1") == "1"
             ),
             "repository": settings.github_repo,
         }
@@ -2233,6 +2252,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "reader_diff_enabled": (
                     db.setting("reader_diff_enabled", "1") == "1"
                 ),
+                "catalog_background_style": db.setting(
+                    "catalog_background_style", "circuit"
+                ),
+                "reader_background_style": db.setting(
+                    "reader_background_style", "blueprint"
+                ),
+                "pointer_effect_enabled": (
+                    db.setting("pointer_effect_enabled", "1") == "1"
+                ),
+                "home_intro_enabled": (
+                    db.setting("home_intro_enabled", "1") == "1"
+                ),
                 "smtp_enabled": smtp.smtp_enabled,
                 "github_oauth_enabled": settings.github_oauth_enabled,
                 "github_submission_enabled": settings.github_submission_enabled,
@@ -2368,6 +2399,58 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "reader_edit_mode": payload.reader_edit_mode,
             "reader_diff_enabled": payload.reader_diff_enabled,
         }
+
+    @app.put("/api/admin/visual-settings")
+    async def update_visual_settings(
+        payload: VisualSettingsRequest,
+        request: Request,
+        x_csrf_token: str | None = Header(default=None),
+        admin: dict[str, Any] = Depends(require_admin),
+    ) -> dict[str, Any]:
+        verify_csrf(admin, x_csrf_token)
+        if payload.catalog_background_style not in {
+            "clean",
+            "circuit",
+            "constellation",
+        }:
+            raise HTTPException(status_code=422, detail="目录背景样式无效")
+        if payload.reader_background_style not in {
+            "clean",
+            "blueprint",
+            "constellation",
+        }:
+            raise HTTPException(status_code=422, detail="阅读背景样式无效")
+        now = utc_now()
+        values = {
+            "catalog_background_style": payload.catalog_background_style,
+            "reader_background_style": payload.reader_background_style,
+            "pointer_effect_enabled": (
+                "1" if payload.pointer_effect_enabled else "0"
+            ),
+            "home_intro_enabled": (
+                "1" if payload.home_intro_enabled else "0"
+            ),
+        }
+        with db.connect() as connection:
+            for key, value in values.items():
+                connection.execute(
+                    """
+                    INSERT INTO settings(key, value, updated_by, updated_at)
+                    VALUES(?, ?, ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_by = excluded.updated_by,
+                        updated_at = excluded.updated_at
+                    """,
+                    (key, value, admin["id"], now),
+                )
+        db.audit(
+            "visual_settings.updated",
+            request_ip(request),
+            user_id=admin["id"],
+            detail=json.dumps(payload.model_dump(), ensure_ascii=False),
+        )
+        return payload.model_dump()
 
     @app.post("/api/admin/submissions/sync")
     async def sync_submission_statuses(

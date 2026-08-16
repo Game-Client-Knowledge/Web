@@ -314,6 +314,14 @@ async function loadOverview() {
     data.settings.reader_edit_mode;
   byId("settingsForm").reader_diff_enabled.checked =
     data.settings.reader_diff_enabled;
+  byId("visualSettingsForm").catalog_background_style.value =
+    data.settings.catalog_background_style;
+  byId("visualSettingsForm").reader_background_style.value =
+    data.settings.reader_background_style;
+  byId("visualSettingsForm").pointer_effect_enabled.checked =
+    data.settings.pointer_effect_enabled;
+  byId("visualSettingsForm").home_intro_enabled.checked =
+    data.settings.home_intro_enabled;
   state.autoCloseDays = data.settings.pr_auto_close_days;
   renderIntegrations(data.settings);
   renderPendingSubmissions(
@@ -344,6 +352,26 @@ byId("settingsForm").addEventListener("submit", async (event) => {
       })
     });
     feedback("编辑策略已保存", "success");
+    await loadOverview();
+  } catch (error) {
+    feedback(error.message);
+  }
+});
+
+byId("visualSettingsForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  try {
+    await api("/admin/visual-settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        catalog_background_style: form.catalog_background_style.value,
+        reader_background_style: form.reader_background_style.value,
+        pointer_effect_enabled: form.pointer_effect_enabled.checked,
+        home_intro_enabled: form.home_intro_enabled.checked
+      })
+    });
+    feedback("网站视觉设置已保存", "success");
     await loadOverview();
   } catch (error) {
     feedback(error.message);

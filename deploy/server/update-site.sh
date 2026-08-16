@@ -182,6 +182,8 @@ npm ci \
 CONTENT_REPO_PATH="$content_snapshot" \
 CONTENT_COMMIT="$content_commit" \
 CONTENT_UPDATED_AT="$content_updated_at" \
+CONTENT_GIT_DIR="$CONTENT_GIT_MIRROR" \
+CONTENT_GIT_REVISION="$mirror_revision" \
 WEB_COMMIT="$web_commit" \
   npm run check
 

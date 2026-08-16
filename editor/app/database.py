@@ -399,6 +399,20 @@ class Database:
                 """,
                 (now,),
             )
+            for key, value in {
+                "catalog_background_style": "circuit",
+                "reader_background_style": "blueprint",
+                "pointer_effect_enabled": "1",
+                "home_intro_enabled": "1",
+            }.items():
+                connection.execute(
+                    """
+                    INSERT INTO settings(key, value, updated_at)
+                    VALUES(?, ?, ?)
+                    ON CONFLICT(key) DO NOTHING
+                    """,
+                    (key, value, now),
+                )
 
             count = connection.execute(
                 "SELECT COUNT(*) AS count FROM users"

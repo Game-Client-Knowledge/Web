@@ -68,6 +68,11 @@ order: 40
     catalog.modules.slice(0, 4).map((module) => module.key),
     ["knowledge", "interviews", "examples", "graphics"]
   );
+  assert.deepEqual(
+    catalog.contributors,
+    ["sourcecode", "Game Client Knowledge"],
+    "snapshot-only builds must expose safe contributor labels"
+  );
   process.stdout.write("Dynamic content module checks passed\n");
 } finally {
   if (previousRoot === undefined) delete process.env.CONTENT_REPO_PATH;

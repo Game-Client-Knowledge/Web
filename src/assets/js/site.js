@@ -181,12 +181,17 @@
     });
   }
 
-  function setupKnowledgeField() {
+  async function setupKnowledgeField() {
     const canvas = document.querySelector("[data-knowledge-field]");
     const context = canvas && canvas.getContext("2d");
     if (!canvas || !context) {
       return;
     }
+    const visualSettings = await (
+      window.GCK_VISUAL_SETTINGS || Promise.resolve({})
+    );
+    const pointerEnabled =
+      visualSettings.pointer_effect_enabled !== false;
 
     const host = canvas.closest(".library-intro");
     const reducedMotion = window.matchMedia(
@@ -258,10 +263,10 @@
       }
 
       nodes.forEach(function (node) {
-        const offsetX = pointer.active
+        const offsetX = pointerEnabled && pointer.active
           ? (pointer.x - width / 2) * node.depth * 0.012
           : 0;
-        const offsetY = pointer.active
+        const offsetY = pointerEnabled && pointer.active
           ? (pointer.y - height / 2) * node.depth * 0.012
           : 0;
         context.beginPath();
@@ -278,7 +283,7 @@
         if (reducedMotion) {
           return;
         }
-        if (pointer.active) {
+        if (pointerEnabled && pointer.active) {
           const deltaX = pointer.x - node.x;
           const deltaY = pointer.y - node.y;
           const distance = Math.max(1, Math.hypot(deltaX, deltaY));
@@ -320,15 +325,17 @@
       }
     }
 
-    host.addEventListener("pointermove", function (event) {
-      const rectangle = host.getBoundingClientRect();
-      pointer.x = event.clientX - rectangle.left;
-      pointer.y = event.clientY - rectangle.top;
-      pointer.active = true;
-    });
-    host.addEventListener("pointerleave", function () {
-      pointer.active = false;
-    });
+    if (pointerEnabled) {
+      host.addEventListener("pointermove", function (event) {
+        const rectangle = host.getBoundingClientRect();
+        pointer.x = event.clientX - rectangle.left;
+        pointer.y = event.clientY - rectangle.top;
+        pointer.active = true;
+      });
+      host.addEventListener("pointerleave", function () {
+        pointer.active = false;
+      });
+    }
     document.addEventListener("visibilitychange", function () {
       if (document.hidden) stop();
       else start();

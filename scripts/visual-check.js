@@ -13,6 +13,12 @@ const executableCandidates = [
 ].filter(Boolean);
 const executablePath = executableCandidates.find(fs.existsSync);
 const errors = [];
+const defaultVisualSettings = {
+  catalog_background_style: "circuit",
+  reader_background_style: "blueprint",
+  pointer_effect_enabled: true,
+  home_intro_enabled: false
+};
 
 if (!executablePath) {
   console.error("Chrome or Chromium was not found. Set CHROME_PATH.");
@@ -27,11 +33,86 @@ function assert(condition, message) {
   }
 }
 
+async function canvasMetrics(page, selector) {
+  return page.locator(selector).evaluate((canvas) => {
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    const pixels = context.getImageData(
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    ).data;
+    let painted = 0;
+    let checksum = 0;
+    for (let index = 0; index < pixels.length; index += 16) {
+      const alpha = pixels[index + 3] || 0;
+      if (alpha > 0) painted += 1;
+      checksum =
+        (
+          checksum +
+          pixels[index] * 3 +
+          pixels[index + 1] * 5 +
+          pixels[index + 2] * 7 +
+          alpha * 11
+        ) %
+        1000000007;
+    }
+    return {
+      painted,
+      checksum,
+      width: canvas.width,
+      height: canvas.height,
+      viewport: {
+        top: Math.round(canvas.getBoundingClientRect().top),
+        right: Math.round(canvas.getBoundingClientRect().right),
+        bottom: Math.round(canvas.getBoundingClientRect().bottom),
+        left: Math.round(canvas.getBoundingClientRect().left)
+      }
+    };
+  });
+}
+
 async function inspectPage(browser, scenario) {
+  const visualSettings = {
+    ...defaultVisualSettings,
+    ...(scenario.visualSettings || {})
+  };
   const context = await browser.newContext({
     viewport: scenario.viewport,
     deviceScaleFactor: 1,
-    colorScheme: "light"
+    colorScheme: "light",
+    reducedMotion: scenario.reducedMotion ? "reduce" : "no-preference"
+  });
+  await context.route("**/editor/api/bootstrap**", (route) => {
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        config: {
+          edit_policy: "local_authenticated",
+          registration_enabled: true,
+          pr_auto_close_days: 7,
+          reader_edit_mode: "new",
+          reader_diff_enabled: true,
+          smtp_enabled: false,
+          github_oauth_enabled: true,
+          github_submission_enabled: true,
+          ...visualSettings
+        },
+        session: { authenticated: false },
+        drafts: [],
+        active_draft_html: null
+      })
+    });
+  });
+  await context.route("**/editor/api/comments**", (route) => {
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        revision: null,
+        authors: [],
+        comments: []
+      })
+    });
   });
   const page = await context.newPage();
   const runtimeErrors = [];
@@ -42,11 +123,115 @@ async function inspectPage(browser, scenario) {
   });
   page.on("pageerror", (error) => runtimeErrors.push(error.message));
 
+  const navigationStarted = Date.now();
   await page.goto(`${baseUrl}${scenario.route}`, { waitUntil: "networkidle" });
-  await page.screenshot({
-    path: path.join(outputDirectory, `${scenario.name}.png`),
-    fullPage: false
-  });
+  await page.waitForFunction(() => document.body.dataset.visualType);
+
+  if (scenario.homeIntro === "play") {
+    await page.locator("[data-entry-sequence]").waitFor({
+      state: "visible"
+    });
+    await page.waitForTimeout(260);
+    const intro = await page.evaluate(() => {
+      return {
+        title: document
+          .querySelector(".site-entry-copy")
+          ?.textContent.replace(/\s+/g, " ")
+          .trim(),
+        contributors: document.querySelectorAll(".site-entry-copy b").length,
+        progress: document.querySelector(".site-entry-progress")?.style
+          .transform
+      };
+    });
+    const introCanvas = await canvasMetrics(
+      page,
+      "[data-entry-sequence] canvas"
+    );
+    assert(
+      intro.title?.includes("Game Client Knowledge"),
+      `${scenario.name}: entry title is missing`
+    );
+    assert(
+      intro.contributors >= 2,
+      `${scenario.name}: entry contributors ${intro.contributors}`
+    );
+    assert(
+      intro.progress?.startsWith("scaleX("),
+      `${scenario.name}: entry progress is not running`
+    );
+    assert(
+      introCanvas.painted > 1000,
+      `${scenario.name}: entry canvas is blank`
+    );
+    await page.screenshot({
+      path: path.join(outputDirectory, `${scenario.name}.png`),
+      fullPage: false
+    });
+    await page.waitForFunction(() => {
+      return document.body.dataset.homeIntro === "complete";
+    });
+    const completedAfter = Date.now() - navigationStarted;
+    await page.locator("[data-entry-sequence]").waitFor({
+      state: "detached"
+    });
+    const detachedAfter = Date.now() - navigationStarted;
+    assert(
+      completedAfter >= 1200 && completedAfter <= 2300,
+      `${scenario.name}: entry completed after ${completedAfter}ms`
+    );
+    assert(
+      detachedAfter >= 1450 && detachedAfter <= 2600,
+      `${scenario.name}: entry detached after ${detachedAfter}ms`
+    );
+
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForFunction(() => document.body.dataset.homeIntro);
+    const replay = await page.evaluate(() => {
+      return {
+        status: document.body.dataset.homeIntro,
+        overlay: Boolean(document.querySelector("[data-entry-sequence]"))
+      };
+    });
+    assert(
+      replay.status === "seen" && !replay.overlay,
+      `${scenario.name}: entry replayed in the same session`
+    );
+  } else {
+    if (scenario.homeIntro === "skip") {
+      await page.locator("[data-entry-sequence]").waitFor({
+        state: "visible"
+      });
+      const skipStarted = Date.now();
+      await page.locator("[data-entry-sequence]").click({
+        position: { x: 8, y: 8 }
+      });
+      await page.locator("[data-entry-sequence]").waitFor({
+        state: "detached"
+      });
+      const skippedAfter = Date.now() - skipStarted;
+      assert(
+        skippedAfter < 600,
+        `${scenario.name}: entry skip took ${skippedAfter}ms`
+      );
+    }
+    if (scenario.homeIntro === "disabled") {
+      await page.waitForFunction(() => document.body.dataset.homeIntro);
+      const intro = await page.evaluate(() => {
+        return {
+          status: document.body.dataset.homeIntro,
+          overlay: Boolean(document.querySelector("[data-entry-sequence]"))
+        };
+      });
+      assert(
+        intro.status === "skipped" && !intro.overlay,
+        `${scenario.name}: disabled entry is still visible`
+      );
+    }
+    await page.screenshot({
+      path: path.join(outputDirectory, `${scenario.name}.png`),
+      fullPage: false
+    });
+  }
 
   const layout = await page.evaluate(() => {
     const offenders = Array.from(document.querySelectorAll("body *"))
@@ -92,6 +277,102 @@ async function inspectPage(browser, scenario) {
     runtimeErrors.length === 0,
     `${scenario.name}: browser errors: ${runtimeErrors.join(" | ")}`
   );
+
+  if (scenario.ambient) {
+    const ambientCount = await page.locator("[data-site-ambient]").count();
+    const visualState = await page.evaluate(() => {
+      return {
+        catalog: document.body.dataset.catalogBackground,
+        reader: document.body.dataset.readerBackground,
+        pointer: document.body.dataset.pointerEffect,
+        classes: document.body.className
+      };
+    });
+    const value =
+      scenario.ambient.type === "catalog"
+        ? visualState.catalog
+        : visualState.reader;
+    const expectedClass =
+      `visual-${scenario.ambient.type}-${scenario.ambient.style}`;
+    assert(
+      value === scenario.ambient.style,
+      `${scenario.name}: ambient style is ${value}`
+    );
+    assert(
+      visualState.classes.includes(expectedClass),
+      `${scenario.name}: missing ${expectedClass}`
+    );
+    if (
+      scenario.ambient.style === "clean" &&
+      !visualSettings.pointer_effect_enabled
+    ) {
+      assert(
+        ambientCount === 0,
+        `${scenario.name}: clean mode created an ambient canvas`
+      );
+    } else {
+      assert(
+        ambientCount === 1,
+        `${scenario.name}: ambient canvas count ${ambientCount}`
+      );
+      if (ambientCount) {
+        const firstFrame = await canvasMetrics(
+          page,
+          "[data-site-ambient]"
+        );
+        assert(
+          firstFrame.painted > 100,
+          `${scenario.name}: ambient canvas is blank`
+        );
+        assert(
+          firstFrame.viewport.top === 0 &&
+            firstFrame.viewport.right === scenario.viewport.width &&
+            firstFrame.viewport.bottom === scenario.viewport.height &&
+            firstFrame.viewport.left === 0,
+          `${scenario.name}: ambient canvas is not viewport-aligned`
+        );
+        if (scenario.reducedMotion) {
+          await page.waitForTimeout(180);
+          const secondFrame = await canvasMetrics(
+            page,
+            "[data-site-ambient]"
+          );
+          assert(
+            firstFrame.checksum === secondFrame.checksum,
+            `${scenario.name}: reduced-motion canvas is animated`
+          );
+        }
+      }
+    }
+  }
+
+  if (scenario.pointerEffect !== undefined) {
+    const reticleCount = await page.locator(".site-pointer-reticle").count();
+    assert(
+      reticleCount === (scenario.pointerEffect ? 1 : 0),
+      `${scenario.name}: pointer reticle count ${reticleCount}`
+    );
+    if (scenario.pointerEffect && reticleCount) {
+      await page.mouse.move(360, 240);
+      await page.waitForTimeout(140);
+      const reticle = await page
+        .locator(".site-pointer-reticle")
+        .evaluate((element) => {
+          const match = element.style.transform.match(
+            /translate3d\(([-\d.]+)px, ([-\d.]+)px/
+          );
+          return {
+            visible: element.classList.contains("is-visible"),
+            x: match ? Number(match[1]) : -1,
+            y: match ? Number(match[2]) : -1
+          };
+        });
+      assert(
+        reticle.visible && reticle.x > 300 && reticle.y > 190,
+        `${scenario.name}: pointer reticle did not follow the cursor`
+      );
+    }
+  }
 
   if (scenario.knowledgeField) {
     const field = await page.locator("[data-knowledge-field]").evaluate(
@@ -210,13 +491,64 @@ async function inspectPage(browser, scenario) {
       route: "/",
       viewport: { width: 1440, height: 1000 },
       search: true,
-      knowledgeField: true
+      knowledgeField: true,
+      homeIntro: "play",
+      pointerEffect: true,
+      visualSettings: { home_intro_enabled: true }
     },
     {
       name: "home-mobile",
       route: "/",
       viewport: { width: 390, height: 844 },
-      knowledgeField: true
+      knowledgeField: true,
+      homeIntro: "disabled",
+      pointerEffect: false,
+      visualSettings: { pointer_effect_enabled: false }
+    },
+    {
+      name: "home-intro-skip-mobile",
+      route: "/",
+      viewport: { width: 390, height: 844 },
+      homeIntro: "skip",
+      visualSettings: { home_intro_enabled: true }
+    },
+    {
+      name: "home-reduced-motion",
+      route: "/",
+      viewport: { width: 1440, height: 1000 },
+      homeIntro: "disabled",
+      pointerEffect: false,
+      reducedMotion: true,
+      visualSettings: { home_intro_enabled: true }
+    },
+    {
+      name: "catalog-circuit-desktop",
+      route: "/knowledge/",
+      viewport: { width: 1440, height: 1000 },
+      ambient: { type: "catalog", style: "circuit" },
+      pointerEffect: true
+    },
+    {
+      name: "catalog-constellation-desktop",
+      route: "/knowledge/",
+      viewport: { width: 1440, height: 1000 },
+      ambient: { type: "catalog", style: "constellation" },
+      pointerEffect: false,
+      visualSettings: {
+        catalog_background_style: "constellation",
+        pointer_effect_enabled: false
+      }
+    },
+    {
+      name: "catalog-clean-mobile",
+      route: "/knowledge/",
+      viewport: { width: 390, height: 844 },
+      ambient: { type: "catalog", style: "clean" },
+      pointerEffect: false,
+      visualSettings: {
+        catalog_background_style: "clean",
+        pointer_effect_enabled: false
+      }
     },
     {
       name: "contribute-desktop",
@@ -231,13 +563,40 @@ async function inspectPage(browser, scenario) {
     {
       name: "article-tablet",
       route: "/interviews/mihoyo/2026-autumn-early-game-client-source-code/04-third-round-answers/",
-      viewport: { width: 1024, height: 900 }
+      viewport: { width: 1024, height: 900 },
+      ambient: { type: "reader", style: "blueprint" },
+      pointerEffect: true
     },
     {
       name: "article-mobile",
       route: "/knowledge/ecs/01-fundamentals/",
       viewport: { width: 390, height: 844 },
-      mobileSidebar: true
+      mobileSidebar: true,
+      ambient: { type: "reader", style: "clean" },
+      pointerEffect: false,
+      visualSettings: {
+        reader_background_style: "clean",
+        pointer_effect_enabled: false
+      }
+    },
+    {
+      name: "article-constellation-desktop",
+      route: "/knowledge/ecs/01-fundamentals/",
+      viewport: { width: 1440, height: 1000 },
+      ambient: { type: "reader", style: "constellation" },
+      pointerEffect: false,
+      visualSettings: {
+        reader_background_style: "constellation",
+        pointer_effect_enabled: false
+      }
+    },
+    {
+      name: "article-reduced-motion",
+      route: "/knowledge/ecs/01-fundamentals/",
+      viewport: { width: 1440, height: 1000 },
+      ambient: { type: "reader", style: "blueprint" },
+      pointerEffect: false,
+      reducedMotion: true
     },
     {
       name: "mermaid-desktop",
