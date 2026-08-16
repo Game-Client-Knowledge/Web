@@ -200,6 +200,36 @@
       line-height: 1.8;
     }
 
+    .invitation-notice {
+      margin: 0 0 28px;
+      padding: 16px 0 16px 16px;
+      border-left: 3px solid var(--gold);
+    }
+
+    .invitation-notice strong,
+    .invitation-notice span {
+      display: block;
+    }
+
+    .invitation-notice strong {
+      margin-bottom: 5px;
+      color: var(--ink);
+      font-size: 14px;
+    }
+
+    .invitation-notice span {
+      color: var(--ink-soft);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .invitation-notice a {
+      display: inline-block;
+      margin-top: 9px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
     .steps {
       margin: 0;
       padding: 0;
@@ -426,6 +456,19 @@
       overflow-wrap: anywhere;
     }
 
+    .feedback-action {
+      display: inline-flex;
+      margin-top: 10px;
+      color: var(--teal-dark);
+      align-items: center;
+      font-size: 13px;
+      font-weight: 720;
+    }
+
+    .feedback-action[hidden] {
+      display: none;
+    }
+
     .panel-note {
       margin: 22px 0 0;
       padding-top: 17px;
@@ -551,6 +594,20 @@
         与社区成员共同维护游戏客户端知识、面经和代码示例。
       </p>
 
+      <div class="invitation-notice" role="note">
+        <strong>提交申请后，还需要在 GitHub 手动接受邀请</strong>
+        <span>
+          服务器会立即创建组织邀请，GitHub 随后会向对应账号的已验证邮箱和通知中心发送邀请。
+          页面显示“邀请已发送”不代表已经加入组织。
+        </span>
+        <a
+          data-accept-invite
+          href="https://github.com/orgs/Game-Client-Knowledge/invitation"
+          rel="noreferrer"
+          target="_blank"
+        >查看 GitHub 待接受邀请 →</a>
+      </div>
+
       <ol class="steps" aria-label="加入流程">
         <li>
           <span class="step-number">01</span>
@@ -580,7 +637,7 @@
       <div class="panel-header">
         <div>
           <h2 id="form-title">申请组织邀请</h2>
-          <p>邀请由服务器通过 GitHub 官方 API 创建。</p>
+          <p>提交后由服务器通过 GitHub 官方 API 自动创建邀请。</p>
         </div>
         <span id="channelStatus" class="channel-status">正在检查</span>
       </div>
@@ -596,7 +653,9 @@
             required
             maxlength="254"
           >
-          <p class="field-hint">邮箱必须已经在接收者的 GitHub 账号中完成验证。</p>
+          <p class="field-hint">
+            邮箱必须已通过 GitHub 验证；使用用户名时，邀请将关联到该账号及其通知邮箱。
+          </p>
         </div>
 
         <div id="codeWrap" class="field">
@@ -610,7 +669,7 @@
           >
         </div>
 
-        <button id="submit" class="submit-button" type="submit">发送组织邀请</button>
+        <button id="submit" class="submit-button" type="submit">提交申请并发送邀请</button>
       </form>
 
       <div
@@ -623,6 +682,15 @@
         <div id="feedbackTitle" class="feedback-title"></div>
         <div id="feedbackDetail" class="feedback-detail"></div>
         <div id="feedbackMeta" class="feedback-meta"></div>
+        <a
+          id="feedbackAction"
+          class="feedback-action"
+          data-accept-invite
+          href="https://github.com/orgs/Game-Client-Knowledge/invitation"
+          rel="noreferrer"
+          target="_blank"
+          hidden
+        >前往 GitHub 接受邀请 →</a>
       </div>
 
       <p class="panel-note">
@@ -646,12 +714,15 @@
     const codeWrap = document.getElementById("codeWrap");
     const channelStatus = document.getElementById("channelStatus");
     const orgName = document.getElementById("orgName");
+    const feedbackAction = document.getElementById("feedbackAction");
+    const acceptInviteLinks = document.querySelectorAll("[data-accept-invite]");
 
-    function showFeedback(kind, title, detail, meta = "") {
+    function showFeedback(kind, title, detail, meta = "", showAction = false) {
       feedback.className = `feedback ${kind}`;
       feedbackTitle.textContent = title;
       feedbackDetail.textContent = detail;
       feedbackMeta.textContent = meta;
+      feedbackAction.hidden = !showAction;
       feedback.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
 
@@ -675,6 +746,11 @@
         const config = await response.json();
         orgName.textContent = config.org_name;
         document.title = `加入 ${config.org_name} · Game Client Knowledge`;
+        const invitationUrl =
+          `https://github.com/orgs/${encodeURIComponent(config.org_name)}/invitation`;
+        acceptInviteLinks.forEach((link) => {
+          link.href = invitationUrl;
+        });
         setReadyState(config.public_join_enabled);
         if (!config.join_code_required) {
           codeWrap.hidden = true;
@@ -718,14 +794,29 @@
           showFeedback(
             "ok",
             "邀请已发送",
-            "GitHub 已创建组织邀请，请前往 GitHub 通知或邮箱完成接受。",
-            `${target}${state}${invitation}`
+            "GitHub 已向对应账号发送组织邀请。请打开 GitHub 通知或验证邮箱，并手动接受后再开始共建。",
+            `${target}${state}${invitation}`,
+            true
           );
         } else if (data.result === "existing_membership") {
           const title = data.state === "active" ? "已经是组织成员" : "已有待处理邀请";
-          showFeedback("warn", title, data.message, `${target}${state}`);
+          showFeedback(
+            "warn",
+            title,
+            data.state === "active"
+              ? "当前账号已经是组织成员，无需再次接受邀请。"
+              : "GitHub 中已有一份尚未接受的组织邀请，请前往通知或邮箱处理。",
+            `${target}${state}`,
+            data.state !== "active"
+          );
         } else if (data.result === "pending_invitation") {
-          showFeedback("warn", "已有待处理邀请", data.message, target);
+          showFeedback(
+            "warn",
+            "已有待处理邀请",
+            "该账号已有尚未接受的 GitHub 组织邀请，请前往通知或验证邮箱处理。",
+            target,
+            true
+          );
         } else if (data.ok) {
           showFeedback("ok", "请求已处理", data.message, target);
         } else {
@@ -737,7 +828,7 @@
         button.removeAttribute("aria-busy");
         if (channelStatus.classList.contains("is-ready")) {
           button.disabled = false;
-          button.textContent = "发送组织邀请";
+          button.textContent = "提交申请并发送邀请";
         }
       }
     });

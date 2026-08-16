@@ -27,6 +27,23 @@ tracks only the public page template at [`deploy/join/index.html`](../deploy/joi
 The template calls the existing `/api/config` and `/api/invite` endpoints without
 changing their contract.
 
+## Invitation acceptance
+
+Submitting the public form immediately asks GitHub to create an Organization
+invitation. GitHub associates a username invitation with that account, or sends
+an email invitation to the supplied verified address.
+
+The applicant is not an Organization member yet. They must open the GitHub
+notification or verified mailbox and accept the pending invitation. The page
+keeps this requirement visible before submission and provides a direct link to:
+
+```text
+https://github.com/orgs/Game-Client-Knowledge/invitation
+```
+
+Successful and already-pending API responses both show the same acceptance
+entry. Existing active members do not receive another invitation.
+
 ## Deployment
 
 After the one-time server bootstrap, deploy the page with:
