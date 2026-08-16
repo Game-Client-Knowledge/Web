@@ -19,7 +19,7 @@ flowchart LR
     D[Website contributors] --> E[Game-Client-Knowledge Web]
     E --> C
     C --> F[Static HTML and search index]
-    F --> G[GitHub Pages]
+    F --> G[Self-hosted Nginx]
 ```
 
 The content repository has no JavaScript dependencies or generated website files.
@@ -47,13 +47,13 @@ override inferred metadata for exceptional cases.
 
 ```mermaid
 sequenceDiagram
-    participant CI as GitHub Actions
+    participant CI as Server update timer
     participant Content as Content repository
     participant Loader as Content loader
     participant Audit as Content audit
     participant Site as Eleventy
 
-    CI->>Content: Checkout main branch
+    CI->>Content: Download pushed main snapshot
     CI->>Loader: Scan knowledge, interviews, examples
     Loader->>Loader: Infer units, routes, order, headings
     CI->>Audit: Validate Markdown and relative links

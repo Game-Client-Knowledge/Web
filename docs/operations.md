@@ -36,19 +36,6 @@ git push -u origin main
 The local repository is already initialized independently from the content
 repository.
 
-## GitHub Pages
-
-In the website repository settings:
-
-1. Open **Settings → Pages**.
-2. Select **GitHub Actions** as the source.
-3. Keep the workflow's default base path for a project repository.
-4. For a custom domain or organization Pages repository, define the repository
-   variable `SITE_BASE_PATH` as an empty string or the required path prefix.
-
-The deployment workflow checks out both repositories, audits content, builds the
-site, and deploys the `_site/` artifact.
-
 ## Production server
 
 The self-hosted production endpoint is:
@@ -129,17 +116,13 @@ content=<full content commit SHA>
 
 ## Update behavior
 
-A deployment runs on:
+GitHub Actions and GitHub Pages are not used for production deployment. The Web
+repository intentionally contains no automatic Actions build workflow.
 
-- Every push to the website's `main` branch.
-- Manual workflow dispatch.
-- A `content-updated` repository dispatch event.
-- An hourly schedule at minute 17.
-
-The schedule keeps the content repository free of website workflow files. If an
-immediate rebuild is required, run the website workflow manually. A later
-organization-level automation can send `repository_dispatch` after content merges
-without changing the content format.
+Production updates are handled by `game-client-knowledge-update.timer` on the
+self-hosted server. It checks the pushed `main` commits of both repositories every
+10 minutes and publishes only when their recorded SHAs change. Use
+`npm run deploy:server` for an immediate release after both commits are pushed.
 
 ## Quality gates
 
@@ -182,7 +165,7 @@ overflow are asserted.
 Review the current implementation when either condition is measured:
 
 - `search-index.json` exceeds 1 MB compressed.
-- A full production build exceeds two minutes in GitHub Actions.
+- A full production build exceeds two minutes on the update server.
 
 At that point, split search by module and cache parsed document metadata by content
 commit. The content directory contract does not need to change.
