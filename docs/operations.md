@@ -77,24 +77,54 @@ nvm use
 npm run deploy:server
 ```
 
-The command runs all content and generated-site audits before uploading. Override
-the defaults with `DEPLOY_HOST`, `DEPLOY_KEY`, or `RELEASE_ROOT` when required.
+The command deploys only pushed commits. Before building, it:
+
+1. Rejects uncommitted or untracked files in both repositories.
+2. Fetches `origin/main` for the Web and content repositories.
+3. Requires each local `HEAD` to equal its pushed `origin/main`.
+4. Builds with the verified content commit metadata.
+5. Writes both full SHAs to `.release-source` in the release directory.
+
+The deploy fails before uploading when either repository is dirty, ahead of, or
+behind `origin/main`. Override the defaults with `CONTENT_REPO_PATH`, `DEPLOY_HOST`,
+`DEPLOY_KEY`, or `RELEASE_ROOT` when required.
 
 The server also runs `game-client-knowledge-update.timer` every 10 minutes. It
-compares the content repository's remote `main` commit with the last published
-commit. When the commit changes, it fetches content, runs the same audit and build
-pipeline, and publishes a new versioned release. Failed builds do not change the
-`current` symlink, so the last valid site remains online.
+checks both repositories through the GitHub API:
 
-The server checks commits through the GitHub API and downloads immutable source
-snapshots from Codeload. This avoids depending on the Git smart HTTPS endpoint,
-which is not reachable from the server network.
+```text
+Game-Client-Knowledge/Web:main
+Game-Client-Knowledge/Game-Client-Knowledge:main
+```
+
+It downloads both immutable commit snapshots from Codeload into a temporary
+workspace, installs dependencies, runs the complete audit and build pipeline, and
+publishes a release only when both succeed. It never builds from
+`/home/sourcecode/gck-builder/content` or another persistent content checkout.
+
+The updater compares the two remote SHAs with the deployed `.release-source`.
+Therefore, a legacy or manually copied release without matching provenance is
+automatically replaced with a remote-snapshot build. Failed builds do not change
+the `current` symlink, so the last valid site remains online.
 
 Inspect the updater with:
 
 ```bash
 systemctl status game-client-knowledge-update.timer
 journalctl -u game-client-knowledge-update.service
+```
+
+Inspect the exact production inputs:
+
+```bash
+cat /var/www/game-client-knowledge/current/.release-source
+```
+
+Expected format:
+
+```text
+web=<full Web commit SHA>
+content=<full content commit SHA>
 ```
 
 ## Update behavior

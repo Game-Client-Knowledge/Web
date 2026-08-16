@@ -2,12 +2,15 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DEPLOY_HOST="${DEPLOY_HOST:-sourcecode@192.168.31.109}"
 DEPLOY_KEY="${DEPLOY_KEY:-$HOME/.ssh/id_ed25519_gck_deploy}"
 RELEASE_ROOT="${JOIN_RELEASE_ROOT:-/var/www/github-org-invite-page}"
-RELEASE_ID="$(date -u +%Y%m%dT%H%M%SZ)"
-REMOTE_RELEASE="${RELEASE_ROOT}/releases/${RELEASE_ID}"
 SSH=(ssh -i "$DEPLOY_KEY" -o IdentitiesOnly=yes)
+
+source "${SCRIPT_DIR}/require-pushed-commits.sh"
+cd "$PROJECT_ROOT"
 
 if [[ ! -f "$DEPLOY_KEY" ]]; then
   echo "Deployment key not found: $DEPLOY_KEY" >&2
@@ -19,12 +22,19 @@ if [[ ! -s deploy/join/index.html ]]; then
   exit 1
 fi
 
+WEB_COMMIT="$(require_pushed_commit "$PROJECT_ROOT" "Web repository")"
+RELEASE_ID="$(printf '%s-%s' "$(date -u +%Y%m%dT%H%M%SZ)" "${WEB_COMMIT:0:12}")"
+REMOTE_RELEASE="${RELEASE_ROOT}/releases/${RELEASE_ID}"
+
 "${SSH[@]}" "$DEPLOY_HOST" "mkdir -p '$REMOTE_RELEASE'"
 scp \
   -i "$DEPLOY_KEY" \
   -o IdentitiesOnly=yes \
   deploy/join/index.html \
   "${DEPLOY_HOST}:${REMOTE_RELEASE}/index.html"
+
+printf 'web=%s\n' "$WEB_COMMIT" |
+  "${SSH[@]}" "$DEPLOY_HOST" "cat >'$REMOTE_RELEASE/.release-source'"
 
 "${SSH[@]}" "$DEPLOY_HOST" bash -s -- "$RELEASE_ROOT" "$REMOTE_RELEASE" <<'REMOTE'
 set -euo pipefail

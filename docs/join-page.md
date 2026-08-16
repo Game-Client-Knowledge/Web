@@ -35,6 +35,9 @@ After the one-time server bootstrap, deploy the page with:
 npm run deploy:join
 ```
 
+The command rejects a dirty Web working tree and requires local `HEAD` to equal the
+pushed `origin/main` commit before uploading.
+
 The command uploads a timestamped release under
 `/var/www/github-org-invite-page/releases/`, atomically updates `current`, and
 retains the five newest releases. FastAPI reads the page through a server-side

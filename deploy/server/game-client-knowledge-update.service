@@ -1,5 +1,5 @@
 [Unit]
-Description=Build and publish Game Client Knowledge when content changes
+Description=Publish pushed Game Client Knowledge Web and content commits
 After=network-online.target
 Wants=network-online.target
 

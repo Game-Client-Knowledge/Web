@@ -2,20 +2,39 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+CONTENT_REPO_PATH="${CONTENT_REPO_PATH:-${PROJECT_ROOT}/../Game-Client-Knowledge}"
 DEPLOY_HOST="${DEPLOY_HOST:-sourcecode@192.168.31.109}"
 DEPLOY_KEY="${DEPLOY_KEY:-$HOME/.ssh/id_ed25519_gck_deploy}"
 RELEASE_ROOT="${RELEASE_ROOT:-/var/www/game-client-knowledge}"
-RELEASE_ID="$(date -u +%Y%m%dT%H%M%SZ)"
-REMOTE_RELEASE="${RELEASE_ROOT}/releases/${RELEASE_ID}"
 SSH=(ssh -i "$DEPLOY_KEY" -o IdentitiesOnly=yes)
 RSYNC_SSH="ssh -i $DEPLOY_KEY -o IdentitiesOnly=yes"
+
+source "${SCRIPT_DIR}/require-pushed-commits.sh"
+cd "$PROJECT_ROOT"
 
 if [[ ! -f "$DEPLOY_KEY" ]]; then
   echo "Deployment key not found: $DEPLOY_KEY" >&2
   exit 1
 fi
 
+WEB_COMMIT="$(require_pushed_commit "$PROJECT_ROOT" "Web repository")"
+CONTENT_COMMIT="$(require_pushed_commit "$CONTENT_REPO_PATH" "Content repository")"
+CONTENT_UPDATED_AT="$(git -C "$CONTENT_REPO_PATH" log -1 --format=%cI "$CONTENT_COMMIT")"
+RELEASE_ID="$(
+  printf '%s-%s-%s' \
+    "$(date -u +%Y%m%dT%H%M%SZ)" \
+    "${WEB_COMMIT:0:12}" \
+    "${CONTENT_COMMIT:0:12}"
+)"
+REMOTE_RELEASE="${RELEASE_ROOT}/releases/${RELEASE_ID}"
+
+export CONTENT_REPO_PATH
+export CONTENT_COMMIT
+export CONTENT_UPDATED_AT
 npm run check
+printf 'web=%s\ncontent=%s\n' "$WEB_COMMIT" "$CONTENT_COMMIT" >_site/.release-source
 
 "${SSH[@]}" "$DEPLOY_HOST" "mkdir -p '$REMOTE_RELEASE'"
 rsync \

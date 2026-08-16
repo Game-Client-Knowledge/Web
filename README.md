@@ -34,8 +34,8 @@ The site reads `../Game-Client-Knowledge` automatically. Use
 | `npm run audit` | Validate Markdown, links, routes, and scanner coverage |
 | `npm run check` | Run the audit and production build |
 | `npm run test:visual` | Check desktop, tablet, and mobile layouts with local Chrome |
-| `npm run deploy:join` | Deploy a versioned Join page release |
-| `npm run deploy:server` | Build and deploy a versioned release to the production server |
+| `npm run deploy:join` | Deploy the pushed Web commit's Join page |
+| `npm run deploy:server` | Deploy pushed Web and content commits to production |
 
 ## Content contract
 
