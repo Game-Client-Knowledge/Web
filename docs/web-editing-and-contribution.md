@@ -193,6 +193,10 @@ inside account settings.
 - Module pages edit the module `README.md`.
 - Module and topic controls prefill the correct content root and parent directory
   when creating child modules or files.
+- Reader controls derive their parent from the currently displayed source,
+  including an unmerged draft module, so nested files stay in that module.
+- The full workspace can create a top-level module whose navigation metadata is
+  stored in its own `README.md`; the website discovers it without Web code changes.
 - Saving source that is byte-for-byte equal to the loaded baseline is a local no-op
   and does not create or update a draft. An unsaved new file still performs its
   required first save.
@@ -218,6 +222,9 @@ Markdown: added lines are green, replacement lines are yellow, and removed lines
 are red. The Resources view remains the editing surface and Markdown files there
 use the same visual editor as the reader. The right panel remains the only
 submission surface.
+
+See [Dynamic Top-Level Content Modules](dynamic-content-modules.md) for discovery,
+README frontmatter, online creation, and nested path resolution.
 
 The workspace uses each repository-tree blob SHA as the expected version when
 loading `/raw/<path>`. A matching client-computed SHA avoids a second GitHub request

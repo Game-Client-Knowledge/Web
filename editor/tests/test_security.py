@@ -21,7 +21,8 @@ def test_identity_normalization() -> None:
         "../secret.md",
         "/knowledge/cpp/a.md",
         "knowledge/.hidden/a.md",
-        "unknown/topic/README.md",
+        "scripts/topic/README.md",
+        "Invalid Root/topic/README.md",
         "knowledge/cpp/main.cpp",
         "knowledge/cpp/bad\nname.md",
     ],
@@ -39,6 +40,10 @@ def test_accepts_expected_paths() -> None:
     assert (
         validate_content_path("examples/cpp/polymorphism/main.cpp")
         == "examples/cpp/polymorphism/main.cpp"
+    )
+    assert (
+        validate_content_path("graphics/rendering/README.md")
+        == "graphics/rendering/README.md"
     )
 
 

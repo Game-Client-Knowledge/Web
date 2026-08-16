@@ -165,6 +165,10 @@
               <i data-lucide="folder-plus" aria-hidden="true"></i>
               新增专题
             </button>
+            <button id="newModuleButton" class="secondary-button" type="button">
+              <i data-lucide="layout-grid" aria-hidden="true"></i>
+              新增大模块
+            </button>
           </div>
           <div id="resourceTree" class="resource-tree" aria-label="内容仓库目录"></div>
           </div>
@@ -326,6 +330,60 @@
       <footer>
         <button class="secondary-button" value="cancel" type="submit" formnovalidate>取消</button>
         <button class="primary-button" value="default" type="submit">创建专题草稿</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="moduleDialog">
+    <form id="moduleForm" method="dialog" class="dialog-form">
+      <header>
+        <h2>新增顶级大模块</h2>
+        <button class="icon-button" value="cancel" aria-label="关闭" type="submit" formnovalidate>×</button>
+      </header>
+      <label>
+        目录名
+        <input name="slug" placeholder="graphics" required maxlength="80">
+      </label>
+      <label>
+        展示标题
+        <input name="title" placeholder="图形与渲染" required maxlength="120">
+      </label>
+      <label>
+        导航短名
+        <input name="short_title" placeholder="图形" required maxlength="20">
+      </label>
+      <label>
+        简介
+        <textarea name="description" rows="3" maxlength="500"></textarea>
+      </label>
+      <label>
+        图标
+        <select name="icon">
+          <option value="folder-kanban">目录</option>
+          <option value="book-open">知识</option>
+          <option value="braces">代码</option>
+          <option value="gamepad-2">游戏</option>
+          <option value="messages-square">交流</option>
+          <option value="network">架构</option>
+          <option value="shapes">综合</option>
+        </select>
+      </label>
+      <label>
+        颜色
+        <select name="accent">
+          <option value="teal">青绿</option>
+          <option value="orange">橙红</option>
+          <option value="gold">金黄</option>
+        </select>
+      </label>
+      <label class="check-label">
+        <input name="allow_code" type="checkbox">
+        允许收录源码文件
+      </label>
+      <div id="moduleDialogFeedback" class="feedback" role="status" aria-live="polite"></div>
+      <footer>
+        <button class="secondary-button" value="cancel" type="submit" formnovalidate>取消</button>
+        <button class="primary-button" value="default" type="submit">创建大模块草稿</button>
       </footer>
     </form>
   </dialog>

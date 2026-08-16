@@ -44,6 +44,7 @@ eleventyComputed:
         data-create-context="module"
         data-create-root="{{ module.key }}"
         data-create-parent="{{ module.key }}"
+        data-create-use-current
       >
         <i data-lucide="folder-plus" aria-hidden="true"></i>
         新建子模块
@@ -54,10 +55,18 @@ eleventyComputed:
         data-create-context="file"
         data-create-root="{{ module.key }}"
         data-create-parent="{{ module.key }}"
+        data-create-use-current
       >
         <i data-lucide="file-plus-2" aria-hidden="true"></i>
         新建文件
       </button>
+      <a
+        class="secondary-button"
+        href="{{ site.editorUrl }}?new_module=1"
+      >
+        <i data-lucide="layout-grid" aria-hidden="true"></i>
+        新增大模块
+      </a>
     </div>
   </header>
 

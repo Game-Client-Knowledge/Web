@@ -607,6 +607,10 @@ a[aria-disabled="true"] {
   font-size: 11px;
 }
 
+#newModuleButton {
+  grid-column: 1 / -1;
+}
+
 .resource-tree {
   max-height: 570px;
   padding-right: 4px;

@@ -926,6 +926,18 @@
     return parts.join("/");
   }
 
+  function currentSourceParent(root, fallback) {
+    const sourcePath =
+      query("[data-editor-host]")?.dataset.editorSource ||
+      (config.editorContext && config.editorContext.sourcePath);
+    if (!sourcePath || !sourcePath.startsWith(root + "/")) {
+      return normalizeParent(root, fallback);
+    }
+    const parts = sourcePath.split("/");
+    parts.pop();
+    return normalizeParent(root, parts.join("/"));
+  }
+
   function openCreateDialog(button) {
     if (!ensureEditorAccess()) {
       return;
@@ -935,7 +947,9 @@
     const form = query("[data-content-create-form]", dialog);
     const kind = button.dataset.createContext;
     const root = button.dataset.createRoot;
-    const parent = normalizeParent(root, button.dataset.createParent);
+    const parent = button.hasAttribute("data-create-use-current")
+      ? currentSourceParent(root, button.dataset.createParent)
+      : normalizeParent(root, button.dataset.createParent);
     form.reset();
     form.elements.root.value = root;
     form.elements.parent.value = parent;

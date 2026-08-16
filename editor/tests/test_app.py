@@ -105,6 +105,16 @@ def test_local_user_can_create_isolated_topic_draft(client: TestClient) -> None:
     assert response.status_code == 200, response.text
     payload = response.json()
     csrf = payload["csrf_token"]
+    client.app.state.github.repository_tree = AsyncMock(
+        return_value=[
+            {
+                "path": "knowledge/README.md",
+                "sha": "knowledge-readme",
+                "size": 100,
+                "type": "blob",
+            }
+        ]
+    )
 
     topic = client.post(
         "/api/topics",
@@ -125,6 +135,62 @@ def test_local_user_can_create_isolated_topic_draft(client: TestClient) -> None:
     assert [item["path"] for item in drafts.json()["items"]] == [
         "knowledge/cpp/polymorphism/README.md"
     ]
+
+
+def test_user_can_create_top_level_module_and_nested_content(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "module@example.test",
+            "username": "module-user",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    module = client.post(
+        "/api/modules",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "slug": "graphics",
+            "title": "图形与渲染",
+            "short_title": "图形",
+            "description": "实时渲染知识与示例。",
+            "icon": "shapes",
+            "accent": "gold",
+            "allow_code": True,
+        },
+    )
+    assert module.status_code == 200, module.text
+    assert module.json()["path"] == "graphics/README.md"
+    assert 'shortTitle: "图形"' in module.json()["content"]
+    assert "allowCode: true" in module.json()["content"]
+
+    topic = client.post(
+        "/api/topics",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "root": "graphics",
+            "parent": "",
+            "slug": "rendering",
+            "title": "渲染基础",
+            "description": "",
+        },
+    )
+    assert topic.status_code == 200, topic.text
+    assert topic.json()["path"] == "graphics/rendering/README.md"
+
+    source = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": "graphics/rendering/demo.cpp",
+            "content": "int main() { return 0; }\n",
+            "operation": "upsert",
+        },
+    )
+    assert source.status_code == 200, source.text
 
 
 def test_csrf_is_required_for_draft_mutation(client: TestClient) -> None:
@@ -897,6 +963,62 @@ def test_submission_preserves_file_delete_operation(
     changes = github.submit.await_args.kwargs["changes"]
     assert changes[0]["path"] == path
     assert changes[0]["operation"] == "delete"
+
+
+def test_submission_rejects_top_level_module_readme_deletion(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "delete-module@example.test",
+            "username": "delete-module",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    path = "graphics/README.md"
+    deleted = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": path,
+            "content": "",
+            "base_sha": "module-readme-sha",
+            "operation": "delete",
+        },
+    )
+    assert deleted.status_code == 200
+
+    github = client.app.state.github
+    github.main_reference = AsyncMock(
+        return_value={"object": {"sha": "main-commit-sha"}}
+    )
+    github.repository_tree = AsyncMock(
+        return_value=[
+            {
+                "path": path,
+                "sha": "module-readme-sha",
+                "type": "blob",
+            }
+        ]
+    )
+    github.submit = AsyncMock()
+
+    response = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "custom_head": "remove-module-readme",
+            "title": "docs: remove module readme",
+            "description": "",
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "不能删除顶级模块 README.md；该文件用于模块发现和导航"
+    )
+    github.submit.assert_not_awaited()
 
 
 def test_admin_can_verify_local_email(client: TestClient) -> None:

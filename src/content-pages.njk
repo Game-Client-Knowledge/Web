@@ -120,6 +120,7 @@ eleventyComputed:
             data-create-context="module"
             data-create-root="{{ document.moduleKey }}"
             data-create-parent="{{ currentUnit.id }}"
+            data-create-use-current
           >
             <i data-lucide="folder-plus" aria-hidden="true"></i>
             新建子模块
@@ -130,6 +131,7 @@ eleventyComputed:
             data-create-context="file"
             data-create-root="{{ document.moduleKey }}"
             data-create-parent="{{ currentUnit.id }}"
+            data-create-use-current
           >
             <i data-lucide="file-plus-2" aria-hidden="true"></i>
             新建文件

@@ -177,7 +177,7 @@ async function initializeWorkspace(draftsReady = false) {
   }
   document
     .querySelectorAll(
-      "#newFileButton, #newTopicButton, #saveDraftButton, " +
+      "#newFileButton, #newTopicButton, #newModuleButton, #saveDraftButton, " +
         "#discardDraftButton, #markDeleteButton, #submitAllButton"
     )
     .forEach((element) => {
@@ -194,6 +194,10 @@ async function initializeWorkspace(draftsReady = false) {
   const requestedFile = new URLSearchParams(location.search).get("file");
   if (requestedFile) {
     await openResource(requestedFile);
+  }
+  if (new URLSearchParams(location.search).get("new_module") === "1") {
+    clearFeedback(byId("moduleDialogFeedback"));
+    byId("moduleDialog").showModal();
   }
 }
 
@@ -350,11 +354,45 @@ function renderChanges() {
   }
 }
 
+function renderTopicRootOptions(entries) {
+  const labels = {
+    knowledge: "知识专题",
+    interviews: "面经",
+    examples: "代码示例"
+  };
+  const roots = entries
+    .filter((entry) => {
+      const parts = entry.path.split("/");
+      return (
+        parts.length === 2 &&
+        parts[1].toLowerCase() === "readme.md" &&
+        entry.draft?.operation !== "delete"
+      );
+    })
+    .map((entry) => entry.path.split("/")[0])
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .sort((left, right) =>
+      left.localeCompare(right, "zh-CN", { numeric: true })
+    );
+  const select = byId("topicForm").root;
+  const selected = select.value;
+  select.replaceChildren();
+  roots.forEach((root) => {
+    const option = document.createElement("option");
+    option.value = root;
+    option.textContent = labels[root] || root;
+    select.append(option);
+  });
+  if (roots.includes(selected)) select.value = selected;
+}
+
 function renderResources() {
   const target = byId("resourceTree");
   target.replaceChildren();
   const filter = state.resourceFilter.trim().toLowerCase();
-  const entries = resourceEntries().filter(
+  const allEntries = resourceEntries();
+  renderTopicRootOptions(allEntries);
+  const entries = allEntries.filter(
     (item) => !filter || item.path.toLowerCase().includes(filter)
   );
   if (!entries.length) {
@@ -1049,6 +1087,10 @@ byId("newTopicButton").addEventListener("click", () => {
   clearFeedback(byId("topicDialogFeedback"));
   byId("topicDialog").showModal();
 });
+byId("newModuleButton").addEventListener("click", () => {
+  clearFeedback(byId("moduleDialogFeedback"));
+  byId("moduleDialog").showModal();
+});
 // #region debug-point A:file-dialog-click
 byId("fileForm").addEventListener("click",(event)=>{const button=event.target.closest("button");if(button)fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"A",location:"editor.js:fileForm-click",msg:"[DEBUG] File dialog button clicked",data:{value:button.value,type:button.type,formValid:event.currentTarget.matches(":valid")},ts:Date.now()})}).catch(()=>{})});
 // #endregion
@@ -1133,6 +1175,47 @@ byId("topicForm").addEventListener("submit", async (event) => {
     await openDraft(result);
   } catch (error) {
     feedback(byId("topicDialogFeedback"), error.message);
+  }
+});
+
+byId("moduleForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (event.submitter?.value === "cancel") {
+    byId("moduleDialog").close();
+    return;
+  }
+  const form = event.currentTarget;
+  const target = byId("moduleDialogFeedback");
+  clearFeedback(target);
+  const submit = event.submitter;
+  submit.disabled = true;
+  try {
+    const values = formPayload(form);
+    const result = await api("/modules", {
+      method: "POST",
+      body: JSON.stringify({
+        slug: values.slug,
+        title: values.title,
+        short_title: values.short_title,
+        description: values.description,
+        icon: values.icon,
+        accent: values.accent,
+        allow_code: form.allow_code.checked
+      })
+    });
+    byId("moduleDialog").close();
+    form.reset();
+    await loadDrafts();
+    await openDraft(result);
+    feedback(
+      byId("editorFeedback"),
+      `大模块 ${result.path} 已创建为草稿。`,
+      "success"
+    );
+  } catch (error) {
+    feedback(target, error.message);
+  } finally {
+    submit.disabled = false;
   }
 });
 

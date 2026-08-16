@@ -48,8 +48,10 @@ from .pr_lifecycle import (
     user_action_url,
 )
 from .security import (
+    ALLOWED_ROOTS,
     TokenCipher,
     hash_password,
+    is_valid_module_root,
     make_branch_name,
     normalize_email,
     normalize_username,
@@ -107,6 +109,16 @@ class TopicRequest(BaseModel):
     slug: str = Field(max_length=80)
     title: str = Field(max_length=120)
     description: str = Field(default="", max_length=500)
+
+
+class TopLevelModuleRequest(BaseModel):
+    slug: str = Field(max_length=80)
+    title: str = Field(min_length=1, max_length=120)
+    short_title: str = Field(min_length=1, max_length=20)
+    description: str = Field(default="", max_length=500)
+    icon: str = Field(default="folder-kanban", max_length=40)
+    accent: str = Field(default="teal", max_length=20)
+    allow_code: bool = False
 
 
 class PreviewRequest(BaseModel):
@@ -1296,6 +1308,91 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return Response(status_code=204)
 
+    @app.post("/api/modules")
+    async def create_top_level_module(
+        payload: TopLevelModuleRequest,
+        request: Request,
+        x_csrf_token: str | None = Header(default=None),
+        user: dict[str, Any] = Depends(require_editor),
+    ) -> dict[str, Any]:
+        verify_csrf(user, x_csrf_token)
+        slug = slugify(payload.slug, "")
+        if not slug or not is_valid_module_root(slug):
+            raise HTTPException(status_code=422, detail="顶级模块目录名无效")
+        if payload.accent not in {"teal", "orange", "gold"}:
+            raise HTTPException(status_code=422, detail="模块颜色无效")
+        if payload.icon not in {
+            "book-open",
+            "braces",
+            "folder-kanban",
+            "gamepad-2",
+            "messages-square",
+            "network",
+            "shapes",
+        }:
+            raise HTTPException(status_code=422, detail="模块图标无效")
+
+        path = f"{slug}/README.md"
+        tree = await github.repository_tree()
+        if any(item["path"] == path for item in tree):
+            raise HTTPException(status_code=409, detail="远端已存在该顶级模块")
+        description = payload.description.strip() or (
+            f"{payload.title.strip()} 的知识内容与阅读导航。"
+        )
+        content = (
+            "---\n"
+            f"shortTitle: {json.dumps(payload.short_title.strip(), ensure_ascii=False)}\n"
+            f"icon: {json.dumps(payload.icon)}\n"
+            f"accent: {json.dumps(payload.accent)}\n"
+            f"allowCode: {'true' if payload.allow_code else 'false'}\n"
+            "---\n"
+            f"# {payload.title.strip()}\n\n"
+            f"{description}\n\n"
+            "## 内容导航\n\n"
+            "在此模块下创建子目录和 Markdown，网站会自动生成导航。\n"
+        )
+        now = utc_now()
+        with db.connect() as connection:
+            occupied = connection.execute(
+                "SELECT user_id FROM drafts WHERE path = ?",
+                (path,),
+            ).fetchone()
+            if occupied:
+                raise HTTPException(
+                    status_code=409,
+                    detail="已有用户创建了同名顶级模块草稿",
+                )
+            count = connection.execute(
+                "SELECT COUNT(*) AS count FROM drafts WHERE user_id = ?",
+                (user["id"],),
+            ).fetchone()["count"]
+            if count >= MAX_DRAFTS:
+                raise HTTPException(
+                    status_code=413,
+                    detail="草稿文件数量已达上限",
+                )
+            cursor = connection.execute(
+                """
+                INSERT INTO drafts(
+                    user_id, path, operation, content, base_sha,
+                    revision, created_at, updated_at
+                )
+                VALUES(?, ?, 'upsert', ?, NULL, 1, ?, ?)
+                """,
+                (user["id"], path, content, now, now),
+            )
+            row = connection.execute(
+                "SELECT * FROM drafts WHERE id = ?",
+                (cursor.lastrowid,),
+            ).fetchone()
+        db.audit(
+            "module.created",
+            request_ip(request),
+            user_id=user["id"],
+            target=path,
+        )
+        return dict(row)
+
     @app.post("/api/topics")
     async def create_topic(
         payload: TopicRequest,
@@ -1304,8 +1401,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         user: dict[str, Any] = Depends(require_editor),
     ) -> dict[str, Any]:
         verify_csrf(user, x_csrf_token)
-        if payload.root not in {"knowledge", "interviews", "examples"}:
-            raise HTTPException(status_code=422, detail="专题类型无效")
+        tree = await github.repository_tree()
+        module_roots = {
+            item["path"].split("/", 1)[0]
+            for item in tree
+            if item["path"].count("/") == 1
+            and item["path"].endswith("/README.md")
+        }
+        with db.connect() as connection:
+            for row in connection.execute(
+                """
+                SELECT path FROM drafts
+                WHERE user_id = ? AND operation = 'upsert'
+                """,
+                (user["id"],),
+            ).fetchall():
+                if row["path"].count("/") == 1 and row["path"].endswith(
+                    "/README.md"
+                ):
+                    module_roots.add(row["path"].split("/", 1)[0])
+        if payload.root not in module_roots:
+            raise HTTPException(status_code=422, detail="顶级模块不存在")
         slug = slugify(payload.slug, "")
         if not slug:
             raise HTTPException(status_code=422, detail="专题目录名无效")
@@ -1327,7 +1443,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content += f"{description}\n\n"
         content += "## 阅读导航\n\n请在此处补充章节入口和推荐阅读顺序。\n"
 
-        tree = await github.repository_tree()
         if any(item["path"] == path for item in tree):
             raise HTTPException(status_code=409, detail="远端仓库中已存在该专题")
         now = utc_now()
@@ -1529,7 +1644,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 token=submit_token,
             )
         }
+        available_roots = set(ALLOWED_ROOTS) | {
+            path.split("/", 1)[0]
+            for path in tree
+            if path.count("/") == 1 and path.endswith("/README.md")
+        }
+        available_roots.update(
+            draft["path"].split("/", 1)[0]
+            for draft in drafts
+            if draft["operation"] == "upsert"
+            and draft["path"].count("/") == 1
+            and draft["path"].endswith("/README.md")
+        )
+        available_roots.difference_update(
+            draft["path"].split("/", 1)[0]
+            for draft in drafts
+            if draft["operation"] == "delete"
+            and draft["path"].count("/") == 1
+            and draft["path"].endswith("/README.md")
+        )
         for draft in drafts:
+            if (
+                draft["operation"] == "delete"
+                and draft["path"].count("/") == 1
+                and draft["path"].endswith("/README.md")
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "不能删除顶级模块 README.md；"
+                        "该文件用于模块发现和导航"
+                    ),
+                )
+            root = draft["path"].split("/", 1)[0]
+            if root not in available_roots:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"{draft['path']} 所属顶级模块不存在；"
+                        "请先创建该模块的 README.md"
+                    ),
+                )
             current = tree.get(draft["path"])
             if draft["base_sha"]:
                 if not current or current["sha"] != draft["base_sha"]:

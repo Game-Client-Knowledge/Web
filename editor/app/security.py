@@ -18,6 +18,15 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{1,30}[A-Za-z0-9]$")
 SLUG_RE = re.compile(r"[^a-z0-9-]+")
 ALLOWED_ROOTS = {"knowledge", "interviews", "examples"}
+MODULE_ROOT_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
+RESERVED_ROOTS = {
+    "deploy",
+    "docs",
+    "lib",
+    "node_modules",
+    "scripts",
+    "src",
+}
 ALLOWED_EXTENSIONS = {
     ".md",
     ".c",
@@ -102,6 +111,12 @@ def slugify(value: str, fallback: str = "update") -> str:
     return (slug or fallback)[:60]
 
 
+def is_valid_module_root(value: str) -> bool:
+    return value in ALLOWED_ROOTS or bool(
+        value not in RESERVED_ROOTS and MODULE_ROOT_RE.fullmatch(value)
+    )
+
+
 def validate_content_path(value: str) -> str:
     raw = value.strip().replace("\\", "/")
     if (
@@ -114,15 +129,15 @@ def validate_content_path(value: str) -> str:
     path = PurePosixPath(raw)
     if ".." in path.parts or any(part.startswith(".") for part in path.parts):
         raise ValueError("内容路径不能包含隐藏目录或上级目录")
-    if len(path.parts) < 2 or path.parts[0] not in ALLOWED_ROOTS:
-        raise ValueError("内容必须位于 knowledge、interviews 或 examples")
+    if len(path.parts) < 2 or not is_valid_module_root(path.parts[0]):
+        raise ValueError("内容必须位于有效的顶级模块目录")
     if len(raw) > 240:
         raise ValueError("内容路径过长")
 
     extension = path.suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:
         raise ValueError("不支持该文件类型")
-    if path.parts[0] != "examples" and extension != ".md":
+    if path.parts[0] in {"knowledge", "interviews"} and extension != ".md":
         raise ValueError("知识与面经目录只允许 Markdown 文件")
     return path.as_posix()
 

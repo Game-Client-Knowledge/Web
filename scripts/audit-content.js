@@ -139,6 +139,9 @@ try {
 }
 
 if (catalog) {
+  const moduleKeys = new Set(
+    catalog.modules.map((module) => module.key)
+  );
   const routes = new Map();
   for (const document of catalog.documents) {
     if (routes.has(document.route)) {
@@ -156,11 +159,7 @@ if (catalog) {
   );
   for (const file of markdownFiles) {
     const relative = toPosix(path.relative(root, file));
-    if (
-      relative.startsWith("knowledge/") ||
-      relative.startsWith("interviews/") ||
-      relative.startsWith("examples/")
-    ) {
+    if (moduleKeys.has(relative.split("/")[0])) {
       const isModuleReadme = relative.split("/").length === 2;
       if (!isModuleReadme && !indexedMarkdown.has(relative)) {
         report(file, "内容未被网站扫描器收录");
