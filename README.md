@@ -54,3 +54,4 @@ no website code or manifest change.
 - [Repository analysis](./docs/repository-analysis.md)
 - [System architecture](./docs/architecture.md)
 - [Build and deployment operations](./docs/operations.md)
+- [Web editing and GitHub contribution design](./docs/web-editing-and-contribution.md)
