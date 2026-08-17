@@ -11,6 +11,101 @@ import pytest
 from app.github import BranchConflictError, GitHubClient
 
 
+def test_oauth_web_origin_uses_tls_verified_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = []
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            calls.append(("client", kwargs))
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, url, **kwargs):
+            calls.append(("get", url, kwargs))
+            if url == "https://github.com/robots.txt":
+                raise httpx.ConnectTimeout(
+                    "blocked route",
+                    request=httpx.Request("GET", url),
+                )
+            return httpx.Response(200, text="User-agent: *")
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    client = GitHubClient(SimpleNamespace())
+
+    origin, headers, extensions = asyncio.run(client._oauth_web_origin())
+
+    assert origin == "https://140.82.112.4"
+    assert headers == {"Host": "github.com"}
+    assert extensions == {"sni_hostname": "github.com"}
+    fallback = next(
+        call for call in calls
+        if call[0] == "get" and call[1].startswith("https://140.")
+    )
+    assert fallback[2]["extensions"] == {"sni_hostname": "github.com"}
+    fallback_client = calls[calls.index(fallback) - 1]
+    assert fallback_client[1]["trust_env"] is False
+    assert fallback_client[1]["headers"]["Host"] == "github.com"
+
+
+def test_oauth_exchange_posts_code_once_to_selected_origin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    posts = []
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def post(self, url, **kwargs):
+            posts.append((url, kwargs, self.kwargs))
+            return httpx.Response(200, json={"access_token": "oauth-token"})
+
+    settings = SimpleNamespace(
+        github_client_id="client-id",
+        github_client_secret="client-secret",
+        base_url="https://example.test/editor",
+    )
+    client = GitHubClient(settings)
+    client._oauth_web_origin = AsyncMock(
+        return_value=(
+            "https://140.82.113.4",
+            {"Host": "github.com"},
+            {"sni_hostname": "github.com"},
+        )
+    )
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(
+        "app.github.urllib.request.urlopen",
+        lambda *args, **kwargs: SimpleNamespace(read=lambda: b""),
+    )
+
+    token = asyncio.run(
+        client.exchange_oauth_code("one-time-code", "pkce-verifier")
+    )
+
+    assert token == "oauth-token"
+    assert len(posts) == 1
+    url, request, client_options = posts[0]
+    assert url == "https://140.82.113.4/login/oauth/access_token"
+    assert request["extensions"] == {"sni_hostname": "github.com"}
+    assert request["data"]["code"] == "one-time-code"
+    assert request["data"]["code_verifier"] == "pkce-verifier"
+    assert client_options["trust_env"] is False
+    assert client_options["headers"]["Host"] == "github.com"
+
+
 def test_repository_file_accepts_github_wrapped_base64() -> None:
     source = "# Existing file\n\nGitHub wraps Base64 output.\n"
     payload = {
