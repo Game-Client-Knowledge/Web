@@ -10,6 +10,33 @@
       content="{{ description or site.description }}"
     >
     <title>{% if title %}{{ title }} · {% endif %}{{ site.name }}</title>
+    {% if pageKind == "home" %}
+      <link
+        rel="preload"
+        href="{{ '/assets/js/site-visuals.js' | assetUrl }}"
+        as="script"
+      >
+      <style>
+        .site-entry-sequence {
+          position: relative;
+          display: block;
+          width: 100%;
+          min-height: 100vh;
+          min-height: 100svh;
+          background: #0b1512;
+          overflow: hidden;
+        }
+        .site-entry-sequence canvas {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+        }
+        .home-intro-seen .site-entry-sequence {
+          display: none;
+        }
+      </style>
+    {% endif %}
     <link rel="stylesheet" href="{{ '/assets/css/site.css' | assetUrl }}">
     {% if pageKind == "code-workspace" or activeModule == "code" %}
       <link rel="stylesheet" href="{{ '/assets/css/code-reader.css' | assetUrl }}">
