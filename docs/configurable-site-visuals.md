@@ -82,10 +82,14 @@ Contributor names are extracted at build time from recent Git author names.
 Email addresses are never included. Snapshot-only builds use safe fallback
 labels when Git history is unavailable.
 
-The sequence plays once per browser tab session and asset version. Reloading
-the homepage in the same session removes the entry section before it can paint.
-Clicking the entry section or pressing Escape skips directly to the shorter
-scroll transition.
+The sequence plays once per browser session. When the homepage first connects
+without the `gck_home_intro_session` cookie, the client starts the sequence and
+writes that marker as a session cookie with no `Max-Age` or `Expires`
+attribute. Reloading, opening another tab, or navigating back to the homepage
+in the same browser session removes the entry section before it can paint.
+Closing the browser ends the cookie session, so the sequence runs again when a
+new browser session connects to the site. Clicking the entry section or
+pressing Escape skips directly to the shorter scroll transition.
 
 The normal homepage knowledge field waits for the entry promise to resolve.
 Only one animated Canvas loop runs during assembly, avoiding contention between
@@ -124,7 +128,7 @@ configuration deterministically. The suite covers:
 - pointer creation, disabling, and movement;
 - particle count, assembly phase, contributor labels, and nonblank pixels;
 - document-flow placement, scroll destination, sticky-header alignment;
-- entry duration, session replay prevention, and skip;
+- entry duration, session-cookie replay prevention, reconnection, and skip;
 - disabled entry behavior;
 - static reduced-motion rendering;
 - search, mobile navigation, Mermaid, source pages, and the code workspace;

@@ -41,10 +41,13 @@ The section is server-rendered to reserve its height in the first layout. The
 normal homepage particle field starts only after the scroll transition
 finishes, so two animation loops never compete during entry.
 
-The sequence is scoped to one tab session and asset version. Reduced-motion,
-disabled, and already-seen states remove the section before starting the
-homepage field. Assembly uses the cached enable flag, or the enabled default on
-a first visit, and never waits for the editor bootstrap network request.
+The sequence is scoped to one browser session through the
+`gck_home_intro_session` session cookie. Reduced-motion, disabled, and
+already-connected states remove the section before starting the homepage
+field. A new browser session has no marker and plays the sequence when it
+connects to the site again. Assembly uses the cached enable flag, or the
+enabled default on a first visit, and never waits for the editor bootstrap
+network request.
 
 ## Verification
 

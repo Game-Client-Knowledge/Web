@@ -268,6 +268,16 @@ async function inspectPage(browser, scenario) {
         Math.abs(completed.scrollY - completed.stageHeight) <= 2,
       `${scenario.name}: entry did not scroll to the main page`
     );
+    const introCookies = await context.cookies(baseUrl);
+    const sessionCookie = introCookies.find((cookie) => {
+      return cookie.name === "gck_home_intro_session";
+    });
+    assert(
+      sessionCookie?.value === "1" &&
+        sessionCookie.path === "/" &&
+        sessionCookie.expires === -1,
+      `${scenario.name}: entry marker is not a browser-session cookie`
+    );
 
     await page.reload({ waitUntil: "networkidle" });
     await page.waitForFunction(() => document.body.dataset.homeIntro);
@@ -754,7 +764,7 @@ async function inspectPage(browser, scenario) {
       visualSettings: { pointer_effect_enabled: false }
     },
     {
-      name: "home-intro-skip-mobile",
+      name: "home-reconnected-session-mobile",
       route: "/",
       viewport: { width: 390, height: 844 },
       homeIntro: "skip",

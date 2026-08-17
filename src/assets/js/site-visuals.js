@@ -7,6 +7,7 @@
     pointer_effect_enabled: true,
     home_intro_enabled: true
   };
+  const HOME_INTRO_SESSION_COOKIE = "gck_home_intro_session";
   let releaseHomeIntro;
   let homeIntroReleased = false;
   let cancelHomeIntro = null;
@@ -19,6 +20,28 @@
     if (!homeIntroReleased) {
       homeIntroReleased = true;
       releaseHomeIntro(status);
+    }
+  }
+
+  function hasHomeIntroSessionCookie() {
+    try {
+      return document.cookie
+        .split(";")
+        .some((item) => {
+          return item.trim() === `${HOME_INTRO_SESSION_COOKIE}=1`;
+        });
+    } catch {
+      return false;
+    }
+  }
+
+  function markHomeIntroSession() {
+    try {
+      const secure = window.location.protocol === "https:" ? "; Secure" : "";
+      document.cookie =
+        `${HOME_INTRO_SESSION_COOKIE}=1; Path=/; SameSite=Lax${secure}`;
+    } catch {
+      // Cookie access may be denied; the animation can still run.
     }
   }
 
@@ -370,18 +393,13 @@
       return;
     }
     const config = window.GCK_CONFIG || {};
-    const key = `gck-home-intro:${config.assetVersion || "v1"}`;
-    try {
-      if (window.sessionStorage.getItem(key) === "1") {
-        document.documentElement.classList.add("home-intro-seen");
-        if (stage) stage.remove();
-        markHomeIntroReady("seen");
-        return;
-      }
-      window.sessionStorage.setItem(key, "1");
-    } catch {
-      // Private browsing may deny storage; the animation can still run.
+    if (hasHomeIntroSessionCookie()) {
+      document.documentElement.classList.add("home-intro-seen");
+      if (stage) stage.remove();
+      markHomeIntroReady("seen");
+      return;
     }
+    markHomeIntroSession();
 
     if (!stage) {
       markHomeIntroReady("skipped");
