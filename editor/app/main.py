@@ -558,14 +558,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "edit_policy": policy,
             }
         )
-        if settings.cookie_path != "/":
-            response.delete_cookie(
-                SESSION_COOKIE,
-                path="/",
-                secure=settings.cookie_secure,
-                httponly=True,
-                samesite="lax",
-            )
         response.set_cookie(
             SESSION_COOKIE,
             session_token,
@@ -944,8 +936,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         response = Response(status_code=204)
         response.delete_cookie(SESSION_COOKIE, path=settings.cookie_path)
-        if settings.cookie_path != "/":
-            response.delete_cookie(SESSION_COOKIE, path="/")
         return response
 
     @app.post("/api/auth/change-password")
@@ -1084,14 +1074,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response = RedirectResponse(
             f"https://github.com/login/oauth/authorize?{query}"
         )
-        if settings.cookie_path != "/":
-            response.delete_cookie(
-                OAUTH_STATE_COOKIE,
-                path="/",
-                secure=settings.cookie_secure,
-                httponly=True,
-                samesite="lax",
-            )
         response.set_cookie(
             OAUTH_STATE_COOKIE,
             state,
@@ -1342,14 +1324,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             browser_return_url(oauth["return_to"])
         )
         if not binding_user:
-            if settings.cookie_path != "/":
-                response.delete_cookie(
-                    SESSION_COOKIE,
-                    path="/",
-                    secure=settings.cookie_secure,
-                    httponly=True,
-                    samesite="lax",
-                )
             response.set_cookie(
                 SESSION_COOKIE,
                 raw,
