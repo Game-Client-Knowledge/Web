@@ -156,6 +156,16 @@ class VisualSettingsRequest(BaseModel):
     home_intro_enabled: bool = True
     home_intro_mode: str = ""
     home_intro_duration_ms: int = Field(default=3000, ge=1500, le=10000)
+    home_intro_assembly_duration_ms: int | None = Field(
+        default=None,
+        ge=500,
+        le=10000,
+    )
+    home_intro_hold_duration_ms: int | None = Field(
+        default=None,
+        ge=0,
+        le=10000,
+    )
     home_intro_lock_scroll: bool = True
     home_intro_contributor_limit: int = Field(default=8, ge=1, le=10)
 
@@ -644,8 +654,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             else "off"
         )
 
+    def resolved_home_intro_timing() -> dict[str, int]:
+        def setting_int(key: str, default: int) -> int:
+            try:
+                return int(db.setting(key, str(default)))
+            except (TypeError, ValueError):
+                return default
+
+        total = max(
+            1500,
+            min(
+                20320,
+                setting_int("home_intro_duration_ms", 3000),
+            ),
+        )
+        assembly = max(
+            500,
+            min(
+                10000,
+                setting_int(
+                    "home_intro_assembly_duration_ms",
+                    round(total * 0.56),
+                ),
+            ),
+        )
+        hold = max(
+            0,
+            min(
+                10000,
+                setting_int(
+                    "home_intro_hold_duration_ms",
+                    round(total * 0.21),
+                ),
+            ),
+        )
+        scroll = max(320, total - assembly - hold)
+        return {
+            "home_intro_duration_ms": assembly + hold + scroll,
+            "home_intro_assembly_duration_ms": assembly,
+            "home_intro_hold_duration_ms": hold,
+            "home_intro_scroll_duration_ms": scroll,
+        }
+
     def config_payload() -> dict[str, Any]:
         intro_mode = resolved_home_intro_mode()
+        intro_timing = resolved_home_intro_timing()
         return {
             "registration_enabled": (
                 db.setting("registration_enabled", "1") == "1"
@@ -670,9 +723,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_intro_enabled": intro_mode != "off",
             "home_intro_mode": intro_mode,
-            "home_intro_duration_ms": int(
-                db.setting("home_intro_duration_ms", "3000")
-            ),
+            "home_intro_duration_ms": intro_timing[
+                "home_intro_duration_ms"
+            ],
+            "home_intro_assembly_duration_ms": intro_timing[
+                "home_intro_assembly_duration_ms"
+            ],
+            "home_intro_hold_duration_ms": intro_timing[
+                "home_intro_hold_duration_ms"
+            ],
             "home_intro_lock_scroll": (
                 db.setting("home_intro_lock_scroll", "1") == "1"
             ),
@@ -2399,6 +2458,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ]
         smtp = smtp_configuration()
         intro_mode = resolved_home_intro_mode()
+        intro_timing = resolved_home_intro_timing()
         return {
             "users": users,
             "applications": applications,
@@ -2428,9 +2488,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 "home_intro_enabled": intro_mode != "off",
                 "home_intro_mode": intro_mode,
-                "home_intro_duration_ms": int(
-                    db.setting("home_intro_duration_ms", "3000")
-                ),
+                "home_intro_duration_ms": intro_timing[
+                    "home_intro_duration_ms"
+                ],
+                "home_intro_assembly_duration_ms": intro_timing[
+                    "home_intro_assembly_duration_ms"
+                ],
+                "home_intro_hold_duration_ms": intro_timing[
+                    "home_intro_hold_duration_ms"
+                ],
                 "home_intro_lock_scroll": (
                     db.setting("home_intro_lock_scroll", "1") == "1"
                 ),
@@ -2598,6 +2664,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         if intro_mode not in {"off", "always", "revisit", "first"}:
             raise HTTPException(status_code=422, detail="入场动画策略无效")
+        current_timing = resolved_home_intro_timing()
+        split_timing = (
+            payload.home_intro_assembly_duration_ms is not None
+            or payload.home_intro_hold_duration_ms is not None
+        )
+        if split_timing:
+            assembly_duration_ms = (
+                payload.home_intro_assembly_duration_ms
+                if payload.home_intro_assembly_duration_ms is not None
+                else current_timing["home_intro_assembly_duration_ms"]
+            )
+            hold_duration_ms = (
+                payload.home_intro_hold_duration_ms
+                if payload.home_intro_hold_duration_ms is not None
+                else current_timing["home_intro_hold_duration_ms"]
+            )
+            total_duration_ms = (
+                assembly_duration_ms
+                + hold_duration_ms
+                + current_timing["home_intro_scroll_duration_ms"]
+            )
+        else:
+            total_duration_ms = payload.home_intro_duration_ms
+            assembly_duration_ms = round(total_duration_ms * 0.56)
+            hold_duration_ms = round(total_duration_ms * 0.21)
         now = utc_now()
         values = {
             "catalog_background_style": payload.catalog_background_style,
@@ -2607,7 +2698,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_intro_enabled": "0" if intro_mode == "off" else "1",
             "home_intro_mode": intro_mode,
-            "home_intro_duration_ms": str(payload.home_intro_duration_ms),
+            "home_intro_duration_ms": str(total_duration_ms),
+            "home_intro_assembly_duration_ms": str(
+                assembly_duration_ms
+            ),
+            "home_intro_hold_duration_ms": str(hold_duration_ms),
             "home_intro_lock_scroll": (
                 "1" if payload.home_intro_lock_scroll else "0"
             ),
@@ -2628,17 +2723,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     """,
                     (key, value, admin["id"], now),
                 )
+        response_payload = {
+            **payload.model_dump(),
+            "home_intro_enabled": intro_mode != "off",
+            "home_intro_mode": intro_mode,
+            "home_intro_duration_ms": total_duration_ms,
+            "home_intro_assembly_duration_ms": assembly_duration_ms,
+            "home_intro_hold_duration_ms": hold_duration_ms,
+        }
         db.audit(
             "visual_settings.updated",
             request_ip(request),
             user_id=admin["id"],
-            detail=json.dumps(payload.model_dump(), ensure_ascii=False),
+            detail=json.dumps(response_payload, ensure_ascii=False),
         )
-        return {
-            **payload.model_dump(),
-            "home_intro_enabled": intro_mode != "off",
-            "home_intro_mode": intro_mode,
-        }
+        return response_payload
 
     @app.post("/api/admin/submissions/sync")
     async def sync_submission_statuses(

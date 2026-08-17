@@ -54,11 +54,14 @@ Reduced-motion and policy-skipped states remove the section before starting the
 homepage field. Assembly uses the cached policy, or re-entry mode on a first
 visit, and never waits for the editor bootstrap network request.
 
-The default total duration is three seconds and can be changed in
-administration. When completion locking is enabled, the finished entry section
-is removed after the homepage reaches the viewport, preventing upward scrolling
-back into the entry artwork. Administrators can keep it in document flow when
-reversible scrolling is preferred.
+Administration configures particle reconstruction and assembled-image hold
+times independently. Their defaults are `1.68` and `0.63` seconds; the existing
+`0.69`-second page transition produces a three-second default total. Changing
+either phase does not change the scroll speed. When completion locking is
+enabled, the finished entry section is removed after the homepage reaches the
+viewport, preventing upward scrolling back into the entry artwork.
+Administrators can keep it in document flow when reversible scrolling is
+preferred.
 
 ## Verification
 

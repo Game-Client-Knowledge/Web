@@ -10,7 +10,8 @@ The site exposes visual controls in the editor administration page:
 | Reader background | `clean`, `blueprint`, `constellation` | `blueprint` |
 | Pointer effect | enabled or disabled | enabled |
 | Homepage entry policy | `off`, `always`, `revisit`, `first` | `revisit` |
-| Homepage entry duration | `1.5` to `10` seconds | `3` seconds |
+| Particle assembly duration | `0.5` to `10` seconds | `1.68` seconds |
+| Assembled-image hold duration | `0` to `10` seconds | `0.63` seconds |
 | Lock completed entry | enabled or disabled | enabled |
 | Contributor display limit | `1` to `10` | `8` |
 
@@ -77,8 +78,16 @@ finished image remains sharp.
 
 The assembled image holds briefly. The client then animates the real document
 scroll position until the following sticky site header reaches the top of the
-viewport. The configured total duration is split into assembly (`56%`), hold
-(`21%`), and scroll (`23%`). The default total is exactly `3` seconds.
+viewport. Assembly and hold durations are configured independently. The scroll
+transition keeps its existing duration, so changing either control changes the
+effective total without changing the page-transition speed. Defaults are
+`1.68` seconds for assembly, `0.63` seconds for hold, and `0.69` seconds for
+scroll, for a default total of exactly `3` seconds.
+
+Existing installations migrate from the former total-duration setting by
+assigning `56%` to assembly and `21%` to hold; the remaining duration stays
+assigned to scrolling. Legacy API clients may still submit a total duration,
+which is converted using the same percentages.
 
 When completed-entry locking is enabled, the client removes the entry section
 after the scroll and resets the now-shorter document to its top. The normal
@@ -160,7 +169,8 @@ configuration deterministically. The suite covers:
   pixels;
 - contributor limits, protected-logo exclusion, and rotating square frames;
 - document-flow placement, scroll destination, sticky-header alignment;
-- configurable three-phase duration and locked/unlocked completion;
+- independently configurable assembly and hold phases;
+- preserved scroll timing and locked/unlocked completion;
 - all four device policies, multi-tab visit tracking, reconnection, and skip;
 - disabled entry behavior;
 - static reduced-motion rendering;

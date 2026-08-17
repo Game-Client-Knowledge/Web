@@ -8,6 +8,8 @@
     home_intro_enabled: true,
     home_intro_mode: "revisit",
     home_intro_duration_ms: 3000,
+    home_intro_assembly_duration_ms: 1680,
+    home_intro_hold_duration_ms: 630,
     home_intro_lock_scroll: true,
     home_intro_contributor_limit: 8
   };
@@ -29,7 +31,44 @@
   }
 
   function normalizeHomeIntroSettings(settings) {
-    const duration = Number(settings.home_intro_duration_ms);
+    const durationInput = Number(settings.home_intro_duration_ms);
+    const duration = Math.max(
+      1500,
+      Math.min(
+        20320,
+        Number.isFinite(durationInput) ? durationInput : 3000
+      )
+    );
+    const assemblyInput =
+      settings.home_intro_assembly_duration_ms == null
+        ? Number.NaN
+        : Number(settings.home_intro_assembly_duration_ms);
+    const holdInput =
+      settings.home_intro_hold_duration_ms == null
+        ? Number.NaN
+        : Number(settings.home_intro_hold_duration_ms);
+    const assemblyDuration = Math.max(
+      500,
+      Math.min(
+        10000,
+        Number.isFinite(assemblyInput)
+          ? assemblyInput
+          : Math.round(duration * 0.56)
+      )
+    );
+    const holdDuration = Math.max(
+      0,
+      Math.min(
+        10000,
+        Number.isFinite(holdInput)
+          ? holdInput
+          : Math.round(duration * 0.21)
+      )
+    );
+    const scrollDuration = Math.max(
+      320,
+      duration - assemblyDuration - holdDuration
+    );
     const contributorLimit = Number(settings.home_intro_contributor_limit);
     const mode = ["off", "always", "revisit", "first"].includes(
       settings.home_intro_mode
@@ -42,10 +81,10 @@
       ...settings,
       home_intro_enabled: mode !== "off",
       home_intro_mode: mode,
-      home_intro_duration_ms: Math.max(
-        1500,
-        Math.min(10000, Number.isFinite(duration) ? duration : 3000)
-      ),
+      home_intro_duration_ms:
+        assemblyDuration + holdDuration + scrollDuration,
+      home_intro_assembly_duration_ms: assemblyDuration,
+      home_intro_hold_duration_ms: holdDuration,
       home_intro_lock_scroll: settings.home_intro_lock_scroll !== false,
       home_intro_contributor_limit: Math.max(
         1,
@@ -68,6 +107,12 @@
           merged.home_intro_mode =
             cached.home_intro_enabled === false ? "off" : "revisit";
         }
+        if (!Object.hasOwn(cached, "home_intro_assembly_duration_ms")) {
+          merged.home_intro_assembly_duration_ms = undefined;
+        }
+        if (!Object.hasOwn(cached, "home_intro_hold_duration_ms")) {
+          merged.home_intro_hold_duration_ms = undefined;
+        }
         return normalizeHomeIntroSettings(merged);
       }
       if (window.localStorage.getItem("gck-home-intro-enabled") === "0") {
@@ -87,6 +132,10 @@
           home_intro_enabled: settings.home_intro_enabled,
           home_intro_mode: settings.home_intro_mode,
           home_intro_duration_ms: settings.home_intro_duration_ms,
+          home_intro_assembly_duration_ms:
+            settings.home_intro_assembly_duration_ms,
+          home_intro_hold_duration_ms:
+            settings.home_intro_hold_duration_ms,
           home_intro_lock_scroll: settings.home_intro_lock_scroll,
           home_intro_contributor_limit:
             settings.home_intro_contributor_limit
@@ -539,8 +588,9 @@
 
     function setDurations() {
       const total = runtimeSettings.home_intro_duration_ms;
-      assembleDuration = Math.round(total * 0.56);
-      holdDuration = Math.round(total * 0.21);
+      assembleDuration =
+        runtimeSettings.home_intro_assembly_duration_ms;
+      holdDuration = runtimeSettings.home_intro_hold_duration_ms;
       naturalScrollDuration = Math.max(
         320,
         total - assembleDuration - holdDuration
@@ -549,6 +599,9 @@
         scrollDuration = naturalScrollDuration;
       }
       stage.dataset.entryDuration = String(total);
+      stage.dataset.assemblyDuration = String(assembleDuration);
+      stage.dataset.holdDuration = String(holdDuration);
+      stage.dataset.scrollDuration = String(naturalScrollDuration);
       stage.dataset.scrollLocked =
         runtimeSettings.home_intro_lock_scroll ? "true" : "false";
     }
@@ -996,7 +1049,10 @@
       drawRotatingFrames(elapsed, 0.25 + dynamicOpacity * 0.75);
       drawContributorLabels(elapsed, dynamicOpacity);
       progress.style.transform =
-        `scaleX(${Math.min(1, elapsed / runtimeSettings.home_intro_duration_ms)})`;
+        `scaleX(${Math.min(
+          1,
+          elapsed / runtimeSettings.home_intro_duration_ms
+        )})`;
       stage.dataset.entryPhase =
         progressValue < 1 ? "assembling" : "holding";
       stage.classList.toggle("is-holding", progressValue >= 1);
@@ -1066,6 +1122,8 @@
 
     function applyRuntimeSettings(nextSettings) {
       const previousLimit = runtimeSettings.home_intro_contributor_limit;
+      const previousAssembly =
+        runtimeSettings.home_intro_assembly_duration_ms;
       runtimeSettings = normalizeHomeIntroSettings({
         ...runtimeSettings,
         ...nextSettings
@@ -1073,9 +1131,15 @@
       setDurations();
       if (
         !finished &&
-        previousLimit !== runtimeSettings.home_intro_contributor_limit
+        (
+          previousLimit !== runtimeSettings.home_intro_contributor_limit ||
+          previousAssembly !==
+            runtimeSettings.home_intro_assembly_duration_ms
+        )
       ) {
-        rebuildTargets(true);
+        rebuildTargets(
+          previousLimit !== runtimeSettings.home_intro_contributor_limit
+        );
       }
     }
 
@@ -1100,8 +1164,13 @@
           scrollFrom +
             (target - scrollFrom) * easeInOutCubic(scrollProgress)
         );
+        const scrollStartProgress =
+          (assembleDuration + holdDuration) /
+          runtimeSettings.home_intro_duration_ms;
         progress.style.transform =
-          `scaleX(${0.77 + scrollProgress * 0.23})`;
+          `scaleX(${scrollStartProgress + scrollProgress * (
+            1 - scrollStartProgress
+          )})`;
         if (scrollProgress >= 1) {
           finish();
           return;
@@ -1159,6 +1228,12 @@
     if (!Object.hasOwn(resolved, "home_intro_mode")) {
       resolvedSettings.home_intro_mode =
         resolved.home_intro_enabled === false ? "off" : "revisit";
+    }
+    if (!Object.hasOwn(resolved, "home_intro_assembly_duration_ms")) {
+      resolvedSettings.home_intro_assembly_duration_ms = undefined;
+    }
+    if (!Object.hasOwn(resolved, "home_intro_hold_duration_ms")) {
+      resolvedSettings.home_intro_hold_duration_ms = undefined;
     }
     const settings = normalizeHomeIntroSettings(resolvedSettings);
     cacheHomeIntroSettings(settings);

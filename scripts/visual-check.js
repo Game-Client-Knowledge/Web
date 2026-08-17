@@ -20,6 +20,8 @@ const defaultVisualSettings = {
   home_intro_enabled: false,
   home_intro_mode: "off",
   home_intro_duration_ms: 3000,
+  home_intro_assembly_duration_ms: 1680,
+  home_intro_hold_duration_ms: 630,
   home_intro_lock_scroll: true,
   home_intro_contributor_limit: 8
 };
@@ -222,6 +224,11 @@ async function inspectPage(browser, scenario) {
         particles: Number(stage?.dataset.particleCount || 0),
         phase: stage?.dataset.entryPhase,
         duration: Number(stage?.dataset.entryDuration || 0),
+        assemblyDuration: Number(
+          stage?.dataset.assemblyDuration || 0
+        ),
+        holdDuration: Number(stage?.dataset.holdDuration || 0),
+        scrollDuration: Number(stage?.dataset.scrollDuration || 0),
         rotation: Number(stage?.dataset.frameRotation || 0),
         coreOverlap: stage?.dataset.contributorCoreOverlap,
         layout: stage?.dataset.contributorLayout,
@@ -260,6 +267,16 @@ async function inspectPage(browser, scenario) {
       `${scenario.name}: entry duration is ${intro.duration}`
     );
     assert(
+      intro.assemblyDuration ===
+        visualSettings.home_intro_assembly_duration_ms &&
+        intro.holdDuration ===
+          visualSettings.home_intro_hold_duration_ms &&
+        intro.assemblyDuration +
+          intro.holdDuration +
+          intro.scrollDuration === intro.duration,
+      `${scenario.name}: entry phase durations are invalid`
+    );
+    assert(
       intro.progress?.startsWith("scaleX("),
       `${scenario.name}: entry progress is not running`
     );
@@ -275,6 +292,7 @@ async function inspectPage(browser, scenario) {
       return document.querySelector("[data-entry-sequence]")
         ?.dataset.entryPhase === "holding";
     });
+    const holdingStartedAfter = Date.now() - navigationStarted;
     const assembled = await page.evaluate(() => {
       const stage = document.querySelector("[data-entry-sequence]");
       return {
@@ -310,6 +328,16 @@ async function inspectPage(browser, scenario) {
         locked: document.body.dataset.homeIntroLocked
       };
     });
+    assert(
+      holdingStartedAfter >=
+        visualSettings.home_intro_assembly_duration_ms - 150,
+      `${scenario.name}: assembly ended after ${holdingStartedAfter}ms`
+    );
+    assert(
+      completedAfter - holdingStartedAfter >=
+        visualSettings.home_intro_hold_duration_ms - 150,
+      `${scenario.name}: hold phase was shorter than configured`
+    );
     assert(
       completedAfter >=
         visualSettings.home_intro_duration_ms - 250 &&
@@ -1091,6 +1119,8 @@ async function inspectPage(browser, scenario) {
       visualSettings: {
         home_intro_enabled: true,
         home_intro_mode: "always",
+        home_intro_assembly_duration_ms: 900,
+        home_intro_hold_duration_ms: 1200,
         pointer_effect_enabled: false
       }
     },

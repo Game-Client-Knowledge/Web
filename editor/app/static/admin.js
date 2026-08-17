@@ -363,8 +363,10 @@ async function loadOverview() {
     data.settings.pointer_effect_enabled;
   byId("visualSettingsForm").home_intro_mode.value =
     data.settings.home_intro_mode;
-  byId("visualSettingsForm").home_intro_duration_seconds.value =
-    String(data.settings.home_intro_duration_ms / 1000);
+  byId("visualSettingsForm").home_intro_assembly_duration_seconds.value =
+    String(data.settings.home_intro_assembly_duration_ms / 1000);
+  byId("visualSettingsForm").home_intro_hold_duration_seconds.value =
+    String(data.settings.home_intro_hold_duration_ms / 1000);
   byId("visualSettingsForm").home_intro_lock_scroll.checked =
     data.settings.home_intro_lock_scroll;
   byId("visualSettingsForm").home_intro_contributor_limit.value =
@@ -411,7 +413,7 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   try {
-    await api("/admin/visual-settings", {
+    const saved = await api("/admin/visual-settings", {
       method: "PUT",
       body: JSON.stringify({
         catalog_background_style: form.catalog_background_style.value,
@@ -419,8 +421,11 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         pointer_effect_enabled: form.pointer_effect_enabled.checked,
         home_intro_enabled: form.home_intro_mode.value !== "off",
         home_intro_mode: form.home_intro_mode.value,
-        home_intro_duration_ms: Math.round(
-          Number(form.home_intro_duration_seconds.value) * 1000
+        home_intro_assembly_duration_ms: Math.round(
+          Number(form.home_intro_assembly_duration_seconds.value) * 1000
+        ),
+        home_intro_hold_duration_ms: Math.round(
+          Number(form.home_intro_hold_duration_seconds.value) * 1000
         ),
         home_intro_lock_scroll: form.home_intro_lock_scroll.checked,
         home_intro_contributor_limit: Number(
@@ -429,15 +434,15 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
       })
     });
     const savedSettings = {
-      home_intro_enabled: form.home_intro_mode.value !== "off",
-      home_intro_mode: form.home_intro_mode.value,
-      home_intro_duration_ms: Math.round(
-        Number(form.home_intro_duration_seconds.value) * 1000
-      ),
-      home_intro_lock_scroll: form.home_intro_lock_scroll.checked,
-      home_intro_contributor_limit: Number(
-        form.home_intro_contributor_limit.value
-      )
+      home_intro_enabled: saved.home_intro_enabled,
+      home_intro_mode: saved.home_intro_mode,
+      home_intro_duration_ms: saved.home_intro_duration_ms,
+      home_intro_assembly_duration_ms:
+        saved.home_intro_assembly_duration_ms,
+      home_intro_hold_duration_ms: saved.home_intro_hold_duration_ms,
+      home_intro_lock_scroll: saved.home_intro_lock_scroll,
+      home_intro_contributor_limit:
+        saved.home_intro_contributor_limit
     };
     try {
       window.localStorage.setItem(

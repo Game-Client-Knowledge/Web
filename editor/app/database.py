@@ -465,12 +465,32 @@ class Database:
                 """,
                 (now,),
             )
+            intro_duration_row = connection.execute(
+                """
+                SELECT value FROM settings
+                WHERE key = 'home_intro_duration_ms'
+                """
+            ).fetchone()
+            try:
+                intro_duration_ms = int(
+                    intro_duration_row["value"]
+                    if intro_duration_row
+                    else "3000"
+                )
+            except (TypeError, ValueError):
+                intro_duration_ms = 3000
             for key, value in {
                 "catalog_background_style": "circuit",
                 "reader_background_style": "blueprint",
                 "pointer_effect_enabled": "1",
                 "home_intro_enabled": "1",
                 "home_intro_duration_ms": "3000",
+                "home_intro_assembly_duration_ms": str(
+                    round(intro_duration_ms * 0.56)
+                ),
+                "home_intro_hold_duration_ms": str(
+                    round(intro_duration_ms * 0.21)
+                ),
                 "home_intro_lock_scroll": "1",
                 "home_intro_contributor_limit": "8",
             }.items():

@@ -102,11 +102,22 @@
           </select>
         </label>
         <label>
-          入场总时长（秒）
+          粒子重组时长（秒）
           <input
-            name="home_intro_duration_seconds"
+            name="home_intro_assembly_duration_seconds"
             type="number"
-            min="1.5"
+            min="0.5"
+            max="10"
+            step="0.1"
+            required
+          >
+        </label>
+        <label>
+          成图停留时长（秒）
+          <input
+            name="home_intro_hold_duration_seconds"
+            type="number"
+            min="0"
             max="10"
             step="0.1"
             required

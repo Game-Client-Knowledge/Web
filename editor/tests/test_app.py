@@ -269,6 +269,8 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert payload["config"]["home_intro_enabled"] is True
     assert payload["config"]["home_intro_mode"] == "revisit"
     assert payload["config"]["home_intro_duration_ms"] == 3000
+    assert payload["config"]["home_intro_assembly_duration_ms"] == 1680
+    assert payload["config"]["home_intro_hold_duration_ms"] == 630
     assert payload["config"]["home_intro_lock_scroll"] is True
     assert payload["config"]["home_intro_contributor_limit"] == 8
     assert [item["path"] for item in payload["drafts"]] == [
@@ -691,7 +693,8 @@ def test_admin_can_configure_client_visual_effects(
             "pointer_effect_enabled": False,
             "home_intro_enabled": False,
             "home_intro_mode": "first",
-            "home_intro_duration_ms": 4200,
+            "home_intro_assembly_duration_ms": 2600,
+            "home_intro_hold_duration_ms": 900,
             "home_intro_lock_scroll": False,
             "home_intro_contributor_limit": 10,
         },
@@ -703,7 +706,9 @@ def test_admin_can_configure_client_visual_effects(
         "pointer_effect_enabled": False,
         "home_intro_enabled": True,
         "home_intro_mode": "first",
-        "home_intro_duration_ms": 4200,
+        "home_intro_duration_ms": 4190,
+        "home_intro_assembly_duration_ms": 2600,
+        "home_intro_hold_duration_ms": 900,
         "home_intro_lock_scroll": False,
         "home_intro_contributor_limit": 10,
     }
@@ -713,9 +718,32 @@ def test_admin_can_configure_client_visual_effects(
     assert config["pointer_effect_enabled"] is False
     assert config["home_intro_enabled"] is True
     assert config["home_intro_mode"] == "first"
-    assert config["home_intro_duration_ms"] == 4200
+    assert config["home_intro_duration_ms"] == 4190
+    assert config["home_intro_assembly_duration_ms"] == 2600
+    assert config["home_intro_hold_duration_ms"] == 900
     assert config["home_intro_lock_scroll"] is False
     assert config["home_intro_contributor_limit"] == 10
+
+    legacy_timing = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "catalog_background_style": "constellation",
+            "reader_background_style": "clean",
+            "pointer_effect_enabled": False,
+            "home_intro_enabled": True,
+            "home_intro_mode": "first",
+            "home_intro_duration_ms": 5000,
+            "home_intro_lock_scroll": False,
+            "home_intro_contributor_limit": 10,
+        },
+    )
+    assert legacy_timing.status_code == 200, legacy_timing.text
+    assert legacy_timing.json()["home_intro_duration_ms"] == 5000
+    assert (
+        legacy_timing.json()["home_intro_assembly_duration_ms"] == 2800
+    )
+    assert legacy_timing.json()["home_intro_hold_duration_ms"] == 1050
 
     invalid_catalog = client.put(
         "/api/admin/visual-settings",
@@ -750,6 +778,8 @@ def test_admin_can_configure_client_visual_effects(
             "pointer_effect_enabled": True,
             "home_intro_enabled": True,
             "home_intro_duration_ms": 900,
+            "home_intro_assembly_duration_ms": 400,
+            "home_intro_hold_duration_ms": 10001,
             "home_intro_lock_scroll": True,
             "home_intro_contributor_limit": 11,
         },
