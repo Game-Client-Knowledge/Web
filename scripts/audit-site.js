@@ -6,6 +6,7 @@ const basePath = (process.env.SITE_BASE_PATH || "").replace(/^\/|\/$/g, "");
 const errors = [];
 let htmlCount = 0;
 let referenceCount = 0;
+let mermaidCount = 0;
 
 function walk(directory) {
   const files = [];
@@ -53,6 +54,17 @@ if (!fs.existsSync(outputRoot)) {
 for (const file of walk(outputRoot).filter((item) => item.endsWith(".html"))) {
   htmlCount += 1;
   const html = fs.readFileSync(file, "utf8");
+  const mermaidBlocks = html.match(/<div class="mermaid"(?:\s[^>]*)?>/g) || [];
+  mermaidCount += mermaidBlocks.length;
+  if (
+    mermaidBlocks.some((block) => {
+      return !block.includes('data-mermaid-rendered="true"');
+    })
+  ) {
+    errors.push(
+      `${path.relative(outputRoot, file)}: contains unrendered Mermaid source`
+    );
+  }
   const expression = /\b(?:href|src)="([^"]+)"/g;
   let match;
   while ((match = expression.exec(html)) !== null) {
@@ -82,6 +94,7 @@ for (const file of walk(outputRoot).filter((item) => item.endsWith(".html"))) {
 
 console.log(`Generated HTML files: ${htmlCount}`);
 console.log(`Local references checked: ${referenceCount}`);
+console.log(`Pre-rendered Mermaid diagrams: ${mermaidCount}`);
 console.log(`Errors: ${errors.length}`);
 
 for (const error of errors) {

@@ -10,6 +10,11 @@ const {
   resolveContentRoot,
   slugifyHeading
 } = require("./lib/content-loader");
+const {
+  createMermaidCacheKey,
+  loadMermaidCache,
+  normalizeMermaidSource
+} = require("./lib/mermaid-cache");
 
 loadLanguages([
   "bash",
@@ -72,6 +77,7 @@ module.exports = function configureEleventy(eleventyConfig) {
   const contentRoot = resolveContentRoot();
   const basePath = normalizeBasePath(process.env.SITE_BASE_PATH);
   const assetVersion = resolveWebCommit().slice(0, 12);
+  const mermaidCache = loadMermaidCache();
 
   function withBase(route) {
     if (!route) {
@@ -129,6 +135,7 @@ module.exports = function configureEleventy(eleventyConfig) {
   }
 
   function createMarkdownRenderer(sourceRelative) {
+    let mermaidIndex = 0;
     const markdown = new MarkdownIt({
       html: false,
       linkify: true,
@@ -149,7 +156,21 @@ module.exports = function configureEleventy(eleventyConfig) {
       const token = tokens[index];
       const language = token.info.trim().split(/\s+/)[0];
       if (language === "mermaid") {
-        return `<div class="mermaid">${escapeHtml(token.content)}</div>`;
+        const source = normalizeMermaidSource(token.content);
+        const cacheKey = createMermaidCacheKey(
+          sourceRelative,
+          mermaidIndex,
+          source
+        );
+        const svg = mermaidCache.diagrams[cacheKey];
+        mermaidIndex += 1;
+        if (svg) {
+          return (
+            '<div class="mermaid" data-mermaid-rendered="true">' +
+            `${svg}</div>`
+          );
+        }
+        return `<div class="mermaid">${escapeHtml(source)}</div>`;
       }
       return defaultFence(tokens, index, options, environment, self);
     };

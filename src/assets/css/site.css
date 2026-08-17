@@ -2843,16 +2843,16 @@ body.has-comments-open .reader-comments {
   overflow-x: auto;
 }
 
-.mermaid-loading .mermaid {
+.mermaid-loading .mermaid:not([data-mermaid-rendered]) {
   min-height: 180px;
   color: transparent;
 }
 
-.mermaid-loading .mermaid svg {
+.mermaid-loading .mermaid:not([data-mermaid-rendered]) svg {
   visibility: hidden;
 }
 
-.mermaid-loading .mermaid::after {
+.mermaid-loading .mermaid:not([data-mermaid-rendered])::after {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -4437,7 +4437,7 @@ body.has-comments-open .reader-comments {
     display: none;
   }
 
-  .mermaid-loading .mermaid::after {
+  .mermaid-loading .mermaid:not([data-mermaid-rendered])::after {
     animation: none;
   }
 }

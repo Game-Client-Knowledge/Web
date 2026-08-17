@@ -1,4 +1,3 @@
-const nodes = Array.from(document.querySelectorAll(".mermaid"));
 const commonDiagramPattern =
   /^(?:graph\b|flowchart(?!-elk)\b|classDiagram(?:-v2)?\b|sequenceDiagram\b|stateDiagram(?:-v2)?\b|erDiagram\b)/i;
 
@@ -8,7 +7,19 @@ function getDiagramSource(node) {
     .trimStart();
 }
 
-if (nodes.length) {
+function getUnrenderedNodes(root) {
+  return Array.from(root.querySelectorAll(".mermaid")).filter(function (node) {
+    return (
+      !node.hasAttribute("data-mermaid-rendered") &&
+      !node.hasAttribute("data-processed")
+    );
+  });
+}
+
+async function render(root = document) {
+  const nodes = getUnrenderedNodes(root);
+  if (!nodes.length) return;
+
   const started = performance.now();
   const useCommonRuntime = nodes.every(function (node) {
     return commonDiagramPattern.test(getDiagramSource(node));
@@ -24,24 +35,33 @@ if (nodes.length) {
   document.body.dataset.mermaidState = "rendering";
   document.body.dataset.mermaidRuntime = useCommonRuntime ? "common" : "full";
 
-  import(runtimeUrl.href)
-    .then(function (runtime) {
-      return runtime.renderMermaid(nodes);
-    })
-    .then(function () {
-      document.body.dataset.mermaidState = "ready";
-    })
-    .catch(function (error) {
-      document.body.dataset.mermaidState = "error";
-      console.error("Mermaid rendering failed", error);
-    })
-    .finally(function () {
-      document.body.dataset.mermaidRenderMs = String(
-        Math.round(performance.now() - started)
-      );
-      document.body.dataset.mermaidReadyMs = String(
-        Math.round(performance.now())
-      );
-      document.documentElement.classList.remove("mermaid-loading");
-    });
+  try {
+    const runtime = await import(runtimeUrl.href);
+    await runtime.renderMermaid(nodes);
+    document.body.dataset.mermaidState = "ready";
+  } catch (error) {
+    document.body.dataset.mermaidState = "error";
+    console.error("Mermaid rendering failed", error);
+  } finally {
+    document.body.dataset.mermaidRenderMs = String(
+      Math.round(performance.now() - started)
+    );
+    document.body.dataset.mermaidReadyMs = String(
+      Math.round(performance.now())
+    );
+    document.documentElement.classList.remove("mermaid-loading");
+  }
+}
+
+window.GCKMermaid = { render };
+
+const diagramNodes = Array.from(document.querySelectorAll(".mermaid"));
+if (getUnrenderedNodes(document).length) {
+  render();
+} else if (diagramNodes.length) {
+  document.body.dataset.mermaidState = "ready";
+  document.body.dataset.mermaidRuntime = "prerendered";
+  document.body.dataset.mermaidRenderMs = "0";
+  document.body.dataset.mermaidReadyMs = String(Math.round(performance.now()));
+  document.documentElement.classList.remove("mermaid-loading");
 }

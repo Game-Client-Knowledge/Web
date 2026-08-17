@@ -5,7 +5,8 @@
   "description": "Convention-driven static website for Game Client Knowledge.",
   "scripts": {
     "build:vendor": "node scripts/build-editor-vendor.js",
-    "build": "npm run build:vendor && node scripts/clean.js && eleventy",
+    "build:mermaid": "node scripts/build-mermaid-cache.js",
+    "build": "npm run build:vendor && npm run build:mermaid && node scripts/clean.js && eleventy",
     "dev": "eleventy --serve --quiet",
     "audit": "node scripts/audit-content.js",
     "audit:site": "node scripts/audit-site.js",

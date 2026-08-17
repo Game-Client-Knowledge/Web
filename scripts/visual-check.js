@@ -947,17 +947,22 @@ async function inspectPage(browser, scenario) {
       const bootstrap = resources.find((resource) => {
         return resource.name.includes("/mermaid-client.js");
       });
-      const common = resources.find((resource) => {
-        return resource.name.includes("/mermaid-common.js");
-      });
       return {
         diagrams: document.querySelectorAll(".mermaid svg").length,
+        prerendered: document.querySelectorAll(
+          '.mermaid[data-mermaid-rendered="true"]'
+        ).length,
+        unrendered: document.querySelectorAll(
+          ".mermaid:not([data-mermaid-rendered])"
+        ).length,
         renderMs: Number(document.body.dataset.mermaidRenderMs || 0),
         readyMs: Number(document.body.dataset.mermaidReadyMs || 0),
         runtime: document.body.dataset.mermaidRuntime || "",
         bootstrapBytes: bootstrap?.decodedBodySize || 0,
-        commonBytes: common?.decodedBodySize || 0,
         resourceCount: resources.length,
+        commonLoaded: resources.some((resource) => {
+          return resource.name.includes("/mermaid-common.js");
+        }),
         fallbackLoaded: resources.some((resource) => {
           return resource.name.includes("/mermaid/fallback/");
         }),
@@ -968,18 +973,20 @@ async function inspectPage(browser, scenario) {
     });
     assert(mermaid.diagrams > 0, `${scenario.name}: Mermaid did not render`);
     assert(
-      mermaid.renderMs > 0 && mermaid.renderMs < 2500,
-      `${scenario.name}: Mermaid render took ${mermaid.renderMs}ms`
+      mermaid.readyMs > 0 && mermaid.readyMs < 2500,
+      `${scenario.name}: Mermaid SVG was ready after ${mermaid.readyMs}ms`
     );
     assert(
-      mermaid.runtime === "common" &&
+      mermaid.runtime === "prerendered" &&
+        mermaid.prerendered === mermaid.diagrams &&
+        mermaid.unrendered === 0 &&
+        mermaid.renderMs === 0 &&
         mermaid.bootstrapBytes < 10000 &&
-        mermaid.commonBytes > 500000 &&
-        mermaid.commonBytes < 1500000 &&
-        mermaid.resourceCount === 2 &&
+        mermaid.resourceCount === 1 &&
+        !mermaid.commonLoaded &&
         !mermaid.fallbackLoaded &&
         !mermaid.legacyLoaded,
-      `${scenario.name}: Mermaid did not use the common single-file runtime`
+      `${scenario.name}: Mermaid did not use build-time SVG rendering`
     );
   }
 

@@ -867,6 +867,9 @@
     prose.append(template.content);
     rendered.replaceChildren(prose);
     rendered.dataset.draftOverlay = "true";
+    if (window.GCKMermaid) {
+      window.GCKMermaid.render(prose);
+    }
   }
 
   function splitMarkdownDocument(content) {
