@@ -52,4 +52,21 @@ Minimal fix:
    HTTP Host value.
 4. Send the OAuth code exactly once to the selected reachable origin.
 
-Post-fix evidence is pending.
+Post-fix evidence:
+
+- Line 1: the same problematic DNS result remained, proving the network
+  environment did not change.
+- Line 2: a verified live OAuth origin was selected in `3363 ms`.
+- Line 3: the token endpoint returned HTTP `200` in `3386 ms` with the expected
+  `bad_verification_code` for the synthetic invalid code. This proves the
+  transport now reaches the real GitHub OAuth service.
+
+Pre-fix vs post-fix:
+
+| Run | Result | Elapsed |
+| --- | --- | --- |
+| Pre-fix | HTTPX `ReadTimeout`, no GitHub response | `20863 ms` |
+| Post-fix | GitHub HTTP `200`, parsed OAuth response | `3386 ms` |
+
+The debug session remains open until a real browser binding attempt is
+confirmed by the user.
