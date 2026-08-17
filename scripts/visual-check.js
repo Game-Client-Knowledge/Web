@@ -525,6 +525,25 @@ async function inspectPage(browser, scenario) {
     `${scenario.name}: browser errors: ${runtimeErrors.join(" | ")}`
   );
 
+  if (scenario.homeHierarchy) {
+    const hierarchy = await page.evaluate(() => {
+      const knowledge = document.querySelector(
+        '[aria-labelledby="module-knowledge"]'
+      );
+      return {
+        rootCards: knowledge?.querySelectorAll(":scope .unit-card").length,
+        cppChildren: Array.from(
+          knowledge?.querySelectorAll(".unit-card-children span") || []
+        ).map((item) => item.textContent.trim())
+      };
+    });
+    assert(
+      hierarchy.rootCards === 4 &&
+        hierarchy.cppChildren.some((title) => title.includes("C++ 多态")),
+      `${scenario.name}: homepage hierarchy is ${JSON.stringify(hierarchy)}`
+    );
+  }
+
   if (scenario.topicOrdering) {
     const ordering = await page.evaluate(() => {
       const heading = Array.from(
@@ -983,6 +1002,7 @@ async function inspectPage(browser, scenario) {
       viewport: { width: 1440, height: 1000 },
       search: true,
       knowledgeField: true,
+      homeHierarchy: true,
       homeIntro: "play",
       bootstrapDelay: 3000,
       pointerEffect: true,

@@ -86,7 +86,15 @@ permalink: index.html
               {% if unit.codeCount %} · {{ unit.codeCount }} 个源码文件{% endif %}
             </span>
             <strong>{{ unit.title }}</strong>
-            <span>{{ unit.description }}</span>
+            <span class="unit-card-description">{{ unit.description }}</span>
+            {% if unit.children.length %}
+              <div class="unit-card-children">
+                <small>子专题</small>
+                {% for child in unit.children %}
+                  <span>{{ child.title }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
             <i data-lucide="arrow-up-right" aria-hidden="true"></i>
           </a>
         {% else %}

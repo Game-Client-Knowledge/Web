@@ -842,7 +842,7 @@ body[data-editor-state="loading"] [data-account-label] {
   overflow-wrap: anywhere;
 }
 
-.unit-card > span:last-of-type {
+.unit-card-description {
   display: -webkit-box;
   color: var(--ink-soft);
   font-size: 13px;
@@ -850,6 +850,32 @@ body[data-editor-state="loading"] [data-account-label] {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
+}
+
+.unit-card-children {
+  display: flex;
+  margin-top: 12px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.unit-card-children small {
+  color: var(--ink-faint);
+  font-size: 9px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.unit-card-children span {
+  padding: 2px 5px;
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+  border-radius: 2px;
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .contribution-band {
@@ -3363,6 +3389,18 @@ body.has-comments-open .reader-comments {
   margin: 11px 0 0;
   color: var(--ink-faint);
   font-size: 11px;
+}
+
+.github-prerequisite {
+  margin: 11px 0 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.github-prerequisite a {
+  color: var(--teal-dark);
+  font-weight: 650;
 }
 
 .account-identity {
