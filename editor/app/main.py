@@ -415,6 +415,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "frame-ancestors 'self'; "
             "form-action 'self' https://github.com"
         )
+        if settings.cookie_path != "/":
+            response.delete_cookie(
+                SESSION_COOKIE,
+                path="/",
+                secure=settings.cookie_secure,
+                httponly=True,
+                samesite="lax",
+            )
+            response.delete_cookie(
+                OAUTH_STATE_COOKIE,
+                path="/",
+                secure=settings.cookie_secure,
+                httponly=True,
+                samesite="lax",
+            )
         return response
 
     @app.exception_handler(GitHubError)
@@ -428,29 +443,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status_code=exc.status_code,
         )
 
+    def request_cookie_values(request: Request, name: str) -> list[str]:
+        # Browsers order longer-path cookies first. Starlette's cookie mapping
+        # keeps the last duplicate, which can select a stale legacy root cookie.
+        values: list[str] = []
+        for item in request.headers.get("cookie", "").split(";"):
+            key, separator, value = item.strip().partition("=")
+            if separator and key == name and value:
+                values.append(value)
+        return values
+
     def read_session(request: Request) -> dict[str, Any] | None:
-        token = request.cookies.get(SESSION_COOKIE)
-        if not token:
+        tokens = request_cookie_values(request, SESSION_COOKIE)
+        if not tokens:
             return None
         now = utc_now()
         with db.connect() as connection:
-            row = connection.execute(
-                """
-                SELECT s.id AS session_id, s.csrf_token, s.auth_provider,
-                       s.expires_at, u.*
-                FROM sessions s
-                JOIN users u ON u.id = s.user_id
-                WHERE s.token_hash = ? AND s.expires_at > ?
-                """,
-                (token_hash(token), now),
-            ).fetchone()
-            if not row or row["status"] != "active":
-                return None
-            connection.execute(
-                "UPDATE sessions SET last_seen_at = ? WHERE id = ?",
-                (now, row["session_id"]),
-            )
-            return dict(row)
+            for token in tokens:
+                row = connection.execute(
+                    """
+                    SELECT s.id AS session_id, s.csrf_token, s.auth_provider,
+                           s.expires_at, u.*
+                    FROM sessions s
+                    JOIN users u ON u.id = s.user_id
+                    WHERE s.token_hash = ? AND s.expires_at > ?
+                    """,
+                    (token_hash(token), now),
+                ).fetchone()
+                if not row or row["status"] != "active":
+                    continue
+                connection.execute(
+                    "UPDATE sessions SET last_seen_at = ? WHERE id = ?",
+                    (now, row["session_id"]),
+                )
+                return dict(row)
+        return None
 
     def require_user(request: Request) -> dict[str, Any]:
         user = read_session(request)
@@ -531,6 +558,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "edit_policy": policy,
             }
         )
+        if settings.cookie_path != "/":
+            response.delete_cookie(
+                SESSION_COOKIE,
+                path="/",
+                secure=settings.cookie_secure,
+                httponly=True,
+                samesite="lax",
+            )
         response.set_cookie(
             SESSION_COOKIE,
             session_token,
@@ -909,6 +944,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         response = Response(status_code=204)
         response.delete_cookie(SESSION_COOKIE, path=settings.cookie_path)
+        if settings.cookie_path != "/":
+            response.delete_cookie(SESSION_COOKIE, path="/")
         return response
 
     @app.post("/api/auth/change-password")
@@ -1047,6 +1084,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response = RedirectResponse(
             f"https://github.com/login/oauth/authorize?{query}"
         )
+        if settings.cookie_path != "/":
+            response.delete_cookie(
+                OAUTH_STATE_COOKIE,
+                path="/",
+                secure=settings.cookie_secure,
+                httponly=True,
+                samesite="lax",
+            )
         response.set_cookie(
             OAUTH_STATE_COOKIE,
             state,
@@ -1067,11 +1112,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         if not state:
             raise HTTPException(status_code=400, detail="OAuth state 缺失")
-        cookie_state = request.cookies.get(OAUTH_STATE_COOKIE)
-        if not cookie_state or not secrets.compare_digest(
-            cookie_state,
-            state,
-        ):
+        cookie_states = request_cookie_values(request, OAUTH_STATE_COOKIE)
+        cookie_state = next(
+            (
+                value
+                for value in cookie_states
+                if secrets.compare_digest(value, state)
+            ),
+            None,
+        )
+        if not cookie_state:
             raise HTTPException(
                 status_code=400,
                 detail="OAuth 请求与当前浏览器不匹配",
@@ -1292,6 +1342,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             browser_return_url(oauth["return_to"])
         )
         if not binding_user:
+            if settings.cookie_path != "/":
+                response.delete_cookie(
+                    SESSION_COOKIE,
+                    path="/",
+                    secure=settings.cookie_secure,
+                    httponly=True,
+                    samesite="lax",
+                )
             response.set_cookie(
                 SESSION_COOKIE,
                 raw,

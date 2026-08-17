@@ -908,6 +908,89 @@ def test_admin_page_requires_ready_admin(client: TestClient) -> None:
     assert response.status_code == 200
 
 
+def test_legacy_root_cookie_cannot_override_editor_session(
+    tmp_path: Path,
+) -> None:
+    settings = replace(make_settings(tmp_path), cookie_path="/editor")
+    app = create_app(settings)
+    app.state.github.list_pull_requests = AsyncMock(return_value=[])
+    with TestClient(app, base_url="http://testserver") as client:
+        response = client.post(
+            "/api/auth/login",
+            json={
+                "identifier": "sourcecode",
+                "password": TEST_BOOTSTRAP_PASSWORD,
+            },
+        )
+        assert response.status_code == 200
+        set_cookies = response.headers.get_list("set-cookie")
+        editor_cookie = next(
+            value
+            for value in set_cookies
+            if "gck_editor_session=" in value
+            and "Path=/editor" in value
+            and "Max-Age=86400" in value
+        )
+        session_token = editor_cookie.split(
+            "gck_editor_session=",
+            1,
+        )[1].split(";", 1)[0]
+        assert any(
+            "gck_editor_session=" in value
+            and "Path=/" in value
+            and "Max-Age=0" in value
+            for value in set_cookies
+        )
+        with app.state.db.connect() as connection:
+            connection.execute(
+                """
+                UPDATE users SET must_change_password = 0
+                WHERE username = 'sourcecode'
+                """
+            )
+
+        duplicate_cookie = (
+            f"gck_editor_session={session_token}; "
+            "gck_editor_session=stale-root-cookie"
+        )
+        session = client.get(
+            "/api/session",
+            headers={"Cookie": duplicate_cookie},
+        )
+        assert session.json()["authenticated"] is True
+        assert session.json()["user"]["username"] == "sourcecode"
+
+        reverse_order = client.get(
+            "/api/session",
+            headers={
+                "Cookie": (
+                    "gck_editor_session=stale-root-cookie; "
+                    f"gck_editor_session={session_token}"
+                )
+            },
+        )
+        assert reverse_order.json()["authenticated"] is True
+
+        admin = client.get(
+            "/admin",
+            headers={"Cookie": duplicate_cookie},
+            follow_redirects=False,
+        )
+        assert admin.status_code == 200
+        comments = client.get(
+            "/api/comments",
+            params={"path": "knowledge/ecs/01-fundamentals.md"},
+            headers={"Cookie": duplicate_cookie},
+        )
+        assert comments.json()["can_comment"] is True
+        bootstrap = client.get(
+            "/api/bootstrap",
+            params={"path": "knowledge/cpp/01-cpp98.md"},
+            headers={"Cookie": duplicate_cookie},
+        )
+        assert bootstrap.json()["session"]["authenticated"] is True
+
+
 def test_drafts_are_isolated_by_user(client: TestClient) -> None:
     first = client.post(
         "/api/auth/register",
