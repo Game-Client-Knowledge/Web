@@ -9,6 +9,8 @@ CONTENT_STATE_FILE="${CONTENT_STATE_FILE:-${BUILDER_ROOT}/last-content-commit}"
 WEB_STATE_FILE="${WEB_STATE_FILE:-${BUILDER_ROOT}/last-web-commit}"
 ATTRIBUTION_STATE_FILE="${ATTRIBUTION_STATE_FILE:-${BUILDER_ROOT}/last-attribution-commit}"
 CONTENT_GIT_MIRROR="${CONTENT_GIT_MIRROR:-${BUILDER_ROOT}/content.git}"
+WEB_GIT_MIRROR="${WEB_GIT_MIRROR:-${BUILDER_ROOT}/web.git}"
+SNAPSHOT_CACHE_ROOT="${SNAPSHOT_CACHE_ROOT:-${BUILDER_ROOT}/snapshots}"
 LOCK_FILE="${LOCK_FILE:-${BUILDER_ROOT}/update.lock}"
 AUTO_CHECK_STATE_FILE="${AUTO_CHECK_STATE_FILE:-${BUILDER_ROOT}/last-auto-check}"
 UPDATE_REQUEST_FILE="${UPDATE_REQUEST_FILE:-/var/lib/game-client-knowledge-editor/site-update.request}"
@@ -287,10 +289,38 @@ download_snapshot() {
   local repository="$1"
   local commit="$2"
   local destination="$3"
+  local mirror="$4"
   local archive
+  local cache_directory
+  local cache_archive
+  local remote="https://github.com/${repository}.git"
+
+  cache_directory="$(
+    printf '%s/%s' \
+      "$SNAPSHOT_CACHE_ROOT" \
+      "${repository//\//-}"
+  )"
+  cache_archive="${cache_directory}/${commit}.tar.gz"
+
+  if [[ -f "$cache_archive" ]] && tar -tzf "$cache_archive" >/dev/null; then
+    mkdir -p "$destination"
+    tar -xzf "$cache_archive" --strip-components=1 -C "$destination"
+    echo "Restored ${repository}@${commit:0:12} from snapshot cache."
+    return
+  fi
+
+  if [[
+    -d "$mirror"
+    && -n "$(git --git-dir="$mirror" cat-file -t "$commit" 2>/dev/null || true)"
+  ]]; then
+    mkdir -p "$destination"
+    git --git-dir="$mirror" archive "$commit" | tar -x -C "$destination"
+    echo "Restored ${repository}@${commit:0:12} from the local Git mirror."
+    return
+  fi
 
   archive="$(mktemp)"
-  curl \
+  if curl \
     --fail \
     --silent \
     --show-error \
@@ -299,10 +329,34 @@ download_snapshot() {
     --max-time 120 \
     --retry 2 \
     "https://codeload.github.com/${repository}/tar.gz/${commit}" \
-    --output "$archive"
-  mkdir -p "$destination"
-  tar -xzf "$archive" --strip-components=1 -C "$destination"
+    --output "$archive" &&
+    tar -tzf "$archive" >/dev/null; then
+      mkdir -p "$cache_directory" "$destination"
+      mv "$archive" "$cache_archive"
+      tar -xzf "$cache_archive" --strip-components=1 -C "$destination"
+      return
+  fi
   rm -f "$archive"
+
+  echo "Codeload failed for ${repository}; falling back to git." >&2
+  if [[ ! -d "$mirror" ]]; then
+    git init --bare "$mirror" >/dev/null
+    git --git-dir="$mirror" remote add origin "$remote"
+  fi
+  for attempt in 1 2 3; do
+    if timeout 90 git -c http.version=HTTP/1.1 \
+      --git-dir="$mirror" fetch --depth=1 origin refs/heads/main; then
+        break
+    fi
+    echo "Git snapshot fetch ${attempt}/3 failed for ${repository}." >&2
+    sleep "$((attempt * 2))"
+  done
+  if ! git --git-dir="$mirror" cat-file -e "${commit}^{commit}" 2>/dev/null; then
+    echo "Unable to retrieve immutable snapshot ${repository}@${commit}." >&2
+    return 1
+  fi
+  mkdir -p "$destination"
+  git --git-dir="$mirror" archive "$commit" | tar -x -C "$destination"
 }
 
 update_git_mirror() {
@@ -411,9 +465,17 @@ web_snapshot="${workspace}/web"
 content_snapshot="${workspace}/content"
 
 update_stage="download-web-snapshot"
-download_snapshot "$WEB_REPOSITORY" "$web_commit" "$web_snapshot"
+download_snapshot \
+  "$WEB_REPOSITORY" \
+  "$web_commit" \
+  "$web_snapshot" \
+  "$WEB_GIT_MIRROR"
 update_stage="download-content-snapshot"
-download_snapshot "$CONTENT_REPOSITORY" "$content_commit" "$content_snapshot"
+download_snapshot \
+  "$CONTENT_REPOSITORY" \
+  "$content_commit" \
+  "$content_snapshot" \
+  "$CONTENT_GIT_MIRROR"
 update_stage="import-content-history"
 mirror_revision="$(
   update_git_mirror \

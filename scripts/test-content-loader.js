@@ -7,6 +7,8 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), "gck-content-loader-"));
 const previousRoot = process.env.CONTENT_REPO_PATH;
 const previousCommit = process.env.CONTENT_COMMIT;
 const previousUpdated = process.env.CONTENT_UPDATED_AT;
+const previousGitDirectory = process.env.CONTENT_GIT_DIR;
+const previousGitRevision = process.env.CONTENT_GIT_REVISION;
 
 function write(relative, content) {
   const target = path.join(root, relative);
@@ -53,6 +55,8 @@ order: 40
   process.env.CONTENT_REPO_PATH = root;
   process.env.CONTENT_COMMIT = "0123456789abcdef";
   process.env.CONTENT_UPDATED_AT = "2026-08-17T00:00:00Z";
+  delete process.env.CONTENT_GIT_DIR;
+  delete process.env.CONTENT_GIT_REVISION;
   const { loadCatalog } = require("../lib/content-loader");
   const catalog = loadCatalog();
   const graphics = catalog.modules.find(
@@ -113,5 +117,9 @@ order: 40
   else process.env.CONTENT_COMMIT = previousCommit;
   if (previousUpdated === undefined) delete process.env.CONTENT_UPDATED_AT;
   else process.env.CONTENT_UPDATED_AT = previousUpdated;
+  if (previousGitDirectory === undefined) delete process.env.CONTENT_GIT_DIR;
+  else process.env.CONTENT_GIT_DIR = previousGitDirectory;
+  if (previousGitRevision === undefined) delete process.env.CONTENT_GIT_REVISION;
+  else process.env.CONTENT_GIT_REVISION = previousGitRevision;
   fs.rmSync(root, { recursive: true, force: true });
 }

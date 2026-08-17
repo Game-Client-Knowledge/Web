@@ -50,6 +50,25 @@ After the Eleventy build, the generated-site audit checks:
 Any audit error exits non-zero. The updater leaves the current release symlink
 unchanged and records the failed candidate commits.
 
+The updater clears inherited attribution Git environment variables inside
+snapshot-only unit tests, so production metadata does not change isolated test
+expectations.
+
+## Snapshot Retrieval
+
+Candidate releases use immutable commit snapshots. Retrieval follows this
+order:
+
+1. a validated local tarball cache under
+   `/home/sourcecode/gck-builder/snapshots`;
+2. an existing local bare Git mirror containing the exact commit;
+3. GitHub Codeload with archive validation;
+4. a bounded three-attempt `git fetch` fallback over HTTP/1.1.
+
+The fallback prevents GitHub API or Codeload rate limits from turning a valid
+content commit into a permanent deployment failure. Every extracted snapshot
+is still pinned to the resolved commit SHA.
+
 ## Scheduling
 
 `game-client-knowledge-update.timer` wakes the oneshot service every minute. The

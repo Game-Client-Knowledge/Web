@@ -40,6 +40,8 @@ assert.match(updater, /exec > >\(tee -a "\$run_log_file"\) 2>&1/);
 assert.match(updater, /update_stage="audit-and-build"/);
 assert.match(updater, /-m app\.site_update_notifications/);
 assert.match(updater, /FAILURE_NOTIFICATION_STATE_FILE/);
+assert.match(updater, /SNAPSHOT_CACHE_ROOT/);
+assert.match(updater, /falling back to git/);
 assert.equal(manifest.dependencies["playwright-core"], "1.62.1");
 assert.equal(manifest.devDependencies?.["playwright-core"], undefined);
 assert.doesNotMatch(
