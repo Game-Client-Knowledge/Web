@@ -45,6 +45,7 @@ assert.match(updater, /falling back to git/);
 assert.match(updater, /Authorization: Bearer \$\{EDITOR_GITHUB_BOT_TOKEN\}/);
 assert.match(updater, /PLAYWRIGHT_BROWSERS_PATH="\$BROWSER_ROOT"/);
 assert.match(updater, /playwright-core install chromium/);
+assert.match(updater, /fs\.existsSync\(chromium\.executablePath\(\)\)/);
 assert.equal(manifest.dependencies["playwright-core"], "1.62.1");
 assert.equal(manifest.devDependencies?.["playwright-core"], undefined);
 assert.doesNotMatch(

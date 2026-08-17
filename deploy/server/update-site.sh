@@ -506,8 +506,11 @@ npm ci \
   --no-fund \
   --cache "${BUILDER_ROOT}/npm-cache"
 update_stage="install-build-browser"
-PLAYWRIGHT_BROWSERS_PATH="$BROWSER_ROOT" \
-  ./node_modules/.bin/playwright-core install chromium
+if ! PLAYWRIGHT_BROWSERS_PATH="$BROWSER_ROOT" node -e \
+  'const fs=require("fs");const {chromium}=require("playwright-core");process.exit(fs.existsSync(chromium.executablePath())?0:1)'; then
+    PLAYWRIGHT_BROWSERS_PATH="$BROWSER_ROOT" \
+      ./node_modules/.bin/playwright-core install chromium
+fi
 update_stage="audit-and-build"
 CONTENT_REPO_PATH="$content_snapshot" \
 CONTENT_COMMIT="$content_commit" \
