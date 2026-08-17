@@ -86,6 +86,11 @@
         <a id="githubLogin" class="github-button" href="api/auth/github">
           使用 GitHub 登录
         </a>
+        <p class="github-prerequisite">
+          建议先在当前浏览器
+          <a href="https://github.com/login" target="_blank" rel="noreferrer">登录 GitHub</a>，
+          再返回完成授权。
+        </p>
         <p id="authPolicyHint" class="form-hint"></p>
         <div id="authFeedback" class="feedback" role="status" aria-live="polite"></div>
       </div>
@@ -128,6 +133,11 @@
         </div>
       </header>
 
+      <div id="githubPrerequisite" class="notice github-prerequisite-notice" hidden>
+        绑定前建议先在当前浏览器
+        <a href="https://github.com/login" target="_blank" rel="noreferrer">登录 GitHub</a>，
+        再点击绑定。
+      </div>
       <div id="editBlocked" class="notice warning" hidden>
         当前后台策略要求 GitHub 认证。请退出后使用 GitHub 登录并绑定已验证邮箱。
       </div>

@@ -60,6 +60,12 @@ Post-fix evidence:
 - Line 3: the token endpoint returned HTTP `200` in `3386 ms` with the expected
   `bad_verification_code` for the synthetic invalid code. This proves the
   transport now reaches the real GitHub OAuth service.
+- Later real browser runs were intermittent: lines 4-6 and 17-19 exchanged
+  real codes successfully in `2716 ms` and `1836 ms`, while lines 7-16 include
+  transport failures between `16` and `33` seconds.
+- The latest user observation matches the evidence: pre-authenticating the
+  browser shortened the GitHub authorization phase and the following exchange
+  succeeded quickly.
 
 Pre-fix vs post-fix:
 
@@ -67,6 +73,12 @@ Pre-fix vs post-fix:
 | --- | --- | --- |
 | Pre-fix | HTTPX `ReadTimeout`, no GitHub response | `20863 ms` |
 | Post-fix | GitHub HTTP `200`, parsed OAuth response | `3386 ms` |
+
+The remaining failure mode was sequential probing under an unstable outbound
+route. The next transport revision probes the official domain and
+certificate-verified GitHub web frontends concurrently, then reuses the first
+successful keep-alive connection for the one-time OAuth code. The code is
+still submitted exactly once.
 
 The debug session remains open until a real browser binding attempt is
 confirmed by the user.

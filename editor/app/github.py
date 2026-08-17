@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import json
@@ -279,46 +280,85 @@ class GitHubClient:
                 for address in OAUTH_WEB_FALLBACK_IPS
             ],
         ]
-        for origin, headers, extensions in candidates:
+
+        async def probe(
+            origin: str,
+            headers: dict[str, str],
+            extensions: dict[str, str],
+        ) -> tuple[
+            httpx.AsyncClient,
+            str,
+            dict[str, str],
+        ] | None:
+            client = httpx.AsyncClient(
+                timeout=httpx.Timeout(5.0),
+                trust_env=False,
+                headers={
+                    "Accept": "application/json",
+                    "User-Agent": "game-client-knowledge-editor/1.0",
+                    **headers,
+                },
+            )
             selected = False
             try:
-                async with httpx.AsyncClient(
-                    timeout=httpx.Timeout(5.0),
-                    trust_env=False,
-                    headers={
-                        "Accept": "application/json",
-                        "User-Agent": "game-client-knowledge-editor/1.0",
-                        **headers,
+                response = await client.post(
+                    f"{origin}/login/oauth/access_token",
+                    data={
+                        "client_id": "transport-probe",
+                        "code": "transport-probe",
                     },
-                ) as client:
-                    response = await client.post(
-                        f"{origin}/login/oauth/access_token",
-                        data={
-                            "client_id": "transport-probe",
-                            "code": "transport-probe",
-                        },
-                        extensions=extensions,
-                    )
-                    selected = response.status_code < 500
-                    if selected:
-                        response = await client.post(
-                            f"{origin}/login/oauth/access_token",
-                            data=data,
-                            extensions=extensions,
-                        )
-            except httpx.RequestError:
-                if selected:
-                    raise
-                continue
-            if selected:
-                return (
-                    response,
-                    "domain"
-                    if origin == "https://github.com"
-                    else "verified-fallback",
+                    extensions=extensions,
                 )
+                selected = response.status_code < 500
+            except httpx.RequestError:
+                return None
+            finally:
+                if not selected:
+                    await client.aclose()
+            return client, origin, extensions
+
+        tasks = [
+            asyncio.create_task(probe(origin, headers, extensions))
+            for origin, headers, extensions in candidates
+        ]
+        winner = None
+        try:
+            for completed in asyncio.as_completed(tasks):
+                result = await completed
+                if result:
+                    winner = result
+                    break
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            winner_client = winner[0] if winner else None
+            for result in results:
+                if (
+                    isinstance(result, tuple)
+                    and result[0] is not winner_client
+                ):
+                    await result[0].aclose()
+
+        if winner:
+            client, origin, extensions = winner
+            try:
+                response = await client.post(
+                    f"{origin}/login/oauth/access_token",
+                    data=data,
+                    extensions=extensions,
+                )
+            finally:
+                await client.aclose()
+            return (
+                response,
+                "domain"
+                if origin == "https://github.com"
+                else "verified-fallback",
+            )
         raise GitHubError(
-            "无法连接 GitHub 授权服务，请重试",
+            "无法连接 GitHub 授权服务；请先在当前浏览器登录 GitHub 后重试",
             status_code=503,
         )
 
@@ -359,7 +399,7 @@ class GitHubClient:
             # #endregion
             if isinstance(exc, (httpx.RequestError, GitHubError)):
                 raise GitHubError(
-                    "无法连接 GitHub 授权服务，请重试",
+                    "无法连接 GitHub 授权服务；请先在当前浏览器登录 GitHub 后重试",
                     status_code=503,
                 ) from exc
             raise

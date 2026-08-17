@@ -217,6 +217,20 @@ def test_csrf_is_required_for_draft_mutation(client: TestClient) -> None:
     assert draft.status_code == 403
 
 
+def test_http_method_override_header_is_not_honored(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/api/articles/123",
+        headers={
+            "Authorization": "Bearer test-token",
+            "X-HTTP-Method-Override": "DELETE",
+        },
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Not Found"
+
+
 def test_bootstrap_returns_session_drafts_and_active_preview(
     client: TestClient,
 ) -> None:

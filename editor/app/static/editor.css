@@ -392,6 +392,26 @@ a[aria-disabled="true"] {
   font-size: 11px;
 }
 
+.github-prerequisite {
+  margin: 11px 0 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.github-prerequisite a,
+.github-prerequisite-notice a {
+  color: var(--teal-dark);
+  font-weight: 650;
+}
+
+.github-prerequisite-notice {
+  margin-top: 0;
+  margin-bottom: 16px;
+  background: var(--teal-soft);
+  border-left-color: var(--teal);
+}
+
 .feedback,
 .notice {
   display: none;

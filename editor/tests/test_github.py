@@ -21,13 +21,16 @@ def test_oauth_web_origin_uses_tls_verified_fallback(
             self.instance = len(
                 [call for call in calls if call[0] == "client"]
             )
-            calls.append(("client", kwargs))
+            calls.append(("client", kwargs, self.instance))
 
         async def __aenter__(self):
             return self
 
         async def __aexit__(self, *args):
             return None
+
+        async def aclose(self):
+            calls.append(("close", self.instance))
 
         async def post(self, url, **kwargs):
             calls.append(("post", url, kwargs, self.instance))
@@ -61,17 +64,32 @@ def test_oauth_web_origin_uses_tls_verified_fallback(
         call for call in calls
         if call[0] == "post" and call[1].startswith("https://140.")
     ]
-    assert len(fallback_calls) == 2
-    assert fallback_calls[0][2]["extensions"] == {
+    probe_calls = [
+        call for call in fallback_calls
+        if call[2]["data"]["client_id"] == "transport-probe"
+    ]
+    real_calls = [
+        call for call in fallback_calls
+        if call[2]["data"]["client_id"] == "client-id"
+    ]
+    assert len(probe_calls) >= 1
+    assert len(real_calls) == 1
+    real_call = real_calls[0]
+    winning_probe = next(
+        call for call in probe_calls if call[3] == real_call[3]
+    )
+    assert winning_probe[2]["extensions"] == {
         "sni_hostname": "github.com"
     }
-    assert fallback_calls[0][2]["data"] == {
+    assert winning_probe[2]["data"] == {
         "client_id": "transport-probe",
         "code": "transport-probe",
     }
-    assert fallback_calls[1][2]["data"]["code"] == "one-time-code"
-    assert fallback_calls[0][3] == fallback_calls[1][3]
-    fallback_client = calls[calls.index(fallback_calls[0]) - 1]
+    assert real_call[2]["data"]["code"] == "one-time-code"
+    fallback_client = next(
+        call for call in calls
+        if call[0] == "client" and call[2] == real_call[3]
+    )
     assert fallback_client[1]["trust_env"] is False
     assert fallback_client[1]["headers"]["Host"] == "github.com"
 

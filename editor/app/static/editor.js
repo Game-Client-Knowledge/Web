@@ -235,6 +235,7 @@ async function initializeWorkspace(draftsReady = false) {
   byId("branchPreview").textContent = `web/${slugify(user.username)}/update`;
   const bindButton = byId("githubBindingButton");
   const unlinkButton = byId("githubUnlinkButton");
+  byId("githubPrerequisite").hidden = Boolean(user.github_login);
   bindButton.hidden = Boolean(user.github_login);
   unlinkButton.hidden = !user.github_login;
   if (state.config.github_oauth_enabled) {
