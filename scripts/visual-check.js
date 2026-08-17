@@ -935,9 +935,40 @@ async function inspectPage(browser, scenario) {
   }
 
   if (scenario.mermaid) {
-    await page.locator(".mermaid svg").waitFor({ state: "visible" });
-    const diagramCount = await page.locator(".mermaid svg").count();
-    assert(diagramCount > 0, `${scenario.name}: Mermaid did not render`);
+    await page.waitForFunction(() => {
+      return document.body.dataset.mermaidState === "ready";
+    });
+    const mermaid = await page.evaluate(() => {
+      const resources = performance
+        .getEntriesByType("resource")
+        .filter((entry) => {
+          return entry.name.includes("/assets/vendor/mermaid/");
+        });
+      const entry = resources.find((resource) => {
+        return resource.name.includes("/mermaid-client.js");
+      });
+      return {
+        diagrams: document.querySelectorAll(".mermaid svg").length,
+        renderMs: Number(document.body.dataset.mermaidRenderMs || 0),
+        readyMs: Math.round(performance.now()),
+        entryBytes: entry?.decodedBodySize || 0,
+        resourceCount: resources.length,
+        legacyLoaded: performance
+          .getEntriesByType("resource")
+          .some((resource) => resource.name.includes("/mermaid.min.js"))
+      };
+    });
+    assert(mermaid.diagrams > 0, `${scenario.name}: Mermaid did not render`);
+    assert(
+      mermaid.renderMs > 0 && mermaid.renderMs < 2500,
+      `${scenario.name}: Mermaid render took ${mermaid.renderMs}ms`
+    );
+    assert(
+      mermaid.entryBytes < 100000 &&
+        mermaid.resourceCount > 1 &&
+        !mermaid.legacyLoaded,
+      `${scenario.name}: Mermaid did not use split ESM assets`
+    );
   }
 
   if (scenario.source) {

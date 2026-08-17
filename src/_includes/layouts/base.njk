@@ -1,5 +1,10 @@
+{% set pageHasMermaid =
+  (document and document.hasMermaid)
+  or (module and module.hasMermaid)
+  or (pageKind == "contribute" and catalog.contribution.hasMermaid)
+%}
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN"{% if pageHasMermaid %} class="mermaid-loading"{% endif %}>
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -36,6 +41,12 @@
           display: none;
         }
       </style>
+    {% endif %}
+    {% if pageHasMermaid %}
+      <link
+        rel="modulepreload"
+        href="{{ '/assets/vendor/mermaid/mermaid-client.js' | assetUrl }}"
+      >
     {% endif %}
     <link rel="stylesheet" href="{{ '/assets/css/site.css' | assetUrl }}">
     {% if pageKind == "code-workspace" or activeModule == "code" %}
@@ -555,12 +566,11 @@
       <script src="{{ '/assets/js/editor-buffer.js' | assetUrl }}"></script>
       <script src="{{ '/assets/js/reader-diff.js' | assetUrl }}"></script>
     {% endif %}
-    {% if
-      (document and document.hasMermaid)
-      or (module and module.hasMermaid)
-      or (pageKind == "contribute" and catalog.contribution.hasMermaid)
-    %}
-      <script src="{{ '/assets/vendor/mermaid.min.js' | assetUrl }}"></script>
+    {% if pageHasMermaid %}
+      <script
+        type="module"
+        src="{{ '/assets/vendor/mermaid/mermaid-client.js' | assetUrl }}"
+      ></script>
     {% endif %}
     {% if pageKind == "code-workspace" %}
       <script src="{{ '/assets/vendor/code-reader-vendor.js' | assetUrl }}"></script>

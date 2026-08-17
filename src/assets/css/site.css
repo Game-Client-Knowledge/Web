@@ -2834,12 +2834,42 @@ body.has-comments-open .reader-comments {
 }
 
 .mermaid {
+  position: relative;
   padding: 20px;
   background: #fbfcfb;
   border: 1px solid var(--line);
   border-radius: 5px;
   text-align: center;
   overflow-x: auto;
+}
+
+.mermaid-loading .mermaid {
+  min-height: 180px;
+  color: transparent;
+}
+
+.mermaid-loading .mermaid svg {
+  visibility: hidden;
+}
+
+.mermaid-loading .mermaid::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--teal);
+  border-radius: 50%;
+  content: "";
+  transform: translate(-50%, -50%);
+  animation: mermaid-loading-spin 700ms linear infinite;
+}
+
+@keyframes mermaid-loading-spin {
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
 }
 
 .mermaid svg {
@@ -4405,6 +4435,10 @@ body.has-comments-open .reader-comments {
 
   .site-pointer-reticle {
     display: none;
+  }
+
+  .mermaid-loading .mermaid::after {
+    animation: none;
   }
 }
 

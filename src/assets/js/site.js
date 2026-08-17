@@ -161,26 +161,6 @@
     });
   }
 
-  function setupMermaid() {
-    if (!window.mermaid || !document.querySelector(".mermaid")) {
-      return;
-    }
-    window.mermaid.initialize({
-      startOnLoad: true,
-      securityLevel: "strict",
-      theme: "base",
-      themeVariables: {
-        primaryColor: "#e6f3ef",
-        primaryTextColor: "#1f2926",
-        primaryBorderColor: "#178071",
-        lineColor: "#66736e",
-        secondaryColor: "#fff3e8",
-        tertiaryColor: "#f3f1e8",
-        fontFamily: "Inter, system-ui, sans-serif"
-      }
-    });
-  }
-
   async function setupKnowledgeField() {
     const canvas = document.querySelector("[data-knowledge-field]");
     const context = canvas && canvas.getContext("2d");
@@ -380,7 +360,6 @@
     setupDocumentSidebar();
     setupCopyActions();
     setupTableOfContents();
-    setupMermaid();
     setupKnowledgeField();
     setupReaderComments();
     refreshIcons();

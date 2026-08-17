@@ -268,10 +268,10 @@ module.exports = function configureEleventy(eleventyConfig) {
     eleventyConfig.addWatchTarget(path.join(contentRoot, moduleKey));
   }
   eleventyConfig.addPassthroughCopy({
-    "node_modules/mermaid/dist/mermaid.min.js": "assets/vendor/mermaid.min.js"
+    "node_modules/lucide/dist/umd/lucide.js": "assets/vendor/lucide.js"
   });
   eleventyConfig.addPassthroughCopy({
-    "node_modules/lucide/dist/umd/lucide.js": "assets/vendor/lucide.js"
+    ".cache/vendor/mermaid": "assets/vendor/mermaid"
   });
   eleventyConfig.addPassthroughCopy({
     ".cache/vendor/toastui-editor.js": "assets/vendor/toastui-editor.js"
