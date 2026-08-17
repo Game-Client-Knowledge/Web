@@ -41,6 +41,14 @@ order: 40
     "# 渲染基础\n\n渲染管线与图形 API。\n"
   );
   write("graphics/rendering/demo.cpp", "int main() { return 0; }\n");
+  write(
+    "graphics/rendering/materials/README.md",
+    "# 材质系统\n\n材质、着色器与参数绑定。\n"
+  );
+  write(
+    "graphics/rendering/materials/01-overview.md",
+    "# 材质概览\n\n材质系统概览。\n"
+  );
 
   process.env.CONTENT_REPO_PATH = root;
   process.env.CONTENT_COMMIT = "0123456789abcdef";
@@ -67,6 +75,21 @@ order: 40
   assert.deepEqual(
     catalog.modules.slice(0, 4).map((module) => module.key),
     ["knowledge", "interviews", "examples", "graphics"]
+  );
+  assert.equal(graphics.rootUnits.length, 1);
+  assert.equal(graphics.rootUnits[0].id, "graphics/rendering");
+  assert.equal(graphics.rootUnits[0].children.length, 1);
+  assert.equal(
+    graphics.rootUnits[0].children[0].id,
+    "graphics/rendering/materials"
+  );
+  assert.equal(
+    graphics.rootUnits[0].children[0].parentId,
+    "graphics/rendering"
+  );
+  assert.deepEqual(
+    graphics.rootUnits[0].children[0].ancestorIds,
+    ["graphics/rendering"]
   );
   assert.deepEqual(
     catalog.contributors,

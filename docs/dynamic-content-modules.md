@@ -45,6 +45,28 @@ Supported values:
 The H1 is the module title. The first prose paragraph is the fallback
 description.
 
+## Topic Hierarchy
+
+Every directory below a top-level module that contains a `README.md` defines a
+topic. Topic depth follows directory depth instead of being flattened:
+
+```text
+knowledge/                         website module
+└── cpp/                           topic: C++ basics
+    ├── README.md
+    └── polymorphism/              child topic: polymorphism
+        └── README.md
+```
+
+The catalog records each topic's parent, ancestors, children, and depth. The
+homepage lists only root topics. Module directories and reader navigation
+render child topics beneath their parent, and reader breadcrumbs include the
+full ancestor chain.
+
+Markdown files belong to the deepest ancestor directory that contains a
+`README.md`. A nested topic therefore stays under its owning topic without any
+additional website configuration.
+
 ## Online Creation
 
 The full editor exposes **Add top-level module** in the repository sidebar.

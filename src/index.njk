@@ -78,11 +78,11 @@ permalink: index.html
       </div>
 
       <div class="unit-grid">
-        {% for unit in module.units %}
+        {% for unit in module.rootUnits %}
           <a class="unit-card" href="{{ unit.route | withBase }}">
             <span class="unit-meta">
-              {% if unit.group %}{{ unit.group }} · {% endif %}
               {{ unit.articleCount }} 篇
+              {% if unit.children.length %} · {{ unit.children.length }} 个子专题{% endif %}
               {% if unit.codeCount %} · {{ unit.codeCount }} 个源码文件{% endif %}
             </span>
             <strong>{{ unit.title }}</strong>
