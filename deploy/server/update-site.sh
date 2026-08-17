@@ -11,6 +11,7 @@ ATTRIBUTION_STATE_FILE="${ATTRIBUTION_STATE_FILE:-${BUILDER_ROOT}/last-attributi
 CONTENT_GIT_MIRROR="${CONTENT_GIT_MIRROR:-${BUILDER_ROOT}/content.git}"
 WEB_GIT_MIRROR="${WEB_GIT_MIRROR:-${BUILDER_ROOT}/web.git}"
 SNAPSHOT_CACHE_ROOT="${SNAPSHOT_CACHE_ROOT:-${BUILDER_ROOT}/snapshots}"
+BROWSER_ROOT="${BROWSER_ROOT:-${BUILDER_ROOT}/browsers}"
 LOCK_FILE="${LOCK_FILE:-${BUILDER_ROOT}/update.lock}"
 AUTO_CHECK_STATE_FILE="${AUTO_CHECK_STATE_FILE:-${BUILDER_ROOT}/last-auto-check}"
 UPDATE_REQUEST_FILE="${UPDATE_REQUEST_FILE:-/var/lib/game-client-knowledge-editor/site-update.request}"
@@ -504,12 +505,16 @@ npm ci \
   --no-audit \
   --no-fund \
   --cache "${BUILDER_ROOT}/npm-cache"
+update_stage="install-build-browser"
+PLAYWRIGHT_BROWSERS_PATH="$BROWSER_ROOT" \
+  ./node_modules/.bin/playwright-core install chromium
 update_stage="audit-and-build"
 CONTENT_REPO_PATH="$content_snapshot" \
 CONTENT_COMMIT="$content_commit" \
 CONTENT_UPDATED_AT="$content_updated_at" \
 CONTENT_GIT_DIR="$CONTENT_GIT_MIRROR" \
 CONTENT_GIT_REVISION="$mirror_revision" \
+PLAYWRIGHT_BROWSERS_PATH="$BROWSER_ROOT" \
 WEB_COMMIT="$web_commit" \
   npm run check
 

@@ -73,6 +73,20 @@ Commit metadata requests use `EDITOR_GITHUB_BOT_TOKEN` when it is configured,
 avoiding the low anonymous GitHub API rate limit. The token is passed only as
 an HTTP authorization header and is never written to status or build logs.
 
+## Build Browser
+
+Mermaid SVG pre-rendering requires a Chromium-compatible browser. The updater
+installs the Playwright-pinned Chromium build under:
+
+```text
+/home/sourcecode/gck-builder/browsers
+```
+
+The cache is reused across releases. `build-mermaid-cache.js` prefers an
+explicit `CHROME_PATH` or system browser and otherwise uses the executable
+resolved by `playwright-core` through `PLAYWRIGHT_BROWSERS_PATH`. Browser
+installation failures are reported as the `install-build-browser` stage.
+
 ## Scheduling
 
 `game-client-knowledge-update.timer` wakes the oneshot service every minute. The

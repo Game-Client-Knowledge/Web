@@ -31,6 +31,7 @@ STAGE_LABELS = {
     "download-content-snapshot": "下载内容快照",
     "import-content-history": "同步内容历史",
     "install-dependencies": "安装构建依赖",
+    "install-build-browser": "安装 Mermaid 构建浏览器",
     "audit-and-build": "内容审计与站点构建",
     "sync-line-authors": "同步行级作者信息",
     "publish-release": "发布生产版本",

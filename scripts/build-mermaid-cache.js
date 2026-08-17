@@ -20,7 +20,10 @@ const executableCandidates = [
   "/usr/bin/chromium",
   "/usr/bin/chromium-browser"
 ].filter(Boolean);
-const executablePath = executableCandidates.find(fs.existsSync);
+const playwrightExecutable = chromium.executablePath();
+const executablePath =
+  executableCandidates.find(fs.existsSync) ||
+  (fs.existsSync(playwrightExecutable) ? playwrightExecutable : null);
 const mermaidFencePattern =
   /^```[ \t]*mermaid(?:[ \t][^\n]*)?\r?\n([\s\S]*?)^```[ \t]*$/gm;
 
