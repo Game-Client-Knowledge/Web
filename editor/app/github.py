@@ -264,9 +264,10 @@ class GitHubClient:
         response = await self._request("GET", "/user/emails", token=token)
         return response.json()
 
-    async def _oauth_web_origin(
+    async def _oauth_token_response(
         self,
-    ) -> tuple[str, dict[str, str], dict[str, str]]:
+        data: dict[str, str],
+    ) -> tuple[httpx.Response, str]:
         candidates = [
             ("https://github.com", {}, {}),
             *[
@@ -279,9 +280,10 @@ class GitHubClient:
             ],
         ]
         for origin, headers, extensions in candidates:
+            selected = False
             try:
                 async with httpx.AsyncClient(
-                    timeout=httpx.Timeout(3.0),
+                    timeout=httpx.Timeout(5.0),
                     trust_env=False,
                     headers={
                         "Accept": "application/json",
@@ -297,10 +299,24 @@ class GitHubClient:
                         },
                         extensions=extensions,
                     )
+                    selected = response.status_code < 500
+                    if selected:
+                        response = await client.post(
+                            f"{origin}/login/oauth/access_token",
+                            data=data,
+                            extensions=extensions,
+                        )
             except httpx.RequestError:
+                if selected:
+                    raise
                 continue
-            if response.status_code < 500:
-                return origin, headers, extensions
+            if selected:
+                return (
+                    response,
+                    "domain"
+                    if origin == "https://github.com"
+                    else "verified-fallback",
+                )
         raise GitHubError(
             "无法连接 GitHub 授权服务，请重试",
             status_code=503,
@@ -320,34 +336,20 @@ class GitHubClient:
         exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'post-fix','hypothesisId':'C','location':'github.py:exchange_oauth_code','msg':'[DEBUG] OAuth token exchange started','data':{'baseUrl':self.settings.base_url},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
         # #endregion
         try:
-            origin, origin_headers, origin_extensions = (
-                await self._oauth_web_origin()
+            response, origin_type = await self._oauth_token_response(
+                {
+                    "client_id": self.settings.github_client_id,
+                    "client_secret": self.settings.github_client_secret,
+                    "code": code,
+                    "redirect_uri": (
+                        f"{self.settings.base_url}/api/auth/github/callback"
+                    ),
+                    "code_verifier": code_verifier,
+                }
             )
             # #region debug-point A:oauth-origin-selected
-            exec("try:\n urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:7777/event',data=json.dumps({'sessionId':'github-oauth-timeout','runId':'post-fix','hypothesisId':'A','location':'github.py:exchange_oauth_code:origin','msg':'[DEBUG] OAuth web origin selected','data':{'originType':'domain' if origin=='https://github.com' else 'verified-fallback','elapsedMs':round((_oauth_debug_time.monotonic()-_oauth_debug_started)*1000)},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
+            exec("try:\n urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:7777/event',data=json.dumps({'sessionId':'github-oauth-timeout','runId':'post-fix','hypothesisId':'A','location':'github.py:exchange_oauth_code:origin','msg':'[DEBUG] OAuth web origin selected','data':{'originType':origin_type,'elapsedMs':round((_oauth_debug_time.monotonic()-_oauth_debug_started)*1000)},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
             # #endregion
-            async with httpx.AsyncClient(
-                timeout=httpx.Timeout(10.0),
-                trust_env=False,
-                headers={
-                    "Accept": "application/json",
-                    "User-Agent": "game-client-knowledge-editor/1.0",
-                    **origin_headers,
-                },
-            ) as client:
-                response = await client.post(
-                    f"{origin}/login/oauth/access_token",
-                    data={
-                        "client_id": self.settings.github_client_id,
-                        "client_secret": self.settings.github_client_secret,
-                        "code": code,
-                        "redirect_uri": (
-                            f"{self.settings.base_url}/api/auth/github/callback"
-                        ),
-                        "code_verifier": code_verifier,
-                    },
-                    extensions=origin_extensions,
-                )
         except Exception as exc:
             # #region debug-point A-C-E:oauth-transport-error
             exec("try:\n _cause=exc.__cause__\n urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:7777/event',data=json.dumps({'sessionId':'github-oauth-timeout','runId':'post-fix','hypothesisId':'A,B,C,E','location':'github.py:exchange_oauth_code:except','msg':'[DEBUG] OAuth transport failed','data':{'elapsedMs':round((_oauth_debug_time.monotonic()-_oauth_debug_started)*1000),'errorType':type(exc).__name__,'error':str(exc)[:300],'causeType':type(_cause).__name__ if _cause else None,'cause':str(_cause)[:300] if _cause else None},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
