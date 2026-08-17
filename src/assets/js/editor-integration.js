@@ -458,6 +458,7 @@
       }
       refreshIcons(unitList);
     }
+    updateWorkspaceDeleteControls();
   }
 
   function renderRootDocumentsNavigation(entries) {
@@ -507,6 +508,7 @@
     list.className = "module-unit-documents";
     entries.forEach(function (entry) {
       const item = document.createElement("li");
+      item.className = "module-document-row";
       const link = document.createElement("a");
       link.href = workspaceEntryHref(entry);
       const icon = document.createElement("i");
@@ -521,7 +523,15 @@
       link.append(icon, label);
       appendWorkspaceStatus(link, entry.status, entry.conflict);
       link.append(chevron);
-      item.append(link);
+      item.append(
+        link,
+        createWorkspaceDeleteAction(
+          entry.path,
+          "file",
+          entry.title,
+          "删除文件"
+        )
+      );
       list.append(item);
     });
     content.append(list);
@@ -617,6 +627,29 @@
     return button;
   }
 
+  function createWorkspaceDeleteAction(path, kind, label, text) {
+    const button = document.createElement("button");
+    button.className =
+      kind === "file"
+        ? "workspace-delete-action edit-mode-only"
+        : "workspace-scope-delete edit-mode-only";
+    button.type = "button";
+    button.dataset.deletePath = path;
+    button.dataset.deleteKind = kind;
+    button.dataset.deleteLabel = label;
+    button.dataset.editModeOnly = "";
+    button.title = text;
+    button.setAttribute("aria-label", text + "：" + label);
+    const icon = document.createElement("i");
+    icon.dataset.lucide = "trash-2";
+    icon.setAttribute("aria-hidden", "true");
+    button.append(icon);
+    if (kind !== "file") {
+      button.append(document.createTextNode(text));
+    }
+    return button;
+  }
+
   function renderModuleUnit(unit, depth) {
     const branch = document.createElement("section");
     branch.className =
@@ -670,6 +703,12 @@
         state.workspaceSnapshot.root,
         unit.id,
         "在 " + unit.title + " 下新建文件"
+      ),
+      createWorkspaceDeleteAction(
+        unit.id,
+        "directory",
+        unit.title,
+        depth ? "删除子模块" : "删除模块"
       )
     );
     summary.append(metadata, heading, description, actions);
@@ -703,6 +742,7 @@
       list.className = "module-unit-documents";
       unit.documents.forEach(function (entry) {
         const item = document.createElement("li");
+        item.className = "module-document-row";
         const link = document.createElement("a");
         link.href = workspaceEntryHref(entry);
         if (entry.operation === "delete") {
@@ -720,7 +760,15 @@
         link.append(icon, label);
         appendWorkspaceStatus(link, entry.status, entry.conflict);
         link.append(chevron);
-        item.append(link);
+        item.append(
+          link,
+          createWorkspaceDeleteAction(
+            entry.path,
+            "file",
+            entry.title,
+            "删除文件"
+          )
+        );
         list.append(item);
       });
       group.append(list);
@@ -1123,6 +1171,21 @@
         error.detail.code === "draft_revision_conflict"
           ? error.detail.draft
           : null;
+      if (
+        !retried &&
+        remote &&
+        change.operation === "delete"
+      ) {
+        const updated = {
+          ...change,
+          serverRevision: remote.revision,
+          conflict: false,
+          updatedAt: Date.now()
+        };
+        writeEditorBuffer(change.path, updated);
+        replaceServerDraft(remote);
+        return syncBufferedChange(updated, options, true);
+      }
       if (!retried && remote) {
         const merged = mergeLocalWithRemote(change, remote);
         if (merged !== null) {
@@ -1921,6 +1984,283 @@
     }
   }
 
+  function workspacePathMatches(path, target, kind) {
+    return kind === "file"
+      ? path === target
+      : path === target || path.startsWith(target.replace(/\/$/, "") + "/");
+  }
+
+  function workspaceTargetEntries(target, kind) {
+    return state.workspaceSnapshot
+      ? state.workspaceSnapshot.entries.filter(function (entry) {
+          return workspacePathMatches(entry.path, target, kind);
+        })
+      : [];
+  }
+
+  function workspaceTargetDrafts(target, kind) {
+    return state.drafts.filter(function (draft) {
+      return workspacePathMatches(draft.path, target, kind);
+    });
+  }
+
+  function workspaceTargetIsDeleted(target, kind) {
+    const entries = workspaceTargetEntries(target, kind);
+    const repositoryEntries = entries.filter(function (entry) {
+      return entry.baseExists;
+    });
+    return (
+      repositoryEntries.length > 0 &&
+      repositoryEntries.every(function (entry) {
+        return entry.operation === "delete";
+      })
+    );
+  }
+
+  function updateWorkspaceDeleteControls() {
+    queryAll("[data-delete-path]").forEach(function (button) {
+      const kind = button.dataset.deleteKind || "file";
+      const deleted = workspaceTargetIsDeleted(
+        button.dataset.deletePath,
+        kind
+      );
+      button.dataset.restoreDelete = deleted ? "true" : "false";
+      const text = deleted
+        ? "撤销删除"
+        : kind === "file"
+          ? "删除文件"
+          : button.dataset.deletePath.includes("/")
+            ? "删除子模块"
+            : "删除大模块";
+      button.title = text;
+      button.setAttribute(
+        "aria-label",
+        text + "：" + (button.dataset.deleteLabel || button.dataset.deletePath)
+      );
+      const icon = query("svg, i", button);
+      if (icon) {
+        const replacement = document.createElement("i");
+        replacement.dataset.lucide = deleted ? "undo-2" : "trash-2";
+        replacement.setAttribute("aria-hidden", "true");
+        icon.replaceWith(replacement);
+      }
+      if (kind !== "file") {
+        Array.from(button.childNodes)
+          .filter(function (node) {
+            return node.nodeType === Node.TEXT_NODE;
+          })
+          .forEach(function (node) {
+            node.remove();
+          });
+        button.append(document.createTextNode(text));
+      }
+      refreshIcons(button);
+    });
+  }
+
+  async function restoreWorkspaceTarget(target, kind) {
+    const localPaths = new Set(
+      localBufferChanges()
+        .filter(function (change) {
+          return workspacePathMatches(change.path, target, kind);
+        })
+        .map(function (change) {
+          return change.path;
+        })
+    );
+    localPaths.forEach(removeEditorBuffer);
+    const serverDeletes = state.serverDrafts.filter(function (draft) {
+      return (
+        draft.operation === "delete" &&
+        workspacePathMatches(draft.path, target, kind)
+      );
+    });
+    await Promise.all(
+      serverDeletes.map(function (draft) {
+        return api("/drafts/" + draft.id, { method: "DELETE" });
+      })
+    );
+    state.serverDrafts = state.serverDrafts.filter(function (draft) {
+      return !serverDeletes.some(function (deleted) {
+        return deleted.id === draft.id;
+      });
+    });
+    state.draftRevision = "";
+    refreshEffectiveDrafts();
+    addDraftNavigation();
+    updateAccountView();
+  }
+
+  async function deleteWorkspaceTarget(button) {
+    if (!ensureEditorAccess()) return;
+    const target = button.dataset.deletePath;
+    const kind = button.dataset.deleteKind || "file";
+    const label = button.dataset.deleteLabel || target;
+    if (button.dataset.restoreDelete === "true") {
+      if (window.confirm("撤销 " + label + " 的删除标记？")) {
+        button.disabled = true;
+        try {
+          await restoreWorkspaceTarget(target, kind);
+        } finally {
+          button.disabled = false;
+        }
+      }
+      return;
+    }
+
+    const localEntries = workspaceTargetEntries(target, kind);
+    const localDrafts = workspaceTargetDrafts(target, kind);
+    const hasRepositoryFiles = localEntries.some(function (entry) {
+      return entry.baseExists;
+    });
+    let repositoryItems = [];
+    if (hasRepositoryFiles) {
+      try {
+        const payload = await api(
+          "/repository/delete-tree?path=" +
+            encodeURIComponent(target) +
+            "&kind=" +
+            encodeURIComponent(kind)
+        );
+        repositoryItems = payload.items || [];
+      } catch (error) {
+        window.alert(error.message);
+        return;
+      }
+    }
+    const count = new Set(
+      repositoryItems
+        .map(function (entry) {
+          return entry.path;
+        })
+        .concat(
+          localEntries.map(function (entry) {
+            return entry.path;
+          })
+        )
+    ).size;
+    const scope = kind === "file"
+      ? "文件"
+      : target.includes("/")
+        ? "子模块"
+        : "大模块";
+    if (
+      !window.confirm(
+        "删除" +
+          scope +
+          "“" +
+          label +
+          "”？将标记 " +
+          count +
+          " 个文件为删除，提交 Draft PR 后才会从仓库移除。"
+      )
+    ) {
+      return;
+    }
+    if (
+      kind === "directory" &&
+      !target.includes("/") &&
+      !window.confirm(
+        "这是大模块删除操作，模块入口及全部子模块都会被删除。确认继续？"
+      )
+    ) {
+      return;
+    }
+
+    button.disabled = true;
+    try {
+      const activePath =
+        state.inlinePanel && state.inlinePanel.dataset.path;
+      if (
+        activePath &&
+        workspacePathMatches(activePath, target, kind)
+      ) {
+        await closeInlineEditor({ renderLatest: false });
+      }
+      const repositoryByPath = new Map(
+        repositoryItems.map(function (entry) {
+          return [entry.path, entry];
+        })
+      );
+      const allPaths = new Set(
+        repositoryItems
+          .map(function (entry) {
+            return entry.path;
+          })
+          .concat(
+            localEntries.map(function (entry) {
+              return entry.path;
+            }),
+            localDrafts.map(function (draft) {
+              return draft.path;
+            })
+          )
+      );
+      const discardServerDrafts = [];
+      allPaths.forEach(function (path) {
+        const entry = localEntries.find(function (item) {
+          return item.path === path;
+        });
+        const remoteDraft = state.serverDrafts.find(function (item) {
+          return item.path === path;
+        });
+        const repository = repositoryByPath.get(path);
+        const baseSha =
+          (repository && repository.sha) ||
+          (entry && entry.baseSha) ||
+          (remoteDraft && remoteDraft.base_sha) ||
+          null;
+        if (!baseSha) {
+          removeEditorBuffer(path);
+          if (remoteDraft && remoteDraft.id) {
+            discardServerDrafts.push(remoteDraft);
+          }
+          return;
+        }
+        writeEditorBuffer(path, {
+          content: "",
+          baseSha,
+          baseContent: "",
+          operation: "delete",
+          serverRevision: remoteDraft ? remoteDraft.revision : 0,
+          updatedAt: Date.now()
+        });
+      });
+      await Promise.all(
+        discardServerDrafts.map(function (draft) {
+          return api("/drafts/" + draft.id, { method: "DELETE" });
+        })
+      );
+      state.serverDrafts = state.serverDrafts.filter(function (draft) {
+        return !discardServerDrafts.some(function (discarded) {
+          return discarded.id === draft.id;
+        });
+      });
+      state.draftRevision = "";
+      refreshEffectiveDrafts();
+      addDraftNavigation();
+      updateAccountView();
+      const host = query("[data-editor-host]");
+      const sourcePath = host && host.dataset.editorSource;
+      if (
+        host &&
+        sourcePath &&
+        workspacePathMatches(sourcePath, target, kind)
+      ) {
+        const draft = state.drafts.find(function (item) {
+          return item.path === sourcePath;
+        });
+        if (draft) showDeletedDraft(host, draft);
+      }
+      syncWorkspaceState();
+    } catch (error) {
+      window.alert(error.message);
+    } finally {
+      button.disabled = false;
+      updateWorkspaceDeleteControls();
+    }
+  }
+
   function normalizeParent(root, value) {
     const parts = (value || "").split("/").filter(Boolean);
     if (parts[0] === root) {
@@ -2146,6 +2486,12 @@
       window.location.assign(link.href);
     });
     document.addEventListener("click", function (event) {
+      const removeTarget = event.target.closest("[data-delete-path]");
+      if (removeTarget) {
+        event.preventDefault();
+        deleteWorkspaceTarget(removeTarget);
+        return;
+      }
       const create = event.target.closest("[data-create-context]");
       if (create) {
         event.preventDefault();

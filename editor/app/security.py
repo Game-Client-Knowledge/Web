@@ -147,6 +147,35 @@ def validate_content_path(value: str) -> str:
     return path.as_posix()
 
 
+def validate_repository_path(
+    value: str,
+    *,
+    allow_module_root: bool = False,
+) -> str:
+    source = value.strip().replace("\\", "/")
+    if source.startswith("/"):
+        raise ValueError("仓库路径必须使用相对路径")
+    raw = source.strip("/")
+    if (
+        not raw
+        or any(ord(character) < 32 or ord(character) == 127 for character in raw)
+    ):
+        raise ValueError("仓库路径无效")
+
+    path = PurePosixPath(raw)
+    if ".." in path.parts or any(part.startswith(".") for part in path.parts):
+        raise ValueError("仓库路径不能包含隐藏目录或上级目录")
+    minimum_parts = 1 if allow_module_root else 2
+    if (
+        len(path.parts) < minimum_parts
+        or not is_valid_module_root(path.parts[0])
+    ):
+        raise ValueError("仓库路径必须位于有效的顶级模块内")
+    if len(raw) > 240:
+        raise ValueError("仓库路径过长")
+    return path.as_posix()
+
+
 def make_branch_name(username: str, custom_head: str) -> str:
     user_slug = slugify(username, "user")
     head_slug = slugify(custom_head, "update")

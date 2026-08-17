@@ -630,6 +630,83 @@ def test_file_delete_and_discard_change(client: TestClient) -> None:
     assert client.get("/api/drafts").json()["items"] == []
 
 
+def test_delete_tree_returns_all_repository_files(
+    client: TestClient,
+) -> None:
+    client.post(
+        "/api/auth/register",
+        json={
+            "email": "delete-tree@example.test",
+            "username": "delete-tree",
+            "password": "local-password-123",
+        },
+    )
+    github = client.app.state.github
+    github.repository_tree = AsyncMock(
+        return_value=[
+            {
+                "path": "graphics/topic/README.md",
+                "sha": "readme-sha",
+                "size": 120,
+            },
+            {
+                "path": "graphics/topic/image.png",
+                "sha": "image-sha",
+                "size": 2_000_000,
+            },
+            {
+                "path": "graphics/other/README.md",
+                "sha": "other-sha",
+                "size": 80,
+            },
+        ]
+    )
+
+    response = client.get(
+        "/api/repository/delete-tree",
+        params={"path": "graphics/topic", "kind": "directory"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["items"] == [
+        {
+            "path": "graphics/topic/README.md",
+            "sha": "readme-sha",
+            "size": 120,
+        },
+        {
+            "path": "graphics/topic/image.png",
+            "sha": "image-sha",
+            "size": 2_000_000,
+        },
+    ]
+
+
+def test_delete_draft_accepts_safe_non_editable_asset_path(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "delete-asset@example.test",
+            "username": "delete-asset",
+            "password": "local-password-123",
+        },
+    ).json()
+    response = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": registered["csrf_token"]},
+        json={
+            "path": "knowledge/rendering/diagram.png",
+            "content": "",
+            "base_sha": "asset-sha",
+            "operation": "delete",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["operation"] == "delete"
+
+
 def test_draft_revision_polling_and_conflict_protection(
     client: TestClient,
 ) -> None:
@@ -1733,7 +1810,7 @@ def test_submission_preserves_file_delete_operation(
     assert changes[0]["operation"] == "delete"
 
 
-def test_submission_rejects_top_level_module_readme_deletion(
+def test_submission_rejects_incomplete_top_level_module_deletion(
     client: TestClient,
 ) -> None:
     registered = client.post(
@@ -1768,7 +1845,12 @@ def test_submission_rejects_top_level_module_readme_deletion(
                 "path": path,
                 "sha": "module-readme-sha",
                 "type": "blob",
-            }
+            },
+            {
+                "path": "graphics/topic/README.md",
+                "sha": "topic-sha",
+                "type": "blob",
+            },
         ]
     )
     github.submit = AsyncMock()
@@ -1784,9 +1866,74 @@ def test_submission_rejects_top_level_module_readme_deletion(
     )
     assert response.status_code == 422
     assert response.json()["detail"] == (
-        "不能删除顶级模块 README.md；该文件用于模块发现和导航"
+        "删除顶级模块 graphics 时必须同时删除目录内全部文件；"
+        "当前仍有 1 个文件未标记删除"
     )
     github.submit.assert_not_awaited()
+
+
+def test_submission_allows_complete_top_level_module_deletion(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "delete-complete-module@example.test",
+            "username": "delete-complete-module",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    files = {
+        "graphics/README.md": "module-readme-sha",
+        "graphics/topic/README.md": "topic-readme-sha",
+        "graphics/topic/diagram.png": "diagram-sha",
+    }
+    for path, sha in files.items():
+        response = client.put(
+            "/api/drafts",
+            headers={"X-CSRF-Token": csrf},
+            json={
+                "path": path,
+                "content": "",
+                "base_sha": sha,
+                "operation": "delete",
+            },
+        )
+        assert response.status_code == 200, response.text
+
+    github = client.app.state.github
+    github.main_reference = AsyncMock(
+        return_value={"object": {"sha": "main-commit-sha"}}
+    )
+    github.repository_tree = AsyncMock(
+        return_value=[
+            {"path": path, "sha": sha, "type": "blob"}
+            for path, sha in files.items()
+        ]
+    )
+    github.submit = AsyncMock(
+        return_value=SubmissionResult(
+            branch="web/delete-complete-module/remove-graphics",
+            commit_sha="commit-sha",
+            pr_number=44,
+            pr_url="https://github.example/pr/44",
+        )
+    )
+
+    response = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "custom_head": "remove-graphics",
+            "title": "docs: remove graphics module",
+            "description": "",
+        },
+    )
+    assert response.status_code == 200, response.text
+    changes = github.submit.await_args.kwargs["changes"]
+    assert {item["path"] for item in changes} == set(files)
+    assert all(item["operation"] == "delete" for item in changes)
 
 
 def test_admin_can_verify_local_email(client: TestClient) -> None:

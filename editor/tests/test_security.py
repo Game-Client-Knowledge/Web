@@ -7,6 +7,7 @@ from app.security import (
     normalize_email,
     normalize_username,
     validate_content_path,
+    validate_repository_path,
 )
 
 
@@ -53,6 +54,25 @@ def test_accepts_expected_paths() -> None:
         validate_content_path("code/rendering/demo/main.hlsl")
         == "code/rendering/demo/main.hlsl"
     )
+
+
+def test_repository_delete_paths_allow_assets_but_reject_unsafe_paths() -> None:
+    assert (
+        validate_repository_path("knowledge/rendering/diagram.png")
+        == "knowledge/rendering/diagram.png"
+    )
+    assert (
+        validate_repository_path("graphics", allow_module_root=True)
+        == "graphics"
+    )
+    for path in [
+        "../secret.png",
+        "/knowledge/rendering/diagram.png",
+        "scripts/build.sh",
+        "knowledge/.env",
+    ]:
+        with pytest.raises(ValueError):
+            validate_repository_path(path, allow_module_root=True)
 
 
 def test_branch_name_is_namespaced_and_sanitized() -> None:

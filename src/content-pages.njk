@@ -154,6 +154,26 @@ eleventyComputed:
             <i data-lucide="file-plus-2" aria-hidden="true"></i>
             新建文件
           </button>
+          <button
+            class="secondary-button workspace-scope-delete"
+            type="button"
+            data-delete-path="{{ currentUnit.id }}"
+            data-delete-kind="directory"
+            data-delete-label="{{ currentUnit.title }}"
+          >
+            <i data-lucide="folder-x" aria-hidden="true"></i>
+            删除子模块
+          </button>
+          <button
+            class="danger-button"
+            type="button"
+            data-delete-path="{{ document.sourceRelative }}"
+            data-delete-kind="file"
+            data-delete-label="{{ document.title }}"
+          >
+            <i data-lucide="trash-2" aria-hidden="true"></i>
+            删除文件
+          </button>
         </div>
       </header>
 

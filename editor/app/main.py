@@ -62,6 +62,7 @@ from .security import (
     token_hash,
     validate_content_path,
     validate_password,
+    validate_repository_path,
     verify_password,
 )
 from .smtp_config import (
@@ -83,7 +84,7 @@ SESSION_COOKIE = "gck_editor_session"
 OAUTH_STATE_COOKIE = "gck_editor_oauth_state"
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MAX_DRAFT_BYTES = 512 * 1024
-MAX_DRAFTS = 50
+MAX_DRAFTS = 1000
 
 
 class RegisterRequest(BaseModel):
@@ -1525,6 +1526,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return await github.repository_file(normalized)
 
+    @app.get("/api/repository/delete-tree")
+    async def repository_delete_tree(
+        path: str,
+        kind: str = "directory",
+        user: dict[str, Any] = Depends(require_editor),
+    ) -> dict[str, Any]:
+        del user
+        if kind not in {"file", "directory"}:
+            raise HTTPException(status_code=422, detail="删除目标类型无效")
+        try:
+            normalized = validate_repository_path(
+                path,
+                allow_module_root=kind == "directory",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        tree = await github.repository_tree()
+        prefix = normalized.rstrip("/") + "/"
+        items = []
+        for item in tree:
+            candidate = str(item.get("path") or "")
+            matches = (
+                candidate == normalized
+                if kind == "file"
+                else candidate.startswith(prefix)
+            )
+            if not matches:
+                continue
+            try:
+                safe_path = validate_repository_path(candidate)
+            except ValueError:
+                continue
+            items.append(
+                {
+                    "path": safe_path,
+                    "sha": item["sha"],
+                    "size": item.get("size", 0),
+                }
+            )
+        if not items:
+            raise HTTPException(status_code=404, detail="删除目标在 main 分支中不存在")
+        return {"items": items}
+
     @app.get("/api/drafts")
     async def list_drafts(
         revision: str | None = None,
@@ -1547,7 +1591,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         verify_csrf(user, x_csrf_token)
         try:
-            path = validate_content_path(payload.path)
+            path = (
+                validate_repository_path(payload.path)
+                if payload.operation == "delete"
+                else validate_content_path(payload.path)
+            )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if payload.operation not in {"upsert", "delete"}:
@@ -2016,28 +2064,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             and draft["path"].count("/") == 1
             and draft["path"].endswith("/README.md")
         )
-        available_roots.difference_update(
+        deleted_roots = {
             draft["path"].split("/", 1)[0]
             for draft in drafts
             if draft["operation"] == "delete"
             and draft["path"].count("/") == 1
             and draft["path"].endswith("/README.md")
-        )
-        for draft in drafts:
-            if (
-                draft["operation"] == "delete"
-                and draft["path"].count("/") == 1
-                and draft["path"].endswith("/README.md")
-            ):
+        }
+        deleted_paths = {
+            draft["path"]
+            for draft in drafts
+            if draft["operation"] == "delete"
+        }
+        for root in deleted_roots:
+            remaining = []
+            prefix = root + "/"
+            for candidate in tree:
+                if candidate != f"{root}/README.md" and not candidate.startswith(
+                    prefix
+                ):
+                    continue
+                try:
+                    safe_candidate = validate_repository_path(candidate)
+                except ValueError:
+                    continue
+                if safe_candidate not in deleted_paths:
+                    remaining.append(safe_candidate)
+            if remaining:
                 raise HTTPException(
                     status_code=422,
                     detail=(
-                        "不能删除顶级模块 README.md；"
-                        "该文件用于模块发现和导航"
+                        f"删除顶级模块 {root} 时必须同时删除目录内全部文件；"
+                        f"当前仍有 {len(remaining)} 个文件未标记删除"
                     ),
                 )
+        available_roots.difference_update(deleted_roots)
+        for draft in drafts:
             root = draft["path"].split("/", 1)[0]
-            if root not in available_roots:
+            if root in deleted_roots:
+                if draft["operation"] != "delete":
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"{draft['path']} 位于待删除的大模块中",
+                    )
+            elif root not in available_roots:
                 raise HTTPException(
                     status_code=422,
                     detail=(

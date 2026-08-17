@@ -694,10 +694,41 @@ a[aria-disabled="true"] {
   font-weight: 500;
 }
 
+.resource-delete-action {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  color: var(--git-deleted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  flex: 0 0 auto;
+  place-items: center;
+}
+
+.resource-delete-action:hover {
+  background: var(--git-deleted-soft);
+  border-color: #ffb3b4;
+}
+
+.resource-delete-action svg {
+  width: 12px !important;
+  height: 12px !important;
+  color: currentColor !important;
+}
+
 .resource-folder-children {
   margin-left: 12px;
   padding-left: 7px;
   border-left: 1px solid var(--line);
+}
+
+.resource-file-row {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 27px;
 }
 
 .resource-file {

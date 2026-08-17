@@ -98,6 +98,7 @@
           ? -100
           : 1000,
       isReadme: entry.isReadme === true || isReadme(path),
+      baseSha: entry.baseSha || entry.base_sha || null,
       status: "",
       operation: "upsert",
       baseExists: true,
@@ -134,7 +135,7 @@
       path,
       status: changeStatus(change, Boolean(base.baseExists)),
       operation: change.operation || "upsert",
-      baseSha: change.base_sha || change.baseSha || null,
+      baseSha: change.base_sha || change.baseSha || base.baseSha || null,
       serverRevision: Number(
         change.revision ?? change.serverRevision ?? 0
       ),

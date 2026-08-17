@@ -12,7 +12,8 @@ const base = [
     description: "面经",
     kind: "markdown",
     route: "/interviews/",
-    isReadme: true
+    isReadme: true,
+    baseSha: "root-sha"
   },
   {
     path: "interviews/mihoyo/README.md",
@@ -20,13 +21,15 @@ const base = [
     description: "米哈游面经",
     kind: "markdown",
     route: "/interviews/mihoyo/",
-    isReadme: true
+    isReadme: true,
+    baseSha: "mihoyo-readme-sha"
   },
   {
     path: "interviews/mihoyo/01-round.md",
     title: "一面",
     kind: "markdown",
-    route: "/interviews/mihoyo/01-round/"
+    route: "/interviews/mihoyo/01-round/",
+    baseSha: "mihoyo-round-sha"
   }
 ];
 const serverDrafts = [
@@ -73,6 +76,31 @@ assert.deepEqual(
   ["A", "A"]
 );
 assert.equal(tree.changedCount, 3);
+assert.equal(mihoyo.readme.baseSha, "mihoyo-readme-sha");
+
+const deletedEntries = mergeEntries(base, [], [
+  {
+    path: "interviews/mihoyo/README.md",
+    content: "",
+    operation: "delete",
+    baseSha: "mihoyo-readme-sha"
+  },
+  {
+    path: "interviews/mihoyo/01-round.md",
+    content: "",
+    operation: "delete",
+    baseSha: "mihoyo-round-sha"
+  }
+]);
+const deletedTree = buildModuleTree("interviews", deletedEntries);
+const deletedUnit = deletedTree.rootUnits.find(
+  (unit) => unit.id === "interviews/mihoyo"
+);
+assert.equal(deletedUnit.status, "D");
+assert.equal(deletedUnit.changeCount, 2);
+assert(
+  deletedUnit.documents.every((entry) => entry.operation === "delete")
+);
 assert.deepEqual(
   parseMarkdownMetadata(
     "---\norder: 1\n---\n# 标题\n\n正文简介。\n",

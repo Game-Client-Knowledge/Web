@@ -1216,6 +1216,13 @@ body[data-editor-state="loading"] [data-account-label] {
   border-top: 1px solid #edf0ee;
 }
 
+.module-document-row {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 32px;
+}
+
 .module-unit-documents a {
   display: grid;
   min-height: 40px;
@@ -1226,6 +1233,32 @@ body[data-editor-state="loading"] [data-account-label] {
   grid-template-columns: 18px minmax(0, 1fr) 16px;
   font-size: 13px;
   text-decoration: none;
+}
+
+.module-document-row > a {
+  min-width: 0;
+}
+
+.workspace-delete-action {
+  display: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--git-deleted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  place-items: center;
+}
+
+.workspace-delete-action:hover {
+  background: var(--git-deleted-soft);
+  border-color: #ffb3b4;
+}
+
+.workspace-delete-action svg {
+  width: 14px;
+  height: 14px;
 }
 
 .module-unit-documents a:hover {
@@ -1700,6 +1733,27 @@ body[data-editor-state="loading"] [data-account-label] {
   align-items: center;
   gap: 5px;
   font-size: 10px;
+}
+
+.unit-editor-actions .workspace-scope-delete,
+.workspace-scope-delete {
+  color: var(--git-deleted);
+  background: var(--git-deleted-soft);
+  border-color: #ffb3b4;
+}
+
+.unit-editor-actions .workspace-scope-delete:hover,
+.workspace-scope-delete:hover {
+  color: #a40e26;
+  background: #ffd8d4;
+  border-color: #ff8182;
+}
+
+.reader-context-actions .danger-button,
+.module-editor-actions .danger-button {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 11px;
 }
 
 .edit-mode-only {

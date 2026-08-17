@@ -81,6 +81,7 @@ async function canvasMetrics(page, selector) {
 async function inspectPage(browser, scenario) {
   let allowDraftWrites = true;
   let draftAttempts = 0;
+  let draftDeletes = 0;
   let previewAttempts = 0;
   const draftWrites = [];
   const visualSettings = {
@@ -160,6 +161,22 @@ async function inspectPage(browser, scenario) {
       })
     });
   });
+  await context.route("**/editor/api/repository/delete-tree**", (route) => {
+    const url = new URL(route.request().url());
+    const path = url.searchParams.get("path");
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            path,
+            sha: "visual-delete-sha",
+            size: 120
+          }
+        ]
+      })
+    });
+  });
   await context.route("**/editor/api/drafts**", (route) => {
     if (route.request().method() === "GET") {
       return route.fulfill({
@@ -170,6 +187,10 @@ async function inspectPage(browser, scenario) {
           items: []
         })
       });
+    }
+    if (route.request().method() === "DELETE") {
+      draftDeletes += 1;
+      return route.fulfill({ status: 204, body: "" });
     }
     if (route.request().method() !== "PUT") {
       return route.fallback();
@@ -578,7 +599,7 @@ async function inspectPage(browser, scenario) {
       };
     });
     assert(
-      hierarchy.rootCards === 4 &&
+      hierarchy.rootCards === 5 &&
         hierarchy.cppChildren.some((title) => title.includes("C++ 多态")),
       `${scenario.name}: homepage hierarchy is ${JSON.stringify(hierarchy)}`
     );
@@ -925,12 +946,15 @@ async function inspectPage(browser, scenario) {
   }
 
   if (scenario.workspaceTree) {
-    const workspace = await page.evaluate(() => {
+    page.on("dialog", (dialog) => dialog.accept());
+    const workspace = await page.evaluate((workspaceTitle) => {
       const units = Array.from(
         document.querySelectorAll(".workspace-unit-branch")
       );
       const target = units.find((unit) => {
-        return unit.querySelector("h3")?.textContent.includes("腾讯 2026");
+        return unit
+          .querySelector("h3")
+          ?.textContent.includes(workspaceTitle);
       });
       return {
         targetStatus: target?.dataset.status || "",
@@ -948,10 +972,12 @@ async function inspectPage(browser, scenario) {
           : [],
         flatDraftLists: document.querySelectorAll(".draft-content-list").length
       };
-    });
+    }, scenario.workspaceTitle || "腾讯 2026");
     assert(
       workspace.targetStatus === "A" &&
-        workspace.targetTitle.includes("腾讯 2026") &&
+        workspace.targetTitle.includes(
+          scenario.workspaceTitle || "腾讯 2026"
+        ) &&
         workspace.documents.length === 2 &&
         workspace.documents.every((item) => item.status === "A") &&
         workspace.flatDraftLists === 0,
@@ -972,6 +998,101 @@ async function inspectPage(browser, scenario) {
     assert(
       createControls >= 4,
       `${scenario.name}: create controls are hidden in seamless edit mode`
+    );
+    const deleteControls = await page.evaluate(() => {
+      const visible = Array.from(
+        document.querySelectorAll("[data-delete-path]")
+      ).filter((element) => {
+        const style = getComputedStyle(element);
+        return style.display !== "none" && element.getClientRects().length;
+      });
+      return {
+        total: visible.length,
+        files: visible.filter(
+          (element) => element.dataset.deleteKind === "file"
+        ).length,
+        modules: visible.filter(
+          (element) => element.dataset.deleteKind === "directory"
+        ).length,
+        bigModules: visible.filter(
+          (element) =>
+            element.dataset.deleteKind === "directory" &&
+            !element.dataset.deletePath.includes("/")
+        ).length
+      };
+    });
+    assert(
+      deleteControls.files > 0 &&
+        deleteControls.modules > 0 &&
+        deleteControls.bigModules === 1,
+      `${scenario.name}: file, submodule, or big-module delete controls missing`
+    );
+
+    if (scenario.workspaceDeleteInteraction === false) {
+      await context.close();
+      return;
+    }
+    const fileDelete = page.locator(
+      ".workspace-delete-action[data-delete-kind='file']" +
+        ":not([data-delete-path*='visual-company'])"
+    ).first();
+    const deletedPath = await fileDelete.getAttribute("data-delete-path");
+    const deleteRequest = page.waitForRequest((request) => {
+      if (
+        request.method() !== "PUT" ||
+        !request.url().includes("/editor/api/drafts")
+      ) {
+        return false;
+      }
+      try {
+        const payload = request.postDataJSON();
+        return (
+          payload.path === deletedPath &&
+          payload.operation === "delete"
+        );
+      } catch {
+        return false;
+      }
+    });
+    await fileDelete.click();
+    await deleteRequest;
+    await page.waitForFunction(() => {
+      return document.querySelector(
+        "[data-delete-kind='file'][data-restore-delete='true']"
+      );
+    });
+    assert(
+      draftWrites.some(
+        (write) =>
+          write.path === deletedPath && write.operation === "delete"
+      ),
+      `${scenario.name}: file delete was not synchronized as a D change`
+    );
+    const undoRequest = page.waitForRequest((request) => {
+      return (
+        request.method() === "DELETE" &&
+        request.url().includes("/editor/api/drafts/")
+      );
+    });
+    await page
+      .locator(
+        `[data-delete-path="${deletedPath}"]` +
+          "[data-restore-delete='true']"
+      )
+      .first()
+      .click();
+    await undoRequest;
+    await page.waitForFunction(
+      (path) => {
+        return !document.querySelector(
+          `[data-delete-path="${path}"][data-restore-delete="true"]`
+        );
+      },
+      deletedPath
+    );
+    assert(
+      draftDeletes === 1,
+      `${scenario.name}: delete undo did not discard the server draft`
     );
   }
 
@@ -1319,16 +1440,17 @@ async function inspectPage(browser, scenario) {
       viewport: { width: 1440, height: 1000 },
       authenticated: true,
       workspaceTree: true,
+      workspaceTitle: "视觉测试公司 2027",
       drafts: [
         {
           id: 9101,
           path:
-            "interviews/tencent/" +
-            "2026-autumn-game-client-sourcecode-1/README.md",
+            "interviews/visual-company/" +
+            "2027-game-client/README.md",
           operation: "upsert",
           content:
-            "# 腾讯 2026 秋招游戏客户端\n\n" +
-            "腾讯秋招游戏客户端面经与源码题复盘。\n",
+            "# 视觉测试公司 2027\n\n" +
+            "用于验证未提交专题树与删除入口。\n",
           base_sha: null,
           revision: 1,
           created_at: "2026-08-17T00:00:00Z",
@@ -1337,10 +1459,47 @@ async function inspectPage(browser, scenario) {
         {
           id: 9102,
           path:
-            "interviews/tencent/" +
-            "2026-autumn-game-client-sourcecode-1/01-first-round.md",
+            "interviews/visual-company/" +
+            "2027-game-client/01-first-round.md",
           operation: "upsert",
-          content: "# 腾讯一面\n\n第一轮面试内容。\n",
+          content: "# 视觉测试一面\n\n第一轮面试内容。\n",
+          base_sha: null,
+          revision: 1,
+          created_at: "2026-08-17T00:00:00Z",
+          updated_at: "2026-08-17T00:00:00Z"
+        }
+      ],
+      visualSettings: { pointer_effect_enabled: false }
+    },
+    {
+      name: "module-delete-controls-mobile",
+      route: "/interviews/",
+      viewport: { width: 390, height: 844 },
+      authenticated: true,
+      workspaceTree: true,
+      workspaceTitle: "视觉测试公司 2027",
+      workspaceDeleteInteraction: false,
+      drafts: [
+        {
+          id: 9201,
+          path:
+            "interviews/visual-company/" +
+            "2027-game-client/README.md",
+          operation: "upsert",
+          content:
+            "# 视觉测试公司 2027\n\n用于验证移动端删除入口。\n",
+          base_sha: null,
+          revision: 1,
+          created_at: "2026-08-17T00:00:00Z",
+          updated_at: "2026-08-17T00:00:00Z"
+        },
+        {
+          id: 9202,
+          path:
+            "interviews/visual-company/" +
+            "2027-game-client/01-first-round.md",
+          operation: "upsert",
+          content: "# 视觉测试一面\n\n第一轮面试内容。\n",
           base_sha: null,
           revision: 1,
           created_at: "2026-08-17T00:00:00Z",
@@ -1379,7 +1538,17 @@ async function inspectPage(browser, scenario) {
     }
   ];
 
-  for (const scenario of scenarios) {
+  const selectedScenarios = process.env.VISUAL_SCENARIO
+    ? scenarios.filter((scenario) => {
+        return scenario.name === process.env.VISUAL_SCENARIO;
+      })
+    : scenarios;
+  if (!selectedScenarios.length) {
+    throw new Error(
+      `Unknown visual scenario: ${process.env.VISUAL_SCENARIO}`
+    );
+  }
+  for (const scenario of selectedScenarios) {
     await inspectPage(browser, scenario);
   }
 

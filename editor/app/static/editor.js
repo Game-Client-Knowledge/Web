@@ -463,8 +463,138 @@ function refreshIcons(root) {
   }
 }
 
-function renderTreeNode(node, target, depth) {
+function resourcePathMatches(path, target, kind) {
+  return kind === "file"
+    ? path === target
+    : path === target || path.startsWith(`${target.replace(/\/$/, "")}/`);
+}
+
+function resourceTargetDeleted(target, kind) {
+  const repositoryFiles = state.repository.filter((entry) =>
+    resourcePathMatches(entry.path, target, kind)
+  );
+  return (
+    repositoryFiles.length > 0 &&
+    repositoryFiles.every((entry) =>
+      state.drafts.some(
+        (draft) =>
+          draft.path === entry.path && draft.operation === "delete"
+      )
+    )
+  );
+}
+
+function resourceDeleteButton(path, kind, label) {
+  const button = document.createElement("button");
+  const deleted = resourceTargetDeleted(path, kind);
+  button.className = "resource-delete-action";
+  button.type = "button";
+  button.title = deleted ? "撤销删除" : kind === "file" ? "删除文件" : "删除模块";
+  button.setAttribute("aria-label", `${button.title}：${label}`);
+  button.append(icon(deleted ? "undo-2" : "trash-2"));
+  button.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    await deleteResourceTarget(path, kind, label, deleted);
+  });
+  return button;
+}
+
+async function deleteResourceTarget(path, kind, label, restore) {
+  const matchingDrafts = state.drafts.filter((draft) =>
+    resourcePathMatches(draft.path, path, kind)
+  );
+  if (restore) {
+    if (!window.confirm(`撤销 ${label} 的删除标记？`)) return;
+    try {
+      await Promise.all(
+        matchingDrafts
+          .filter((draft) => draft.operation === "delete" && draft.id)
+          .map((draft) => api(`/drafts/${draft.id}`, { method: "DELETE" }))
+      );
+      await loadDrafts();
+    } catch (error) {
+      feedback(byId("editorFeedback"), error.message);
+    }
+    return;
+  }
+
+  try {
+    const repositoryMatches = state.repository.filter((entry) =>
+      resourcePathMatches(entry.path, path, kind)
+    );
+    if (!repositoryMatches.length && matchingDrafts.length) {
+      if (
+        !window.confirm(
+          `删除尚未提交的${kind === "file" ? "文件" : "模块"}“${label}”？`
+        )
+      ) {
+        return;
+      }
+      await Promise.all(
+        matchingDrafts
+          .filter((draft) => draft.id)
+          .map((draft) => api(`/drafts/${draft.id}`, { method: "DELETE" }))
+      );
+      await loadDrafts();
+      return;
+    }
+    const payload = await api(
+      `/repository/delete-tree?path=${encodeURIComponent(path)}` +
+        `&kind=${encodeURIComponent(kind)}`
+    );
+    const repositoryItems = payload.items || [];
+    const scope =
+      kind === "file" ? "文件" : path.includes("/") ? "子模块" : "大模块";
+    if (
+      !window.confirm(
+        `删除${scope}“${label}”？将标记 ${repositoryItems.length} 个文件为删除。`
+      )
+    ) {
+      return;
+    }
+    if (
+      kind === "directory" &&
+      !path.includes("/") &&
+      !window.confirm("大模块及其全部子模块都会被删除，确认继续？")
+    ) {
+      return;
+    }
+    const repositoryPaths = new Set(
+      repositoryItems.map((entry) => entry.path)
+    );
+    await Promise.all(
+      matchingDrafts
+        .filter(
+          (draft) =>
+            draft.id &&
+            !draft.base_sha &&
+            !repositoryPaths.has(draft.path)
+        )
+        .map((draft) => api(`/drafts/${draft.id}`, { method: "DELETE" }))
+    );
+    for (const entry of repositoryItems) {
+      const draft = state.drafts.find((item) => item.path === entry.path);
+      await api("/drafts", {
+        method: "PUT",
+        body: JSON.stringify({
+          path: entry.path,
+          content: "",
+          base_sha: entry.sha,
+          base_revision: draft ? draft.revision : 0,
+          operation: "delete"
+        })
+      });
+    }
+    await loadDrafts();
+  } catch (error) {
+    feedback(byId("editorFeedback"), error.message);
+  }
+}
+
+function renderTreeNode(node, target, depth, parentPath = "") {
   for (const [name, child] of Array.from(node.folders.entries()).sort()) {
+    const folderPath = [parentPath, name].filter(Boolean).join("/");
     const details = document.createElement("details");
     details.className = "resource-folder";
     details.open = depth < 2 || Boolean(state.resourceFilter);
@@ -472,15 +602,20 @@ function renderTreeNode(node, target, depth) {
     summary.append(icon("folder"), document.createTextNode(name));
     const count = document.createElement("small");
     count.textContent = String(child.files.length + child.folders.size);
-    summary.append(count);
+    summary.append(
+      count,
+      resourceDeleteButton(folderPath, "directory", name)
+    );
     details.append(summary);
     const children = document.createElement("div");
     children.className = "resource-folder-children";
-    renderTreeNode(child, children, depth + 1);
+    renderTreeNode(child, children, depth + 1, folderPath);
     details.append(children);
     target.append(details);
   }
   for (const file of node.files) {
+    const row = document.createElement("div");
+    row.className = "resource-file-row";
     const button = document.createElement("button");
     button.className = "resource-file";
     button.type = "button";
@@ -508,7 +643,11 @@ function renderTreeNode(node, target, depth) {
       button.append(badge);
     }
     button.addEventListener("click", () => openResource(file.path));
-    target.append(button);
+    row.append(
+      button,
+      resourceDeleteButton(file.path, "file", file.filename)
+    );
+    target.append(row);
   }
 }
 

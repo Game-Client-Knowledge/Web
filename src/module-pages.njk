@@ -49,6 +49,18 @@ eleventyComputed:
             <i data-lucide="file-plus-2" aria-hidden="true"></i>
             文件
           </button>
+          <button
+            class="workspace-scope-delete"
+            type="button"
+            data-delete-path="{{ unit.id }}"
+            data-delete-kind="directory"
+            data-delete-label="{{ unit.title }}"
+            aria-label="删除子模块：{{ unit.title }}"
+            title="删除子模块"
+          >
+            <i data-lucide="trash-2" aria-hidden="true"></i>
+            删除子模块
+          </button>
         </div>
       </div>
       <div class="module-unit-content">
@@ -69,7 +81,7 @@ eleventyComputed:
             {% endif %}
             <ol class="module-unit-documents">
               {% for item in unit.documents %}
-                <li>
+                <li class="module-document-row">
                   <a href="{{ item.route | withBase }}">
                     <i
                       data-lucide="{% if item.kind == 'code' %}file-code-2{% else %}file-text{% endif %}"
@@ -78,6 +90,18 @@ eleventyComputed:
                     <span>{{ item.title }}</span>
                     <i data-lucide="chevron-right" aria-hidden="true"></i>
                   </a>
+                  <button
+                    class="workspace-delete-action edit-mode-only"
+                    type="button"
+                    data-edit-mode-only
+                    data-delete-path="{{ item.sourceRelative }}"
+                    data-delete-kind="file"
+                    data-delete-label="{{ item.title }}"
+                    aria-label="删除文件：{{ item.title }}"
+                    title="删除文件"
+                  >
+                    <i data-lucide="trash-2" aria-hidden="true"></i>
+                  </button>
                 </li>
               {% endfor %}
             </ol>
@@ -145,6 +169,16 @@ eleventyComputed:
         <i data-lucide="layout-grid" aria-hidden="true"></i>
         新增大模块
       </a>
+      <button
+        class="danger-button"
+        type="button"
+        data-delete-path="{{ module.key }}"
+        data-delete-kind="directory"
+        data-delete-label="{{ module.title }}"
+      >
+        <i data-lucide="trash-2" aria-hidden="true"></i>
+        删除大模块
+      </button>
     </div>
   </header>
 
