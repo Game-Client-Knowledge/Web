@@ -470,6 +470,9 @@ class Database:
                 "reader_background_style": "blueprint",
                 "pointer_effect_enabled": "1",
                 "home_intro_enabled": "1",
+                "home_intro_duration_ms": "3000",
+                "home_intro_lock_scroll": "1",
+                "home_intro_contributor_limit": "8",
             }.items():
                 connection.execute(
                     """

@@ -1456,13 +1456,11 @@ dialog::backdrop {
   display: grid;
   align-items: end;
   gap: 16px;
-  grid-template-columns:
-    repeat(2, minmax(190px, 1fr))
-    repeat(2, minmax(160px, 0.8fr))
-    auto;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
 }
 
 .visual-settings-form > .primary-button {
+  grid-column: 1 / -1;
   justify-self: start;
 }
 

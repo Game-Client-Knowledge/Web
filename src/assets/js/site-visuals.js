@@ -133,8 +133,8 @@
       context.lineWidth = 0.6;
       for (let x = -step + offset; x < width + step; x += step) {
         context.strokeStyle = blueprint
-          ? "rgba(38, 112, 126, 0.075)"
-          : "rgba(24, 112, 93, 0.065)";
+          ? "rgba(38, 112, 126, 0.16)"
+          : "rgba(24, 112, 93, 0.11)";
         context.beginPath();
         context.moveTo(x, 0);
         context.lineTo(x, height);
@@ -142,8 +142,8 @@
       }
       for (let y = -step + offset; y < height + step; y += step) {
         context.strokeStyle = blueprint
-          ? "rgba(38, 112, 126, 0.075)"
-          : "rgba(24, 112, 93, 0.065)";
+          ? "rgba(38, 112, 126, 0.16)"
+          : "rgba(24, 112, 93, 0.11)";
         context.beginPath();
         context.moveTo(0, y);
         context.lineTo(width, y);
@@ -196,7 +196,7 @@
           const distance = Math.hypot(dx, dy);
           if (distance > distanceLimit) continue;
           context.strokeStyle =
-            `rgba(25, 113, 94, ${0.12 * (1 - distance / distanceLimit)})`;
+            `rgba(25, 113, 94, ${0.22 * (1 - distance / distanceLimit)})`;
           context.lineWidth = 0.65;
           context.beginPath();
           context.moveTo(particle.x, particle.y);
@@ -207,8 +207,8 @@
           0.65 + Math.sin(time * 0.0014 + particle.phase) * 0.35;
         context.fillStyle =
           particle.tone === 0
-            ? `rgba(178, 125, 30, ${0.35 * pulse})`
-            : `rgba(23, 121, 101, ${0.42 * pulse})`;
+            ? `rgba(178, 125, 30, ${0.55 * pulse})`
+            : `rgba(23, 121, 101, ${0.62 * pulse})`;
         context.beginPath();
         context.arc(
           particle.x,
@@ -224,7 +224,7 @@
     function drawBlueprint(time) {
       drawGrid(time, true);
       const baseline = height * 0.54;
-      context.strokeStyle = "rgba(31, 107, 121, 0.13)";
+      context.strokeStyle = "rgba(31, 107, 121, 0.28)";
       context.lineWidth = 1;
       context.beginPath();
       for (let x = 0; x <= width; x += 6) {
@@ -236,7 +236,7 @@
         else context.lineTo(x, y);
       }
       context.stroke();
-      context.strokeStyle = "rgba(181, 126, 28, 0.11)";
+      context.strokeStyle = "rgba(181, 126, 28, 0.24)";
       context.beginPath();
       context.moveTo(width * 0.1, height * 0.72);
       context.bezierCurveTo(

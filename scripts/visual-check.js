@@ -17,7 +17,10 @@ const defaultVisualSettings = {
   catalog_background_style: "circuit",
   reader_background_style: "blueprint",
   pointer_effect_enabled: true,
-  home_intro_enabled: false
+  home_intro_enabled: false,
+  home_intro_duration_ms: 3000,
+  home_intro_lock_scroll: true,
+  home_intro_contributor_limit: 8
 };
 
 if (!executablePath) {
@@ -403,7 +406,11 @@ async function inspectPage(browser, scenario) {
         catalog: document.body.dataset.catalogBackground,
         reader: document.body.dataset.readerBackground,
         pointer: document.body.dataset.pointerEffect,
-        classes: document.body.className
+        classes: document.body.className,
+        readerSurface: document.querySelector(".reading-main")
+          ? getComputedStyle(document.querySelector(".reading-main"))
+              .backgroundColor
+          : ""
       };
     });
     const value =
@@ -449,6 +456,15 @@ async function inspectPage(browser, scenario) {
             firstFrame.viewport.left === 0,
           `${scenario.name}: ambient canvas is not viewport-aligned`
         );
+        if (
+          scenario.ambient.type === "reader" &&
+          scenario.ambient.style !== "clean"
+        ) {
+          assert(
+            visualState.readerSurface.includes("0.58"),
+            `${scenario.name}: reader surface hides the ambient canvas`
+          );
+        }
         if (scenario.reducedMotion) {
           await page.waitForTimeout(180);
           const secondFrame = await canvasMetrics(

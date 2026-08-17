@@ -363,6 +363,12 @@ async function loadOverview() {
     data.settings.pointer_effect_enabled;
   byId("visualSettingsForm").home_intro_enabled.checked =
     data.settings.home_intro_enabled;
+  byId("visualSettingsForm").home_intro_duration_seconds.value =
+    String(data.settings.home_intro_duration_ms / 1000);
+  byId("visualSettingsForm").home_intro_lock_scroll.checked =
+    data.settings.home_intro_lock_scroll;
+  byId("visualSettingsForm").home_intro_contributor_limit.value =
+    String(data.settings.home_intro_contributor_limit);
   state.autoCloseDays = data.settings.pr_auto_close_days;
   renderIntegrations(data.settings);
   renderPendingSubmissions(
@@ -411,7 +417,14 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         catalog_background_style: form.catalog_background_style.value,
         reader_background_style: form.reader_background_style.value,
         pointer_effect_enabled: form.pointer_effect_enabled.checked,
-        home_intro_enabled: form.home_intro_enabled.checked
+        home_intro_enabled: form.home_intro_enabled.checked,
+        home_intro_duration_ms: Math.round(
+          Number(form.home_intro_duration_seconds.value) * 1000
+        ),
+        home_intro_lock_scroll: form.home_intro_lock_scroll.checked,
+        home_intro_contributor_limit: Number(
+          form.home_intro_contributor_limit.value
+        )
       })
     });
     feedback("网站视觉设置已保存", "success");

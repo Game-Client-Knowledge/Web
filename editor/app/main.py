@@ -154,6 +154,9 @@ class VisualSettingsRequest(BaseModel):
     reader_background_style: str = "blueprint"
     pointer_effect_enabled: bool = True
     home_intro_enabled: bool = True
+    home_intro_duration_ms: int = Field(default=3000, ge=1500, le=10000)
+    home_intro_lock_scroll: bool = True
+    home_intro_contributor_limit: int = Field(default=8, ge=1, le=10)
 
 
 class ExternalUrgeRequest(BaseModel):
@@ -655,6 +658,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_intro_enabled": (
                 db.setting("home_intro_enabled", "1") == "1"
+            ),
+            "home_intro_duration_ms": int(
+                db.setting("home_intro_duration_ms", "3000")
+            ),
+            "home_intro_lock_scroll": (
+                db.setting("home_intro_lock_scroll", "1") == "1"
+            ),
+            "home_intro_contributor_limit": int(
+                db.setting("home_intro_contributor_limit", "8")
             ),
             "repository": settings.github_repo,
         }
@@ -2405,6 +2417,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "home_intro_enabled": (
                     db.setting("home_intro_enabled", "1") == "1"
                 ),
+                "home_intro_duration_ms": int(
+                    db.setting("home_intro_duration_ms", "3000")
+                ),
+                "home_intro_lock_scroll": (
+                    db.setting("home_intro_lock_scroll", "1") == "1"
+                ),
+                "home_intro_contributor_limit": int(
+                    db.setting("home_intro_contributor_limit", "8")
+                ),
                 "smtp_enabled": smtp.smtp_enabled,
                 "github_oauth_enabled": settings.github_oauth_enabled,
                 "github_submission_enabled": settings.github_submission_enabled,
@@ -2570,6 +2591,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_intro_enabled": (
                 "1" if payload.home_intro_enabled else "0"
+            ),
+            "home_intro_duration_ms": str(payload.home_intro_duration_ms),
+            "home_intro_lock_scroll": (
+                "1" if payload.home_intro_lock_scroll else "0"
+            ),
+            "home_intro_contributor_limit": str(
+                payload.home_intro_contributor_limit
             ),
         }
         with db.connect() as connection:

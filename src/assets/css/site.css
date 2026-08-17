@@ -159,18 +159,18 @@ svg {
 
 .page-document.visual-reader-blueprint .reading-main,
 .page-document.visual-reader-constellation .reading-main {
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.58);
 }
 
 .page-document.visual-reader-blueprint .docs-sidebar,
 .page-document.visual-reader-constellation .docs-sidebar {
-  background: rgba(244, 247, 245, 0.92);
-  backdrop-filter: blur(7px);
+  background: rgba(244, 247, 245, 0.8);
+  backdrop-filter: blur(4px);
 }
 
 .page-document.visual-reader-blueprint .article-toc,
 .page-document.visual-reader-constellation .article-toc {
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.28);
 }
 
 .site-pointer-reticle {
