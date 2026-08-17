@@ -17,10 +17,64 @@ mkdir -p "$BUILDER_ROOT"
 exec 9>"$LOCK_FILE"
 flock -n 9 || exit 0
 
+encode_base64() {
+  base64 | tr -d '\n'
+}
+
+github_commit_metadata_from_git() {
+  local repository="$1"
+  local remote="https://github.com/${repository}.git"
+  local revision
+  local metadata_repo
+  local authored_at
+  local author_name
+  local author_email
+
+  revision="$(
+    git -c http.version=HTTP/1.1 ls-remote "$remote" refs/heads/main |
+      awk 'NR == 1 { print $1 }'
+  )"
+  if [[ -z "$revision" ]]; then
+    echo "Unable to resolve ${repository}:main through git." >&2
+    return 1
+  fi
+
+  metadata_repo="$(mktemp -d)"
+  if ! timeout 60 git -c http.version=HTTP/1.1 \
+    init --bare "$metadata_repo" >/dev/null; then
+    rm -rf "$metadata_repo"
+    return 1
+  fi
+  if ! timeout 60 git -c http.version=HTTP/1.1 \
+    --git-dir="$metadata_repo" fetch --depth=1 "$remote" refs/heads/main; then
+    rm -rf "$metadata_repo"
+    return 1
+  fi
+
+  authored_at="$(
+    git --git-dir="$metadata_repo" show -s --format=%cI "$revision"
+  )"
+  author_name="$(
+    git --git-dir="$metadata_repo" show -s --format=%an "$revision"
+  )"
+  author_email="$(
+    git --git-dir="$metadata_repo" show -s --format=%ae "$revision"
+  )"
+  rm -rf "$metadata_repo"
+
+  printf '%s\t%s\t%s\t%s\n' \
+    "$revision" \
+    "$authored_at" \
+    "$(printf '%s' "$author_name" | encode_base64)" \
+    "$(printf '%s' "$author_email" | encode_base64)"
+}
+
 github_commit_metadata() {
   local repository="$1"
+  local payload
 
-  curl \
+  if payload="$(
+    curl \
     --fail \
     --silent \
     --show-error \
@@ -29,7 +83,9 @@ github_commit_metadata() {
     --max-time 30 \
     --retry 2 \
     --header "Accept: application/vnd.github+json" \
-    "https://api.github.com/repos/${repository}/commits/main" |
+      "https://api.github.com/repos/${repository}/commits/main"
+  )"; then
+    printf '%s' "$payload" |
     python3 -c '
 import json
 import sys
@@ -47,6 +103,11 @@ print(
     sep="\t",
 )
 '
+    return
+  fi
+
+  echo "GitHub API metadata lookup failed for ${repository}; falling back to git." >&2
+  github_commit_metadata_from_git "$repository"
 }
 
 download_snapshot() {

@@ -77,7 +77,8 @@ behind `origin/main`. Override the defaults with `CONTENT_REPO_PATH`, `DEPLOY_HO
 `DEPLOY_KEY`, or `RELEASE_ROOT` when required.
 
 The server also runs `game-client-knowledge-update.timer` every 10 minutes. It
-checks both repositories through the GitHub API:
+checks both repositories through the GitHub API, with a `git ls-remote` and
+shallow-fetch fallback when the REST API is rate-limited:
 
 ```text
 Game-Client-Knowledge/Web:main
