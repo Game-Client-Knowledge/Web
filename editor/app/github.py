@@ -284,17 +284,22 @@ class GitHubClient:
                     timeout=httpx.Timeout(3.0),
                     trust_env=False,
                     headers={
+                        "Accept": "application/json",
                         "User-Agent": "game-client-knowledge-editor/1.0",
                         **headers,
                     },
                 ) as client:
-                    response = await client.get(
-                        f"{origin}/robots.txt",
+                    response = await client.post(
+                        f"{origin}/login/oauth/access_token",
+                        data={
+                            "client_id": "transport-probe",
+                            "code": "transport-probe",
+                        },
                         extensions=extensions,
                     )
             except httpx.RequestError:
                 continue
-            if response.status_code == 200:
+            if response.status_code < 500:
                 return origin, headers, extensions
         raise GitHubError(
             "无法连接 GitHub 授权服务，请重试",

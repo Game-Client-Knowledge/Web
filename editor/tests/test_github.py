@@ -26,14 +26,14 @@ def test_oauth_web_origin_uses_tls_verified_fallback(
         async def __aexit__(self, *args):
             return None
 
-        async def get(self, url, **kwargs):
-            calls.append(("get", url, kwargs))
-            if url == "https://github.com/robots.txt":
+        async def post(self, url, **kwargs):
+            calls.append(("post", url, kwargs))
+            if url.startswith("https://github.com/"):
                 raise httpx.ConnectTimeout(
                     "blocked route",
-                    request=httpx.Request("GET", url),
+                    request=httpx.Request("POST", url),
                 )
-            return httpx.Response(200, text="User-agent: *")
+            return httpx.Response(404, json={"error": "Not Found"})
 
     monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
     client = GitHubClient(SimpleNamespace())
@@ -45,9 +45,13 @@ def test_oauth_web_origin_uses_tls_verified_fallback(
     assert extensions == {"sni_hostname": "github.com"}
     fallback = next(
         call for call in calls
-        if call[0] == "get" and call[1].startswith("https://140.")
+        if call[0] == "post" and call[1].startswith("https://140.")
     )
     assert fallback[2]["extensions"] == {"sni_hostname": "github.com"}
+    assert fallback[2]["data"] == {
+        "client_id": "transport-probe",
+        "code": "transport-probe",
+    }
     fallback_client = calls[calls.index(fallback) - 1]
     assert fallback_client[1]["trust_env"] is False
     assert fallback_client[1]["headers"]["Host"] == "github.com"
