@@ -22,6 +22,10 @@ The explicit include remains effective even if the service environment sets
 `NODE_ENV=production`. Build failures are still atomic: they update status but
 never replace the current release.
 
+`playwright-core` also remains a regular dependency so servers still running
+the legacy `npm ci --omit=dev` updater can complete one recovery build, publish
+this fix, and replace their installed updater script.
+
 ## Scheduling
 
 `game-client-knowledge-update.timer` wakes the oneshot service every minute. The

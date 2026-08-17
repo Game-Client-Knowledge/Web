@@ -3,6 +3,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
+const manifest = JSON.parse(
+  fs.readFileSync(path.join(root, "package.json"), "utf8")
+);
 const updater = fs.readFileSync(
   path.join(root, "deploy/server/update-site.sh"),
   "utf8"
@@ -26,6 +29,8 @@ assert.match(updater, /site_auto_update_interval_minutes/);
 assert.match(updater, /UPDATE_REQUEST_FILE/);
 assert.match(updater, /write_status "building"/);
 assert.match(updater, /npm ci \\\n  --include=dev/);
+assert.equal(manifest.dependencies["playwright-core"], "1.62.1");
+assert.equal(manifest.devDependencies?.["playwright-core"], undefined);
 assert.doesNotMatch(
   updater,
   /npm ci[\s\\]*--omit=dev/,
