@@ -12,6 +12,7 @@
     "test:markdown-preserve": "node scripts/test-markdown-preserve.js",
     "test:source-cache": "node scripts/test-source-cache.js",
     "test:editor-buffer": "node scripts/test-editor-buffer.js",
+    "test:home-intro-policy": "node scripts/test-home-intro-policy.js",
     "test:content-loader": "node scripts/test-content-loader.js",
     "test:code-projects": "node scripts/test-code-project-loader.js",
     "test:code-intelligence": "node scripts/test-code-intelligence.js",
@@ -20,7 +21,7 @@
     "deploy:join": "bash scripts/deploy-join.sh",
     "deploy:editor": "bash scripts/deploy-editor.sh",
     "deploy:server": "bash scripts/deploy-server.sh",
-    "check": "npm run test:markdown-preserve && npm run test:source-cache && npm run test:editor-buffer && npm run test:content-loader && npm run test:code-projects && npm run test:code-intelligence && npm run test:reader-diff && npm run audit && npm run build && npm run audit:site"
+    "check": "npm run test:markdown-preserve && npm run test:source-cache && npm run test:editor-buffer && npm run test:home-intro-policy && npm run test:content-loader && npm run test:code-projects && npm run test:code-intelligence && npm run test:reader-diff && npm run audit && npm run build && npm run audit:site"
   },
   "engines": {
     "node": ">=20.19"

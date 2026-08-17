@@ -47,6 +47,10 @@
     <link rel="icon" href="{{ '/assets/images/favicon.svg' | assetUrl }}" type="image/svg+xml">
     <script src="{{ '/assets/js/source-cache.js' | assetUrl }}"></script>
     <script>
+      window.GCK_PAGE_KIND = {{ (pageKind or "default") | json | safe }};
+    </script>
+    <script src="{{ '/assets/js/home-intro-policy.js' | assetUrl }}"></script>
+    <script>
       (function () {
         var editorApi = {{ (site.editorUrl ~ 'api') | json | safe }};
         var staticSource = {% if document %}{{ document.sourceRelative | json | safe }}{% elif module %}{{ module.sourceRelative | json | safe }}{% else %}""{% endif %};
@@ -86,21 +90,6 @@
   </head>
   <body class="page-{{ pageKind or 'default' }}" data-editor-state="loading">
     {% if pageKind == "home" %}
-      <script>
-        (function () {
-          try {
-            var marker = "gck_home_intro_session=1";
-            var seen = document.cookie.split(";").some(function (item) {
-              return item.trim() === marker;
-            });
-            if (seen) {
-              document.documentElement.classList.add("home-intro-seen");
-            }
-          } catch (error) {
-            // Cookie access may be unavailable; the animation can still run.
-          }
-        })();
-      </script>
       <section
         class="site-entry-sequence"
         data-entry-sequence

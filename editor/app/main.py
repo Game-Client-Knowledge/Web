@@ -154,6 +154,7 @@ class VisualSettingsRequest(BaseModel):
     reader_background_style: str = "blueprint"
     pointer_effect_enabled: bool = True
     home_intro_enabled: bool = True
+    home_intro_mode: str = ""
     home_intro_duration_ms: int = Field(default=3000, ge=1500, le=10000)
     home_intro_lock_scroll: bool = True
     home_intro_contributor_limit: int = Field(default=8, ge=1, le=10)
@@ -633,7 +634,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
     )
 
+    def resolved_home_intro_mode() -> str:
+        mode = db.setting("home_intro_mode", "")
+        if mode in {"off", "always", "revisit", "first"}:
+            return mode
+        return (
+            "revisit"
+            if db.setting("home_intro_enabled", "1") == "1"
+            else "off"
+        )
+
     def config_payload() -> dict[str, Any]:
+        intro_mode = resolved_home_intro_mode()
         return {
             "registration_enabled": (
                 db.setting("registration_enabled", "1") == "1"
@@ -656,9 +668,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "pointer_effect_enabled": (
                 db.setting("pointer_effect_enabled", "1") == "1"
             ),
-            "home_intro_enabled": (
-                db.setting("home_intro_enabled", "1") == "1"
-            ),
+            "home_intro_enabled": intro_mode != "off",
+            "home_intro_mode": intro_mode,
             "home_intro_duration_ms": int(
                 db.setting("home_intro_duration_ms", "3000")
             ),
@@ -2387,6 +2398,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ).fetchall()
             ]
         smtp = smtp_configuration()
+        intro_mode = resolved_home_intro_mode()
         return {
             "users": users,
             "applications": applications,
@@ -2414,9 +2426,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "pointer_effect_enabled": (
                     db.setting("pointer_effect_enabled", "1") == "1"
                 ),
-                "home_intro_enabled": (
-                    db.setting("home_intro_enabled", "1") == "1"
-                ),
+                "home_intro_enabled": intro_mode != "off",
+                "home_intro_mode": intro_mode,
                 "home_intro_duration_ms": int(
                     db.setting("home_intro_duration_ms", "3000")
                 ),
@@ -2582,6 +2593,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "constellation",
         }:
             raise HTTPException(status_code=422, detail="阅读背景样式无效")
+        intro_mode = payload.home_intro_mode or (
+            "revisit" if payload.home_intro_enabled else "off"
+        )
+        if intro_mode not in {"off", "always", "revisit", "first"}:
+            raise HTTPException(status_code=422, detail="入场动画策略无效")
         now = utc_now()
         values = {
             "catalog_background_style": payload.catalog_background_style,
@@ -2589,9 +2605,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "pointer_effect_enabled": (
                 "1" if payload.pointer_effect_enabled else "0"
             ),
-            "home_intro_enabled": (
-                "1" if payload.home_intro_enabled else "0"
-            ),
+            "home_intro_enabled": "0" if intro_mode == "off" else "1",
+            "home_intro_mode": intro_mode,
             "home_intro_duration_ms": str(payload.home_intro_duration_ms),
             "home_intro_lock_scroll": (
                 "1" if payload.home_intro_lock_scroll else "0"
@@ -2619,7 +2634,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             user_id=admin["id"],
             detail=json.dumps(payload.model_dump(), ensure_ascii=False),
         )
-        return payload.model_dump()
+        return {
+            **payload.model_dump(),
+            "home_intro_enabled": intro_mode != "off",
+            "home_intro_mode": intro_mode,
+        }
 
     @app.post("/api/admin/submissions/sync")
     async def sync_submission_statuses(

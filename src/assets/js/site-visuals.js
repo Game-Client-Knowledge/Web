@@ -6,11 +6,11 @@
     reader_background_style: "blueprint",
     pointer_effect_enabled: true,
     home_intro_enabled: true,
+    home_intro_mode: "revisit",
     home_intro_duration_ms: 3000,
     home_intro_lock_scroll: true,
     home_intro_contributor_limit: 8
   };
-  const HOME_INTRO_SESSION_COOKIE = "gck_home_intro_session";
   const HOME_INTRO_SETTINGS_CACHE = "gck-home-intro-settings";
   let releaseHomeIntro;
   let homeIntroReleased = false;
@@ -28,34 +28,20 @@
     }
   }
 
-  function hasHomeIntroSessionCookie() {
-    try {
-      return document.cookie
-        .split(";")
-        .some((item) => {
-          return item.trim() === `${HOME_INTRO_SESSION_COOKIE}=1`;
-        });
-    } catch {
-      return false;
-    }
-  }
-
-  function markHomeIntroSession() {
-    try {
-      const secure = window.location.protocol === "https:" ? "; Secure" : "";
-      document.cookie =
-        `${HOME_INTRO_SESSION_COOKIE}=1; Path=/; SameSite=Lax${secure}`;
-    } catch {
-      // Cookie access may be denied; the animation can still run.
-    }
-  }
-
   function normalizeHomeIntroSettings(settings) {
     const duration = Number(settings.home_intro_duration_ms);
     const contributorLimit = Number(settings.home_intro_contributor_limit);
+    const mode = ["off", "always", "revisit", "first"].includes(
+      settings.home_intro_mode
+    )
+      ? settings.home_intro_mode
+      : settings.home_intro_enabled === false
+        ? "off"
+        : "revisit";
     return {
       ...settings,
-      home_intro_enabled: settings.home_intro_enabled !== false,
+      home_intro_enabled: mode !== "off",
+      home_intro_mode: mode,
       home_intro_duration_ms: Math.max(
         1500,
         Math.min(10000, Number.isFinite(duration) ? duration : 3000)
@@ -77,7 +63,12 @@
         window.localStorage.getItem(HOME_INTRO_SETTINGS_CACHE) || "null"
       );
       if (cached && typeof cached === "object") {
-        return normalizeHomeIntroSettings({ ...defaults, ...cached });
+        const merged = { ...defaults, ...cached };
+        if (!Object.hasOwn(cached, "home_intro_mode")) {
+          merged.home_intro_mode =
+            cached.home_intro_enabled === false ? "off" : "revisit";
+        }
+        return normalizeHomeIntroSettings(merged);
       }
       if (window.localStorage.getItem("gck-home-intro-enabled") === "0") {
         return { ...defaults, home_intro_enabled: false };
@@ -94,6 +85,7 @@
         HOME_INTRO_SETTINGS_CACHE,
         JSON.stringify({
           home_intro_enabled: settings.home_intro_enabled,
+          home_intro_mode: settings.home_intro_mode,
           home_intro_duration_ms: settings.home_intro_duration_ms,
           home_intro_lock_scroll: settings.home_intro_lock_scroll,
           home_intro_contributor_limit:
@@ -448,9 +440,14 @@
   function createEntrySequence(settings, reducedMotion) {
     const stage = document.querySelector("[data-entry-sequence]");
     let runtimeSettings = normalizeHomeIntroSettings(settings);
+    const policy = window.GCK_HOME_INTRO_POLICY || {
+      shouldPlay: true,
+      markPlayed: function () {}
+    };
     if (
       !document.body.classList.contains("page-home") ||
       !runtimeSettings.home_intro_enabled ||
+      !policy.shouldPlay ||
       reducedMotion
     ) {
       if (stage) stage.remove();
@@ -458,18 +455,11 @@
       return;
     }
     const config = window.GCK_CONFIG || {};
-    if (hasHomeIntroSessionCookie()) {
-      document.documentElement.classList.add("home-intro-seen");
-      if (stage) stage.remove();
-      markHomeIntroReady("seen");
-      return;
-    }
-    markHomeIntroSession();
-
     if (!stage) {
       markHomeIntroReady("skipped");
       return;
     }
+    policy.markPlayed();
     document.documentElement.classList.remove("home-intro-seen");
     const canvas = stage.querySelector("[data-entry-canvas]");
     const progress = stage.querySelector("[data-entry-progress]");
@@ -1137,11 +1127,21 @@
       "(prefers-reduced-motion: reduce)"
     ).matches;
     const type = pageVisualType();
+    const policy = window.GCK_HOME_INTRO_POLICY || {
+      shouldPlay: true,
+      updateMode: function (mode) {
+        this.shouldPlay = mode !== "off";
+        return this.shouldPlay;
+      }
+    };
     document.body.dataset.visualType = type || "none";
     let introStarted = false;
     const cachedIntroSettings = readCachedHomeIntroSettings();
     if (type === "home") {
-      if (cachedIntroSettings.home_intro_enabled) {
+      if (
+        cachedIntroSettings.home_intro_enabled &&
+        policy.shouldPlay
+      ) {
         createEntrySequence(cachedIntroSettings, reducedMotion);
         introStarted = true;
       }
@@ -1152,21 +1152,32 @@
     const resolved = await (
       window.GCK_VISUAL_SETTINGS || Promise.resolve({})
     );
-    const settings = normalizeHomeIntroSettings({
+    const resolvedSettings = {
       ...defaults,
       ...resolved
-    });
+    };
+    if (!Object.hasOwn(resolved, "home_intro_mode")) {
+      resolvedSettings.home_intro_mode =
+        resolved.home_intro_enabled === false ? "off" : "revisit";
+    }
+    const settings = normalizeHomeIntroSettings(resolvedSettings);
     cacheHomeIntroSettings(settings);
     document.body.dataset.pointerEffect =
       settings.pointer_effect_enabled ? "on" : "off";
 
     if (type === "home") {
-      if (!settings.home_intro_enabled) {
+      const shouldPlay = policy.updateMode(
+        settings.home_intro_mode,
+        settings.home_intro_enabled
+      );
+      if (!settings.home_intro_enabled || !shouldPlay) {
         if (cancelHomeIntro) {
           cancelHomeIntro();
         } else {
           document.querySelector("[data-entry-sequence]")?.remove();
-          markHomeIntroReady("skipped");
+          markHomeIntroReady(
+            settings.home_intro_enabled ? "seen" : "skipped"
+          );
         }
       } else if (updateHomeIntroSettings) {
         updateHomeIntroSettings(settings);

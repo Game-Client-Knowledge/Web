@@ -43,13 +43,16 @@ The section is server-rendered to reserve its height in the first layout. The
 normal homepage particle field starts only after the scroll transition
 finishes, so two animation loops never compete during entry.
 
-The sequence is scoped to one browser session through the
-`gck_home_intro_session` session cookie. Reduced-motion, disabled, and
-already-connected states remove the section before starting the homepage
-field. A new browser session has no marker and plays the sequence when it
-connects to the site again. Assembly uses the cached enable flag, or the
-enabled default on a first visit, and never waits for the editor bootstrap
-network request.
+The sequence supports four device-level policies: disabled, every homepage
+load, re-entry after the device leaves the site, and first visit only. Re-entry
+mode tracks all active same-origin tabs together. Reloading or navigating
+inside the site does not replay; closing the final site tab or leaving the
+origin allows the next homepage entry to play. First-visit mode persists its
+completed marker in browser storage.
+
+Reduced-motion and policy-skipped states remove the section before starting the
+homepage field. Assembly uses the cached policy, or re-entry mode on a first
+visit, and never waits for the editor bootstrap network request.
 
 The default total duration is three seconds and can be changed in
 administration. When completion locking is enabled, the finished entry section

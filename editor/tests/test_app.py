@@ -253,6 +253,7 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert payload["config"]["reader_background_style"] == "blueprint"
     assert payload["config"]["pointer_effect_enabled"] is True
     assert payload["config"]["home_intro_enabled"] is True
+    assert payload["config"]["home_intro_mode"] == "revisit"
     assert payload["config"]["home_intro_duration_ms"] == 3000
     assert payload["config"]["home_intro_lock_scroll"] is True
     assert payload["config"]["home_intro_contributor_limit"] == 8
@@ -675,6 +676,7 @@ def test_admin_can_configure_client_visual_effects(
             "reader_background_style": "clean",
             "pointer_effect_enabled": False,
             "home_intro_enabled": False,
+            "home_intro_mode": "first",
             "home_intro_duration_ms": 4200,
             "home_intro_lock_scroll": False,
             "home_intro_contributor_limit": 10,
@@ -685,7 +687,8 @@ def test_admin_can_configure_client_visual_effects(
         "catalog_background_style": "constellation",
         "reader_background_style": "clean",
         "pointer_effect_enabled": False,
-        "home_intro_enabled": False,
+        "home_intro_enabled": True,
+        "home_intro_mode": "first",
         "home_intro_duration_ms": 4200,
         "home_intro_lock_scroll": False,
         "home_intro_contributor_limit": 10,
@@ -694,7 +697,8 @@ def test_admin_can_configure_client_visual_effects(
     assert config["catalog_background_style"] == "constellation"
     assert config["reader_background_style"] == "clean"
     assert config["pointer_effect_enabled"] is False
-    assert config["home_intro_enabled"] is False
+    assert config["home_intro_enabled"] is True
+    assert config["home_intro_mode"] == "first"
     assert config["home_intro_duration_ms"] == 4200
     assert config["home_intro_lock_scroll"] is False
     assert config["home_intro_contributor_limit"] == 10
@@ -737,6 +741,19 @@ def test_admin_can_configure_client_visual_effects(
         },
     )
     assert invalid_timing.status_code == 422
+
+    invalid_mode = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "catalog_background_style": "circuit",
+            "reader_background_style": "blueprint",
+            "pointer_effect_enabled": True,
+            "home_intro_enabled": True,
+            "home_intro_mode": "sometimes",
+        },
+    )
+    assert invalid_mode.status_code == 422
 
 
 def test_admin_can_save_encrypted_smtp_configuration(

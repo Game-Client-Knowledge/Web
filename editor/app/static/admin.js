@@ -361,8 +361,8 @@ async function loadOverview() {
     data.settings.reader_background_style;
   byId("visualSettingsForm").pointer_effect_enabled.checked =
     data.settings.pointer_effect_enabled;
-  byId("visualSettingsForm").home_intro_enabled.checked =
-    data.settings.home_intro_enabled;
+  byId("visualSettingsForm").home_intro_mode.value =
+    data.settings.home_intro_mode;
   byId("visualSettingsForm").home_intro_duration_seconds.value =
     String(data.settings.home_intro_duration_ms / 1000);
   byId("visualSettingsForm").home_intro_lock_scroll.checked =
@@ -417,7 +417,8 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         catalog_background_style: form.catalog_background_style.value,
         reader_background_style: form.reader_background_style.value,
         pointer_effect_enabled: form.pointer_effect_enabled.checked,
-        home_intro_enabled: form.home_intro_enabled.checked,
+        home_intro_enabled: form.home_intro_mode.value !== "off",
+        home_intro_mode: form.home_intro_mode.value,
         home_intro_duration_ms: Math.round(
           Number(form.home_intro_duration_seconds.value) * 1000
         ),
@@ -427,6 +428,25 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         )
       })
     });
+    const savedSettings = {
+      home_intro_enabled: form.home_intro_mode.value !== "off",
+      home_intro_mode: form.home_intro_mode.value,
+      home_intro_duration_ms: Math.round(
+        Number(form.home_intro_duration_seconds.value) * 1000
+      ),
+      home_intro_lock_scroll: form.home_intro_lock_scroll.checked,
+      home_intro_contributor_limit: Number(
+        form.home_intro_contributor_limit.value
+      )
+    };
+    try {
+      window.localStorage.setItem(
+        "gck-home-intro-settings",
+        JSON.stringify(savedSettings)
+      );
+    } catch {
+      // The server setting remains authoritative when storage is unavailable.
+    }
     feedback("网站视觉设置已保存", "success");
     await loadOverview();
   } catch (error) {

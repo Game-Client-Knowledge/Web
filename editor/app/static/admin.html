@@ -123,13 +123,18 @@
             required
           >
         </label>
+        <label>
+          入场动画策略
+          <select name="home_intro_mode">
+            <option value="off">关闭</option>
+            <option value="always">每次进入首页</option>
+            <option value="revisit">离站后再次进入</option>
+            <option value="first">仅此设备首次进入</option>
+          </select>
+        </label>
         <label class="check-label">
           <input name="pointer_effect_enabled" type="checkbox">
           鼠标跟随效果
-        </label>
-        <label class="check-label">
-          <input name="home_intro_enabled" type="checkbox">
-          主页入场动画
         </label>
         <label class="check-label">
           <input name="home_intro_lock_scroll" type="checkbox">

@@ -18,6 +18,7 @@ const defaultVisualSettings = {
   reader_background_style: "blueprint",
   pointer_effect_enabled: true,
   home_intro_enabled: false,
+  home_intro_mode: "off",
   home_intro_duration_ms: 3000,
   home_intro_lock_scroll: true,
   home_intro_contributor_limit: 8
@@ -84,6 +85,9 @@ async function inspectPage(browser, scenario) {
     ...defaultVisualSettings,
     ...(scenario.visualSettings || {})
   };
+  const introMode =
+    visualSettings.home_intro_mode ||
+    (visualSettings.home_intro_enabled ? "revisit" : "off");
   const session = scenario.readerEditor
     ? {
         authenticated: true,
@@ -185,14 +189,17 @@ async function inspectPage(browser, scenario) {
       })
     });
   });
-  const page = await context.newPage();
+  let page = await context.newPage();
   const runtimeErrors = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") {
-      runtimeErrors.push(message.text());
-    }
-  });
-  page.on("pageerror", (error) => runtimeErrors.push(error.message));
+  function observeRuntimeErrors(target) {
+    target.on("console", (message) => {
+      if (message.type() === "error") {
+        runtimeErrors.push(message.text());
+      }
+    });
+    target.on("pageerror", (error) => runtimeErrors.push(error.message));
+  }
+  observeRuntimeErrors(page);
 
   const navigationStarted = Date.now();
   await page.goto(`${baseUrl}${scenario.route}`, {
@@ -327,29 +334,81 @@ async function inspectPage(browser, scenario) {
         `${scenario.name}: entry did not scroll to the main page`
       );
     }
-    const introCookies = await context.cookies(baseUrl);
-    const sessionCookie = introCookies.find((cookie) => {
-      return cookie.name === "gck_home_intro_session";
-    });
-    assert(
-      sessionCookie?.value === "1" &&
-        sessionCookie.path === "/" &&
-        sessionCookie.expires === -1,
-      `${scenario.name}: entry marker is not a browser-session cookie`
-    );
-
-    await page.reload({ waitUntil: "networkidle" });
-    await page.waitForFunction(() => document.body.dataset.homeIntro);
-    const replay = await page.evaluate(() => {
+    const policyState = await page.evaluate(() => {
       return {
-        status: document.body.dataset.homeIntro,
-        stage: Boolean(document.querySelector("[data-entry-sequence]"))
+        first: localStorage.getItem("gck-home-intro-first:v1"),
+        device: JSON.parse(
+          localStorage.getItem("gck-home-intro-device:v1") || "{}"
+        ),
+        obsoleteCookie: document.cookie.includes(
+          "gck_home_intro_session="
+        )
       };
     });
     assert(
-      replay.status === "seen" && !replay.stage,
-      `${scenario.name}: entry replayed in the same session`
+      policyState.first === "1" &&
+        Object.keys(policyState.device.tabs || {}).length === 1 &&
+        !policyState.obsoleteCookie,
+      `${scenario.name}: device policy state is invalid`
     );
+
+    await page.reload({ waitUntil: "networkidle" });
+    if (introMode === "always") {
+      await page.locator("[data-entry-sequence]").waitFor({
+        state: "visible"
+      });
+      await page.locator("[data-entry-sequence]").click({
+        position: { x: 8, y: 8 }
+      });
+      await page.waitForFunction(() => {
+        return document.body.dataset.homeIntro === "complete";
+      });
+    } else {
+      await page.waitForFunction(() => document.body.dataset.homeIntro);
+      const replay = await page.evaluate(() => {
+        return {
+          status: document.body.dataset.homeIntro,
+          stage: Boolean(document.querySelector("[data-entry-sequence]"))
+        };
+      });
+      assert(
+        replay.status === "seen" && !replay.stage,
+        `${scenario.name}: entry replayed without leaving the device visit`
+      );
+    }
+
+    if (scenario.deviceReentry) {
+      await page.goto("about:blank");
+      await page.close();
+      page = await context.newPage();
+      observeRuntimeErrors(page);
+      await page.goto(`${baseUrl}${scenario.route}`, {
+        waitUntil: scenario.bootstrapDelay ? "domcontentloaded" : "networkidle"
+      });
+      if (scenario.deviceReentry === "play") {
+        await page.locator("[data-entry-sequence]").waitFor({
+          state: "visible"
+        });
+        await page.locator("[data-entry-sequence]").click({
+          position: { x: 8, y: 8 }
+        });
+        await page.waitForFunction(() => {
+          return document.body.dataset.homeIntro === "complete";
+        });
+      } else {
+        await page.waitForFunction(() => document.body.dataset.homeIntro);
+        const reentry = await page.evaluate(() => {
+          return {
+            status: document.body.dataset.homeIntro,
+            stage: Boolean(document.querySelector("[data-entry-sequence]"))
+          };
+        });
+        assert(
+          reentry.status === "seen" && !reentry.stage,
+          `${scenario.name}: first-only mode replayed on device reentry`
+        );
+      }
+    }
   } else {
     if (scenario.homeIntro === "skip") {
       await page.locator("[data-entry-sequence]").waitFor({
@@ -394,7 +453,11 @@ async function inspectPage(browser, scenario) {
       }
     }
     if (scenario.homeIntro === "disabled") {
-      await page.waitForFunction(() => document.body.dataset.homeIntro);
+      await page.waitForFunction(() => {
+        return ["skipped", "seen"].includes(
+          document.body.dataset.homeIntro
+        );
+      });
       const intro = await page.evaluate(() => {
         return {
           status: document.body.dataset.homeIntro,
@@ -410,6 +473,11 @@ async function inspectPage(browser, scenario) {
       path: path.join(outputDirectory, `${scenario.name}.png`),
       fullPage: false
     });
+  }
+
+  await page.waitForFunction(() => document.body.dataset.pointerEffect);
+  if (scenario.knowledgeField) {
+    await page.waitForTimeout(260);
   }
 
   const layout = await page.evaluate(() => {
@@ -456,6 +524,39 @@ async function inspectPage(browser, scenario) {
     runtimeErrors.length === 0,
     `${scenario.name}: browser errors: ${runtimeErrors.join(" | ")}`
   );
+
+  if (scenario.topicOrdering) {
+    const ordering = await page.evaluate(() => {
+      const heading = Array.from(
+        document.querySelectorAll(".module-unit-summary h3")
+      ).find((item) => item.textContent.includes("C++ 基础知识"));
+      const branch = heading?.closest(".module-unit-branch");
+      const groups = Array.from(
+        branch?.querySelectorAll(
+          ":scope > .module-unit > .module-unit-content > " +
+            ".module-unit-content-group"
+        ) || []
+      );
+      return {
+        labels: groups.map((group) => {
+          return group.querySelector(".module-unit-content-label")
+            ?.textContent.trim() || "文件";
+        }),
+        child:
+          groups[0]?.querySelector(".module-unit-branch.is-subunit h3")
+            ?.textContent.trim() || "",
+        file:
+          groups[1]?.querySelector(".module-unit-documents a span")
+            ?.textContent.trim() || ""
+      };
+    });
+    assert(
+      ordering.labels.join(",") === "子专题,文件" &&
+        ordering.child.includes("C++ 多态") &&
+        ordering.file.includes("C++ 基础知识"),
+      `${scenario.name}: topic/file ordering is ${JSON.stringify(ordering)}`
+    );
+  }
 
   if (scenario.ambient) {
     const ambientCount = await page.locator("[data-site-ambient]").count();
@@ -885,7 +986,11 @@ async function inspectPage(browser, scenario) {
       homeIntro: "play",
       bootstrapDelay: 3000,
       pointerEffect: true,
-      visualSettings: { home_intro_enabled: true }
+      deviceReentry: "play",
+      visualSettings: {
+        home_intro_enabled: true,
+        home_intro_mode: "revisit"
+      }
     },
     {
       name: "home-mobile",
@@ -903,8 +1008,32 @@ async function inspectPage(browser, scenario) {
       homeIntro: "skip",
       visualSettings: {
         home_intro_enabled: true,
+        home_intro_mode: "revisit",
         home_intro_lock_scroll: false,
         home_intro_contributor_limit: 4
+      }
+    },
+    {
+      name: "home-intro-always-mobile",
+      route: "/",
+      viewport: { width: 390, height: 844 },
+      homeIntro: "play",
+      visualSettings: {
+        home_intro_enabled: true,
+        home_intro_mode: "always",
+        pointer_effect_enabled: false
+      }
+    },
+    {
+      name: "home-intro-first-device-mobile",
+      route: "/",
+      viewport: { width: 390, height: 844 },
+      homeIntro: "play",
+      deviceReentry: "seen",
+      visualSettings: {
+        home_intro_enabled: true,
+        home_intro_mode: "first",
+        pointer_effect_enabled: false
       }
     },
     {
@@ -914,14 +1043,18 @@ async function inspectPage(browser, scenario) {
       homeIntro: "disabled",
       pointerEffect: false,
       reducedMotion: true,
-      visualSettings: { home_intro_enabled: true }
+      visualSettings: {
+        home_intro_enabled: true,
+        home_intro_mode: "revisit"
+      }
     },
     {
       name: "catalog-circuit-desktop",
       route: "/knowledge/",
       viewport: { width: 1440, height: 1000 },
       ambient: { type: "catalog", style: "circuit" },
-      pointerEffect: true
+      pointerEffect: true,
+      topicOrdering: true
     },
     {
       name: "catalog-constellation-desktop",

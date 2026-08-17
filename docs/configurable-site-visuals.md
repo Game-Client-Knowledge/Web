@@ -2,14 +2,14 @@
 
 ## Scope
 
-The site exposes four visual controls in the editor administration page:
+The site exposes visual controls in the editor administration page:
 
 | Setting | Values | Default |
 | --- | --- | --- |
 | Catalog background | `clean`, `circuit`, `constellation` | `circuit` |
 | Reader background | `clean`, `blueprint`, `constellation` | `blueprint` |
 | Pointer effect | enabled or disabled | enabled |
-| Homepage entry sequence | enabled or disabled | enabled |
+| Homepage entry policy | `off`, `always`, `revisit`, `first` | `revisit` |
 | Homepage entry duration | `1.5` to `10` seconds | `3` seconds |
 | Lock completed entry | enabled or disabled | enabled |
 | Contributor display limit | `1` to `10` | `8` |
@@ -101,14 +101,25 @@ label continues moving around the logo and is constrained never to enter the
 protected logo area. The two central square frames rotate independently on
 every animation frame.
 
-The sequence plays once per browser session. When the homepage first connects
-without the `gck_home_intro_session` cookie, the client starts the sequence and
-writes that marker as a session cookie with no `Max-Age` or `Expires`
-attribute. Reloading, opening another tab, or navigating back to the homepage
-in the same browser session removes the entry section before it can paint.
-Closing the browser ends the cookie session, so the sequence runs again when a
-new browser session connects to the site. Clicking the entry section or
-pressing Escape skips directly to the shorter scroll transition.
+The entry policy is device-scoped through same-origin browser storage:
+
+- `off`: never play.
+- `always`: play for every homepage document load, including reloads.
+- `revisit`: play once when the device enters the site after all of its site
+  tabs were closed or navigated away.
+- `first`: play only once for that browser storage profile.
+
+`revisit` tracks active site tabs in `localStorage` and gives each tab an ID in
+`sessionStorage`. Same-site navigation and reloads retain the visit, while
+closing the final site tab or leaving the origin ends it. A short heartbeat
+expires tabs left behind by a browser crash. Multiple tabs therefore behave as
+one device visit instead of replaying independently.
+
+The former `gck_home_intro_session` cookie is expired automatically and no
+longer participates in the decision. This avoids browser session-restore
+behavior retaining an entrance marker after a tab was closed. Clicking the
+entry section or pressing Escape still skips directly to the shorter scroll
+transition.
 
 The normal homepage knowledge field waits for the entry promise to resolve.
 Only one animated Canvas loop runs during assembly, avoiding contention between
@@ -150,7 +161,7 @@ configuration deterministically. The suite covers:
 - contributor limits, protected-logo exclusion, and rotating square frames;
 - document-flow placement, scroll destination, sticky-header alignment;
 - configurable three-phase duration and locked/unlocked completion;
-- session-cookie replay prevention, reconnection, and skip;
+- all four device policies, multi-tab visit tracking, reconnection, and skip;
 - disabled entry behavior;
 - static reduced-motion rendering;
 - search, mobile navigation, Mermaid, source pages, and the code workspace;
