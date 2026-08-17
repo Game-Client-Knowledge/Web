@@ -1104,10 +1104,42 @@ body[data-editor-state="loading"] [data-account-label] {
   gap: 48px;
 }
 
+.module-unit-content {
+  min-width: 0;
+}
+
+.module-unit-content-group + .module-unit-content-group {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.module-unit-content-label {
+  margin: 0 0 7px;
+  color: var(--ink-faint);
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
 .module-subunit-list {
-  margin-left: 28px;
-  padding-left: 24px;
+  padding-left: 14px;
   border-left: 2px solid #dbe9e4;
+}
+
+.module-subunit-list .module-unit {
+  display: block;
+  padding: 14px 0;
+}
+
+.module-subunit-list .module-unit-content {
+  margin-top: 12px;
+}
+
+.module-subunit-list .module-unit-content-group +
+.module-subunit-list .module-unit-content-group {
+  margin-top: 12px;
+  padding-top: 10px;
 }
 
 .module-unit-branch.is-subunit > .module-unit {
@@ -3765,8 +3797,7 @@ body.has-comments-open .reader-comments {
   }
 
   .module-subunit-list {
-    margin-left: 18px;
-    padding-left: 18px;
+    padding-left: 12px;
   }
 
   .guide-layout {
@@ -4144,8 +4175,7 @@ body.has-comments-open .reader-comments {
   }
 
   .module-subunit-list {
-    margin-left: 10px;
-    padding-left: 14px;
+    padding-left: 10px;
   }
 
   .reading-main {

@@ -67,6 +67,13 @@ Markdown files belong to the deepest ancestor directory that contains a
 `README.md`. A nested topic therefore stays under its owning topic without any
 additional website configuration.
 
+Within each topic, the module directory orders content by type:
+
+1. Child topics, recursively.
+2. Files owned directly by the current topic.
+
+Numeric file prefixes still determine ordering inside the file group.
+
 ## Online Creation
 
 The full editor exposes **Add top-level module** in the repository sidebar.
