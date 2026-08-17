@@ -89,12 +89,17 @@ npm run deploy:editor
 The script:
 
 1. Verifies the local commit is pushed.
-2. Archives the committed `editor/` tree.
-3. Uploads an immutable release.
-4. Creates or updates the Python virtual environment.
-5. Imports the application as a smoke check.
-6. Atomically updates `current`.
-7. Retains the five newest releases.
+2. Verifies systemd is active and port `8790` belongs to its `MainPID`.
+3. Archives the committed `editor/` tree.
+4. Uploads an immutable release.
+5. Creates or updates the Python virtual environment.
+6. Imports the application as a smoke check.
+7. Atomically updates `current`.
+8. Retains the five newest releases.
+
+The ownership check prevents a test or manually launched Uvicorn process from
+serving a temporary database on the production port. An intentionally stopped
+service requires the explicit `EDITOR_ALLOW_INACTIVE_DEPLOY=1` override.
 
 Restart and verify:
 
@@ -103,6 +108,10 @@ sudo systemctl restart game-client-knowledge-editor
 sudo systemctl status game-client-knowledge-editor --no-pager
 curl -fsS http://127.0.0.1:8790/api/config
 ```
+
+The installed unit uses `Restart=always`. Killing the worker for a controlled
+reload therefore starts a new systemd-managed process with the root-owned
+production environment file. `systemctl stop` still performs a deliberate stop.
 
 Enable startup after the first successful release:
 
