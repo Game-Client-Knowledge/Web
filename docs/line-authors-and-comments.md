@@ -59,6 +59,21 @@ The token and author email addresses are never sent to browsers. Reader
 responses include only display names, GitHub handles, matched user IDs, line
 ranges, and commit SHAs.
 
+## Display Identity
+
+Line labels describe Git history, not comment-account identity. The display
+value is selected in this order:
+
+1. GitHub login parsed from a GitHub noreply author email.
+2. The commit's exact Git `author.name`.
+3. `Unknown` only when neither value exists.
+
+For example, `BP_NullPointerException` is the recorded author name of content
+commit `a65e5f4`, not an application exception or a generated user. It remains
+visible because changing it would misrepresent blame history. A contributor
+who wants a different display identity must use the intended Git author name or
+a GitHub noreply address in a subsequent commit.
+
 After adding the environment variable or changing the unit file:
 
 ```bash

@@ -33,9 +33,11 @@ frame and does not schedule an animation loop.
 
 When enabled, the homepage begins with a full-viewport Canvas section before
 the sticky site header. Scattered particles reconstruct the product title,
-technical curves, rotated frames, description, and contributor names from an
-offscreen pixel target. After a short hold, the document scrolls to the normal
-homepage instead of fading or replacing an overlay.
+technical curves, description, rotating frames, and moving contributor names.
+The logo uses an offscreen pixel target. Contributor text uses independent
+moving targets that orbit outside a protected logo rectangle. After a short
+hold, the document scrolls to the normal homepage instead of fading or
+replacing an overlay.
 
 The section is server-rendered to reserve its height in the first layout. The
 normal homepage particle field starts only after the scroll transition
@@ -48,6 +50,12 @@ field. A new browser session has no marker and plays the sequence when it
 connects to the site again. Assembly uses the cached enable flag, or the
 enabled default on a first visit, and never waits for the editor bootstrap
 network request.
+
+The default total duration is three seconds and can be changed in
+administration. When completion locking is enabled, the finished entry section
+is removed after the homepage reaches the viewport, preventing upward scrolling
+back into the entry artwork. Administrators can keep it in document flow when
+reversible scrolling is preferred.
 
 ## Verification
 

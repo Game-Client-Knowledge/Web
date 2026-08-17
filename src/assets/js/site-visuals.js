@@ -5,12 +5,17 @@
     catalog_background_style: "circuit",
     reader_background_style: "blueprint",
     pointer_effect_enabled: true,
-    home_intro_enabled: true
+    home_intro_enabled: true,
+    home_intro_duration_ms: 3000,
+    home_intro_lock_scroll: true,
+    home_intro_contributor_limit: 8
   };
   const HOME_INTRO_SESSION_COOKIE = "gck_home_intro_session";
+  const HOME_INTRO_SETTINGS_CACHE = "gck-home-intro-settings";
   let releaseHomeIntro;
   let homeIntroReleased = false;
   let cancelHomeIntro = null;
+  let updateHomeIntroSettings = null;
   window.GCK_HOME_INTRO_READY = new Promise((resolve) => {
     releaseHomeIntro = resolve;
   });
@@ -42,6 +47,65 @@
         `${HOME_INTRO_SESSION_COOKIE}=1; Path=/; SameSite=Lax${secure}`;
     } catch {
       // Cookie access may be denied; the animation can still run.
+    }
+  }
+
+  function normalizeHomeIntroSettings(settings) {
+    const duration = Number(settings.home_intro_duration_ms);
+    const contributorLimit = Number(settings.home_intro_contributor_limit);
+    return {
+      ...settings,
+      home_intro_enabled: settings.home_intro_enabled !== false,
+      home_intro_duration_ms: Math.max(
+        1500,
+        Math.min(10000, Number.isFinite(duration) ? duration : 3000)
+      ),
+      home_intro_lock_scroll: settings.home_intro_lock_scroll !== false,
+      home_intro_contributor_limit: Math.max(
+        1,
+        Math.min(
+          10,
+          Number.isFinite(contributorLimit) ? contributorLimit : 8
+        )
+      )
+    };
+  }
+
+  function readCachedHomeIntroSettings() {
+    try {
+      const cached = JSON.parse(
+        window.localStorage.getItem(HOME_INTRO_SETTINGS_CACHE) || "null"
+      );
+      if (cached && typeof cached === "object") {
+        return normalizeHomeIntroSettings({ ...defaults, ...cached });
+      }
+      if (window.localStorage.getItem("gck-home-intro-enabled") === "0") {
+        return { ...defaults, home_intro_enabled: false };
+      }
+    } catch {
+      // The enabled defaults remain available without local storage.
+    }
+    return { ...defaults };
+  }
+
+  function cacheHomeIntroSettings(settings) {
+    try {
+      window.localStorage.setItem(
+        HOME_INTRO_SETTINGS_CACHE,
+        JSON.stringify({
+          home_intro_enabled: settings.home_intro_enabled,
+          home_intro_duration_ms: settings.home_intro_duration_ms,
+          home_intro_lock_scroll: settings.home_intro_lock_scroll,
+          home_intro_contributor_limit:
+            settings.home_intro_contributor_limit
+        })
+      );
+      window.localStorage.setItem(
+        "gck-home-intro-enabled",
+        settings.home_intro_enabled ? "1" : "0"
+      );
+    } catch {
+      // Visual settings still apply to the current page.
     }
   }
 
@@ -383,9 +447,10 @@
 
   function createEntrySequence(settings, reducedMotion) {
     const stage = document.querySelector("[data-entry-sequence]");
+    let runtimeSettings = normalizeHomeIntroSettings(settings);
     if (
       !document.body.classList.contains("page-home") ||
-      !settings.home_intro_enabled ||
+      !runtimeSettings.home_intro_enabled ||
       reducedMotion
     ) {
       if (stage) stage.remove();
@@ -414,11 +479,19 @@
       markHomeIntroReady("skipped");
       return;
     }
-    const contributors = (config.contributors || []).slice(0, 8);
-    document.body.classList.add("has-entry-sequence");
-    document.body.dataset.homeIntro = "playing";
-    stage.dataset.contributorCount = String(contributors.length);
 
+    let randomSeed = (Date.now() ^ Math.floor(performance.now() * 1000)) >>> 0;
+    try {
+      const entropy = new Uint32Array(1);
+      window.crypto.getRandomValues(entropy);
+      randomSeed ^= entropy[0];
+    } catch {
+      // Time-based entropy is sufficient for decorative placement.
+    }
+    const random = seededRandom(randomSeed);
+    const contributorPool = [...new Set(config.contributors || [])];
+    let contributors = [];
+    let contributorMotions = [];
     let width = 1;
     let height = 1;
     let ratio = 1;
@@ -428,11 +501,17 @@
     let frame = 0;
     let finished = false;
     let scrollStarted = 0;
-    let scrollDuration = 620;
+    let scrollDuration = 690;
+    let naturalScrollDuration = 690;
     let scrollFrom = 0;
     let previousScrollBehavior = "";
-    const assembleDuration = 1080;
-    const holdDuration = 360;
+    let assembleDuration = 1680;
+    let holdDuration = 630;
+
+    document.body.classList.add("has-entry-sequence");
+    document.body.dataset.homeIntro = "playing";
+    stage.dataset.contributorLayout = "orbital";
+    stage.dataset.contributorTrajectory = "moving-targets";
 
     function clamp(value, minimum = 0, maximum = 1) {
       return Math.max(minimum, Math.min(maximum, value));
@@ -443,10 +522,18 @@
     }
 
     function easeInOutCubic(value) {
-      const progress = clamp(value);
-      return progress < 0.5
-        ? 4 * progress * progress * progress
-        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+      const valueProgress = clamp(value);
+      return valueProgress < 0.5
+        ? 4 * valueProgress * valueProgress * valueProgress
+        : 1 - Math.pow(-2 * valueProgress + 2, 3) / 2;
+    }
+
+    function shuffle(values) {
+      for (let index = values.length - 1; index > 0; index -= 1) {
+        const swap = Math.floor(random() * (index + 1));
+        [values[index], values[swap]] = [values[swap], values[index]];
+      }
+      return values;
     }
 
     function fitFont(target, text, maximum, preferred, minimum, weight) {
@@ -460,6 +547,43 @@
       return minimum;
     }
 
+    function setDurations() {
+      const total = runtimeSettings.home_intro_duration_ms;
+      assembleDuration = Math.round(total * 0.56);
+      holdDuration = Math.round(total * 0.21);
+      naturalScrollDuration = Math.max(
+        320,
+        total - assembleDuration - holdDuration
+      );
+      if (!scrollStarted) {
+        scrollDuration = naturalScrollDuration;
+      }
+      stage.dataset.entryDuration = String(total);
+      stage.dataset.scrollLocked =
+        runtimeSettings.home_intro_lock_scroll ? "true" : "false";
+    }
+
+    function selectContributors() {
+      const mobile = width < 620;
+      const maximum = Math.min(
+        contributorPool.length,
+        runtimeSettings.home_intro_contributor_limit,
+        mobile ? 6 : 10
+      );
+      if (!maximum) {
+        contributors = [];
+        stage.dataset.contributorCount = "0";
+        stage.dataset.contributors = "[]";
+        return;
+      }
+      const minimum = Math.min(maximum, Math.max(2, Math.ceil(maximum * 0.65)));
+      const count =
+        minimum + Math.floor(random() * (maximum - minimum + 1));
+      contributors = shuffle(contributorPool.slice()).slice(0, count);
+      stage.dataset.contributorCount = String(contributors.length);
+      stage.dataset.contributors = JSON.stringify(contributors);
+    }
+
     function drawArtwork(target, targetWidth, targetHeight) {
       const mobile = targetWidth < 620;
       const centerX = targetWidth / 2;
@@ -467,27 +591,6 @@
       const span = Math.min(targetWidth * 0.86, 980);
       const titleSize = mobile ? 34 : 52;
       target.clearRect(0, 0, targetWidth, targetHeight);
-      target.save();
-      target.translate(centerX, centerY);
-      target.lineWidth = mobile ? 1.6 : 2;
-      target.strokeStyle = "rgba(137, 214, 192, 0.78)";
-      target.rotate(Math.PI / 10);
-      target.strokeRect(
-        mobile ? -62 : -88,
-        mobile ? -62 : -88,
-        mobile ? 124 : 176,
-        mobile ? 124 : 176
-      );
-      target.rotate(-Math.PI / 4.2);
-      target.strokeStyle = "rgba(218, 170, 68, 0.68)";
-      target.strokeRect(
-        mobile ? -40 : -56,
-        mobile ? -40 : -56,
-        mobile ? 80 : 112,
-        mobile ? 80 : 112
-      );
-      target.restore();
-
       target.lineWidth = mobile ? 2.4 : 3;
       target.strokeStyle = "rgba(132, 210, 188, 0.9)";
       target.beginPath();
@@ -525,7 +628,7 @@
         centerY - (mobile ? 104 : 120)
       );
       const titleText = "Game Client Knowledge";
-      fitFont(
+      const fittedTitle = fitFont(
         target,
         titleText,
         targetWidth - (mobile ? 28 : 80),
@@ -533,6 +636,8 @@
         27,
         760
       );
+      target.font =
+        `760 ${fittedTitle}px Inter, system-ui, -apple-system, sans-serif`;
       target.fillStyle = "#edf7f3";
       target.fillText(titleText, centerX, centerY - 36);
       target.fillStyle = "#bdcbc6";
@@ -543,19 +648,6 @@
         centerX,
         centerY + 22
       );
-      const contributorText = contributors.join("  /  ");
-      if (contributorText) {
-        fitFont(
-          target,
-          contributorText,
-          targetWidth - (mobile ? 26 : 120),
-          mobile ? 9 : 11,
-          7,
-          650
-        );
-        target.fillStyle = "#d5ad50";
-        target.fillText(contributorText, centerX, centerY + 68);
-      }
       target.fillStyle = "#8bd3bd";
       [
         [-span * 0.44, -86],
@@ -573,6 +665,118 @@
       });
     }
 
+    function createContributorMotions() {
+      const mobile = width < 620;
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const offset = random() * Math.PI * 2;
+      contributorMotions = contributors.map((name, index) => {
+        const fontSize = fitFont(
+          context,
+          name,
+          mobile ? width * 0.44 : 230,
+          mobile ? 10 : 12,
+          7,
+          650
+        );
+        context.font =
+          `650 ${fontSize}px "SFMono-Regular", Consolas, monospace`;
+        const textWidth = context.measureText(name).width;
+        const direction = random() > 0.5 ? 1 : -1;
+        return {
+          name,
+          fontSize,
+          textWidth,
+          angle:
+            offset +
+            index * (Math.PI * 2 / Math.max(1, contributors.length)) +
+            (random() - 0.5) * 0.34,
+          radiusX: mobile
+            ? width * (0.3 + random() * 0.08)
+            : width * (0.34 + random() * 0.08),
+          radiusY: height * (mobile ? 0.34 + random() * 0.05 : 0.3 + random() * 0.08),
+          speed: direction * (0.000045 + random() * 0.000055),
+          centerX,
+          centerY
+        };
+      });
+    }
+
+    function contributorPosition(item, elapsed) {
+      const angle = item.angle + elapsed * item.speed;
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const coreHalfWidth = Math.min(width * 0.39, 370);
+      const coreHalfHeight = width < 620 ? 96 : 110;
+      const labelHalfWidth = item.textWidth / 2;
+      const labelHalfHeight = item.fontSize * 0.75;
+      let x = centerX + Math.cos(angle) * item.radiusX;
+      let y = centerY + Math.sin(angle) * item.radiusY;
+      const safeX = coreHalfWidth + labelHalfWidth + 14;
+      const safeY = coreHalfHeight + labelHalfHeight + 14;
+      if (Math.abs(x - centerX) < safeX && Math.abs(y - centerY) < safeY) {
+        if (Math.abs(Math.sin(angle)) >= 0.35) {
+          y = centerY + (Math.sin(angle) >= 0 ? safeY : -safeY);
+        } else {
+          x = centerX + (Math.cos(angle) >= 0 ? safeX : -safeX);
+        }
+      }
+      x = clamp(x, labelHalfWidth + 10, width - labelHalfWidth - 10);
+      y = clamp(y, item.fontSize + 10, height - item.fontSize - 10);
+      const overlapsCore =
+        Math.abs(x - centerX) < safeX &&
+        Math.abs(y - centerY) < safeY;
+      if (overlapsCore) {
+        y = clamp(
+          centerY + (Math.sin(angle) >= 0 ? safeY : -safeY),
+          item.fontSize + 10,
+          height - item.fontSize - 10
+        );
+      }
+      return { x, y };
+    }
+
+    function sampleContributor(item, contributorIndex) {
+      const sample = document.createElement("canvas");
+      sample.width = Math.max(1, Math.ceil(item.textWidth + 18));
+      sample.height = Math.max(1, Math.ceil(item.fontSize * 2.4));
+      const sampleContext = sample.getContext("2d", {
+        willReadFrequently: true
+      });
+      sampleContext.textAlign = "center";
+      sampleContext.textBaseline = "middle";
+      sampleContext.font =
+        `650 ${item.fontSize}px "SFMono-Regular", Consolas, monospace`;
+      sampleContext.fillStyle = "#d5ad50";
+      sampleContext.fillText(
+        item.name,
+        sample.width / 2,
+        sample.height / 2
+      );
+      const pixels = sampleContext.getImageData(
+        0,
+        0,
+        sample.width,
+        sample.height
+      ).data;
+      const candidates = [];
+      for (let y = 0; y < sample.height; y += 2) {
+        for (let x = 0; x < sample.width; x += 2) {
+          const offset = (y * sample.width + x) * 4;
+          if (pixels[offset + 3] < 42) continue;
+          candidates.push({
+            contributor: contributorIndex,
+            localX: x - sample.width / 2,
+            localY: y - sample.height / 2,
+            color:
+              `rgba(${pixels[offset]},${pixels[offset + 1]},` +
+              `${pixels[offset + 2]},${pixels[offset + 3] / 255})`
+          });
+        }
+      }
+      return shuffle(candidates).slice(0, width < 620 ? 180 : 280);
+    }
+
     function createParticleTargets() {
       artwork = document.createElement("canvas");
       artwork.width = Math.max(1, Math.round(width));
@@ -584,13 +788,13 @@
       const pixels = target.getImageData(0, 0, width, height).data;
       const mobile = width < 620;
       const step = mobile ? 3 : 4;
-      const maximum = mobile ? 2600 : 4400;
-      const candidates = [];
+      const coreMaximum = mobile ? 1900 : 3200;
+      const coreCandidates = [];
       for (let y = 0; y < height; y += step) {
         for (let x = 0; x < width; x += step) {
           const offset = (y * width + x) * 4;
           if (pixels[offset + 3] < 42) continue;
-          candidates.push({
+          coreCandidates.push({
             x,
             y,
             color:
@@ -599,34 +803,60 @@
           });
         }
       }
-      const random = seededRandom(0x1a2b3c4d);
-      for (let index = candidates.length - 1; index > 0; index -= 1) {
-        const swap = Math.floor(random() * (index + 1));
-        [candidates[index], candidates[swap]] = [
-          candidates[swap],
-          candidates[index]
-        ];
-      }
-      particles = candidates.slice(0, maximum).map((targetPoint, index) => {
-        const edge = index % 4;
-        const margin = 30 + random() * Math.min(width, height) * 0.3;
-        let startX = random() * width;
-        let startY = random() * height;
-        if (edge === 0) startX = -margin;
-        if (edge === 1) startX = width + margin;
-        if (edge === 2) startY = -margin;
-        if (edge === 3) startY = height + margin;
+      shuffle(coreCandidates);
+      const contributorCandidates = contributorMotions.flatMap(
+        sampleContributor
+      );
+      const targets = coreCandidates
+        .slice(0, coreMaximum)
+        .concat(contributorCandidates);
+      let contributorParticles = 0;
+      particles = targets.map((targetPoint, index) => {
+        const dynamic = targetPoint.contributor !== undefined;
+        let startX;
+        let startY;
+        if (dynamic) {
+          contributorParticles += 1;
+          const item = contributorMotions[targetPoint.contributor];
+          const initial = contributorPosition(item, 0);
+          const dx = initial.x - width / 2;
+          const dy = initial.y - height / 2;
+          const distance = Math.max(1, Math.hypot(dx, dy));
+          const travel =
+            Math.max(width, height) * (0.55 + random() * 0.28);
+          const tangent = (random() - 0.5) * Math.min(width, height) * 0.2;
+          startX = initial.x + dx / distance * travel - dy / distance * tangent;
+          startY = initial.y + dy / distance * travel + dx / distance * tangent;
+        } else {
+          const edge = index % 4;
+          const margin = 30 + random() * Math.min(width, height) * 0.3;
+          startX = random() * width;
+          startY = random() * height;
+          if (edge === 0) startX = -margin;
+          if (edge === 1) startX = width + margin;
+          if (edge === 2) startY = -margin;
+          if (edge === 3) startY = height + margin;
+        }
         return {
           ...targetPoint,
           startX,
           startY,
-          delay: random() * 210,
+          delay: random() * assembleDuration * 0.18,
           orbit: (random() - 0.5) * (mobile ? 46 : 76),
           phase: random() * Math.PI * 2,
           size: index % 17 === 0 ? 2.2 : 1.1 + random() * 0.9
         };
       });
       stage.dataset.particleCount = String(particles.length);
+      stage.dataset.contributorParticleCount = String(contributorParticles);
+    }
+
+    function rebuildTargets(reselect) {
+      if (reselect || !contributors.length) {
+        selectContributors();
+      }
+      createContributorMotions();
+      createParticleTargets();
     }
 
     function resize() {
@@ -639,7 +869,7 @@
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
-      createParticleTargets();
+      rebuildTargets(false);
     }
 
     function drawGrid(progressValue) {
@@ -665,37 +895,118 @@
       }
     }
 
+    function drawRotatingFrames(elapsed, opacity) {
+      const mobile = width < 620;
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const rotation = elapsed * 0.00042;
+      context.save();
+      context.globalAlpha = opacity;
+      context.translate(centerX, centerY);
+      context.lineWidth = mobile ? 1.6 : 2;
+      context.strokeStyle = "rgba(137, 214, 192, 0.78)";
+      context.rotate(Math.PI / 10 + rotation);
+      context.strokeRect(
+        mobile ? -62 : -88,
+        mobile ? -62 : -88,
+        mobile ? 124 : 176,
+        mobile ? 124 : 176
+      );
+      context.rotate(-Math.PI / 4.2 - rotation * 1.8);
+      context.strokeStyle = "rgba(218, 170, 68, 0.68)";
+      context.strokeRect(
+        mobile ? -40 : -56,
+        mobile ? -40 : -56,
+        mobile ? 80 : 112,
+        mobile ? 80 : 112
+      );
+      context.restore();
+      stage.dataset.frameRotation = rotation.toFixed(4);
+    }
+
+    function drawContributorLabels(elapsed, opacity) {
+      let overlapsCore = false;
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const coreHalfWidth = Math.min(width * 0.39, 370);
+      const coreHalfHeight = width < 620 ? 96 : 110;
+      context.save();
+      context.globalAlpha = opacity;
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillStyle = "#d5ad50";
+      contributorMotions.forEach((item) => {
+        const position = contributorPosition(item, elapsed);
+        context.font =
+          `650 ${item.fontSize}px "SFMono-Regular", Consolas, monospace`;
+        context.fillText(item.name, position.x, position.y);
+        context.fillRect(
+          position.x - item.textWidth / 2 - 8,
+          position.y - 1,
+          3,
+          3
+        );
+        if (
+          Math.abs(position.x - centerX) <
+            coreHalfWidth + item.textWidth / 2 &&
+          Math.abs(position.y - centerY) <
+            coreHalfHeight + item.fontSize
+        ) {
+          overlapsCore = true;
+        }
+      });
+      context.restore();
+      stage.dataset.contributorCoreOverlap = overlapsCore ? "true" : "false";
+    }
+
+    function particleTarget(particle, elapsed) {
+      if (particle.contributor === undefined) {
+        return { x: particle.x, y: particle.y };
+      }
+      const item = contributorMotions[particle.contributor];
+      const position = contributorPosition(item, elapsed);
+      return {
+        x: position.x + particle.localX,
+        y: position.y + particle.localY
+      };
+    }
+
     function drawAssembly(elapsed) {
-      const progressValue = clamp(elapsed / assembleDuration);
+      const assemblyElapsed = Math.min(elapsed, assembleDuration);
+      const progressValue = clamp(assemblyElapsed / assembleDuration);
       drawGrid(progressValue);
       particles.forEach((particle) => {
         const local = clamp(
-          (elapsed - particle.delay) /
+          (assemblyElapsed - particle.delay) /
             Math.max(1, assembleDuration - particle.delay)
         );
         const eased = easeOutQuart(local);
         const orbit = particle.orbit * (1 - eased);
+        const target = particleTarget(particle, elapsed);
         const x =
           particle.startX +
-          (particle.x - particle.startX) * eased +
+          (target.x - particle.startX) * eased +
           Math.cos(particle.phase + local * Math.PI * 2.4) * orbit;
         const y =
           particle.startY +
-          (particle.y - particle.startY) * eased +
+          (target.y - particle.startY) * eased +
           Math.sin(particle.phase + local * Math.PI * 2.4) * orbit;
         context.fillStyle = particle.color;
         const size = particle.size * (0.58 + eased * 0.42);
         context.fillRect(x - size / 2, y - size / 2, size, size);
       });
-      const imageOpacity = clamp((progressValue - 0.84) / 0.16);
+      const imageOpacity = clamp((progressValue - 0.82) / 0.18);
       if (artwork && imageOpacity > 0) {
         context.save();
         context.globalAlpha = imageOpacity * 0.92;
         context.drawImage(artwork, 0, 0);
         context.restore();
       }
+      const dynamicOpacity = clamp((progressValue - 0.72) / 0.28);
+      drawRotatingFrames(elapsed, 0.25 + dynamicOpacity * 0.75);
+      drawContributorLabels(elapsed, dynamicOpacity);
       progress.style.transform =
-        `scaleX(${Math.min(1, elapsed / (assembleDuration + holdDuration))})`;
+        `scaleX(${Math.min(1, elapsed / runtimeSettings.home_intro_duration_ms)})`;
       stage.dataset.entryPhase =
         progressValue < 1 ? "assembling" : "holding";
       stage.classList.toggle("is-holding", progressValue >= 1);
@@ -704,12 +1015,21 @@
     function beginScroll(now, accelerated) {
       if (scrollStarted || finished) return;
       scrollStarted = now;
-      scrollDuration = accelerated ? 360 : 620;
+      scrollDuration = accelerated
+        ? Math.min(420, naturalScrollDuration)
+        : naturalScrollDuration;
       scrollFrom = window.scrollY;
       previousScrollBehavior = document.documentElement.style.scrollBehavior;
       document.documentElement.style.scrollBehavior = "auto";
       stage.dataset.entryPhase = "scrolling";
       stage.classList.remove("is-holding");
+    }
+
+    function releaseListeners() {
+      window.removeEventListener("resize", resize);
+      window.removeEventListener("keydown", skip);
+      stage.removeEventListener("click", skip);
+      updateHomeIntroSettings = null;
     }
 
     function finish() {
@@ -719,13 +1039,17 @@
         window.cancelAnimationFrame(frame);
         frame = 0;
       }
-      window.removeEventListener("resize", resize);
-      window.removeEventListener("keydown", skip);
-      stage.removeEventListener("click", skip);
+      releaseListeners();
       document.documentElement.style.scrollBehavior = previousScrollBehavior;
       stage.classList.add("is-complete");
       stage.dataset.entryPhase = "complete";
       document.body.classList.remove("has-entry-sequence");
+      document.body.dataset.homeIntroLocked =
+        runtimeSettings.home_intro_lock_scroll ? "true" : "false";
+      if (runtimeSettings.home_intro_lock_scroll) {
+        stage.remove();
+        window.scrollTo(0, 0);
+      }
       cancelHomeIntro = null;
       markHomeIntroReady("complete");
     }
@@ -737,9 +1061,7 @@
         window.cancelAnimationFrame(frame);
         frame = 0;
       }
-      window.removeEventListener("resize", resize);
-      window.removeEventListener("keydown", skip);
-      stage.removeEventListener("click", skip);
+      releaseListeners();
       document.documentElement.style.scrollBehavior = previousScrollBehavior;
       stage.remove();
       document.body.classList.remove("has-entry-sequence");
@@ -752,10 +1074,25 @@
       beginScroll(performance.now(), true);
     }
 
+    function applyRuntimeSettings(nextSettings) {
+      const previousLimit = runtimeSettings.home_intro_contributor_limit;
+      runtimeSettings = normalizeHomeIntroSettings({
+        ...runtimeSettings,
+        ...nextSettings
+      });
+      setDurations();
+      if (
+        !finished &&
+        previousLimit !== runtimeSettings.home_intro_contributor_limit
+      ) {
+        rebuildTargets(true);
+      }
+    }
+
     function render(now) {
       const elapsed = now - started;
       context.clearRect(0, 0, width, height);
-      drawAssembly(Math.min(elapsed, assembleDuration));
+      drawAssembly(elapsed);
       if (
         !scrollStarted &&
         elapsed >= assembleDuration + holdDuration
@@ -763,6 +1100,7 @@
         beginScroll(now, false);
       }
       if (scrollStarted) {
+        stage.dataset.entryPhase = "scrolling";
         const scrollProgress = clamp(
           (now - scrollStarted) / scrollDuration
         );
@@ -773,7 +1111,7 @@
             (target - scrollFrom) * easeInOutCubic(scrollProgress)
         );
         progress.style.transform =
-          `scaleX(${0.75 + scrollProgress * 0.25})`;
+          `scaleX(${0.77 + scrollProgress * 0.23})`;
         if (scrollProgress >= 1) {
           finish();
           return;
@@ -782,12 +1120,14 @@
       frame = window.requestAnimationFrame(render);
     }
 
+    setDurations();
     window.addEventListener("resize", resize);
     window.addEventListener("keydown", skip);
     resize();
     window.scrollTo(0, 0);
     started = performance.now();
     cancelHomeIntro = cancel;
+    updateHomeIntroSettings = applyRuntimeSettings;
     frame = window.requestAnimationFrame(render);
     stage.addEventListener("click", skip);
   }
@@ -799,17 +1139,10 @@
     const type = pageVisualType();
     document.body.dataset.visualType = type || "none";
     let introStarted = false;
+    const cachedIntroSettings = readCachedHomeIntroSettings();
     if (type === "home") {
-      let cachedIntro = null;
-      try {
-        cachedIntro = window.localStorage.getItem(
-          "gck-home-intro-enabled"
-        );
-      } catch {
-        // The default remains enabled when storage is unavailable.
-      }
-      if (cachedIntro !== "0") {
-        createEntrySequence(defaults, reducedMotion);
+      if (cachedIntroSettings.home_intro_enabled) {
+        createEntrySequence(cachedIntroSettings, reducedMotion);
         introStarted = true;
       }
     } else {
@@ -819,15 +1152,11 @@
     const resolved = await (
       window.GCK_VISUAL_SETTINGS || Promise.resolve({})
     );
-    const settings = { ...defaults, ...resolved };
-    try {
-      window.localStorage.setItem(
-        "gck-home-intro-enabled",
-        settings.home_intro_enabled ? "1" : "0"
-      );
-    } catch {
-      // Visual settings still apply to the current page.
-    }
+    const settings = normalizeHomeIntroSettings({
+      ...defaults,
+      ...resolved
+    });
+    cacheHomeIntroSettings(settings);
     document.body.dataset.pointerEffect =
       settings.pointer_effect_enabled ? "on" : "off";
 
@@ -839,6 +1168,8 @@
           document.querySelector("[data-entry-sequence]")?.remove();
           markHomeIntroReady("skipped");
         }
+      } else if (updateHomeIntroSettings) {
+        updateHomeIntroSettings(settings);
       } else if (!introStarted && !homeIntroReleased) {
         createEntrySequence(settings, reducedMotion);
       }

@@ -10,6 +10,9 @@ The site exposes four visual controls in the editor administration page:
 | Reader background | `clean`, `blueprint`, `constellation` | `blueprint` |
 | Pointer effect | enabled or disabled | enabled |
 | Homepage entry sequence | enabled or disabled | enabled |
+| Homepage entry duration | `1.5` to `10` seconds | `3` seconds |
+| Lock completed entry | enabled or disabled | enabled |
+| Contributor display limit | `1` to `10` | `8` |
 
 The values are stored in the existing SQLite `settings` table. Administrators
 update them through `PUT /api/admin/visual-settings`. Invalid style names are
@@ -74,13 +77,29 @@ finished image remains sharp.
 
 The assembled image holds briefly. The client then animates the real document
 scroll position until the following sticky site header reaches the top of the
-viewport. Total duration is approximately `2.1` seconds. The entry section
-remains above the homepage, so the transition never swaps pages or removes an
-overlay.
+viewport. The configured total duration is split into assembly (`56%`), hold
+(`21%`), and scroll (`23%`). The default total is exactly `3` seconds.
+
+When completed-entry locking is enabled, the client removes the entry section
+after the scroll and resets the now-shorter document to its top. The normal
+homepage remains at the same visual position, but the entry section no longer
+exists and cannot be reached by scrolling upward. Disabling the setting keeps
+the completed section in document flow for reversible scrolling.
 
 Contributor names are extracted at build time from recent Git author names.
 Email addresses are never included. Snapshot-only builds use safe fallback
-labels when Git history is unavailable.
+labels when Git history is unavailable. On each new browser session, the client
+randomly selects up to the configured limit. Mobile viewports use at most six
+names to preserve legibility.
+
+Names are not part of the fixed logo artwork. Each name receives an orbital
+position, direction, and angular velocity around a protected logo rectangle.
+Its text pixels are sampled separately. Contributor particles start beyond the
+viewport in the direction of that name and continuously chase its moving text
+target, so the name assembles while following its trajectory. The final vector
+label continues moving around the logo and is constrained never to enter the
+protected logo area. The two central square frames rotate independently on
+every animation frame.
 
 The sequence plays once per browser session. When the homepage first connects
 without the `gck_home_intro_session` cookie, the client starts the sequence and
@@ -95,10 +114,10 @@ The normal homepage knowledge field waits for the entry promise to resolve.
 Only one animated Canvas loop runs during assembly, avoiding contention between
 the entry field and the homepage hero.
 
-Assembly starts from the cached enable flag, or the enabled default on a first
+Assembly starts from cached entry settings, or documented defaults on a first
 visit. It does not wait for the editor bootstrap request. The eventual server
-setting is cached and can cancel the optimistic sequence, so network latency
-does not create a blank first screen.
+settings are cached and applied to an active sequence when they arrive, so
+network latency does not create a blank first screen.
 
 ## Accessibility and fallback
 
@@ -126,9 +145,12 @@ configuration deterministically. The suite covers:
 - desktop and mobile horizontal overflow;
 - nonblank Canvas pixel output;
 - pointer creation, disabling, and movement;
-- particle count, assembly phase, contributor labels, and nonblank pixels;
+- particle count, assembly phase, orbital contributor targets, and nonblank
+  pixels;
+- contributor limits, protected-logo exclusion, and rotating square frames;
 - document-flow placement, scroll destination, sticky-header alignment;
-- entry duration, session-cookie replay prevention, reconnection, and skip;
+- configurable three-phase duration and locked/unlocked completion;
+- session-cookie replay prevention, reconnection, and skip;
 - disabled entry behavior;
 - static reduced-motion rendering;
 - search, mobile navigation, Mermaid, source pages, and the code workspace;

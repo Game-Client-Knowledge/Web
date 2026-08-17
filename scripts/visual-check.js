@@ -209,8 +209,16 @@ async function inspectPage(browser, scenario) {
       const stage = document.querySelector("[data-entry-sequence]");
       return {
         contributors: Number(stage?.dataset.contributorCount || 0),
+        contributorParticles: Number(
+          stage?.dataset.contributorParticleCount || 0
+        ),
         particles: Number(stage?.dataset.particleCount || 0),
         phase: stage?.dataset.entryPhase,
+        duration: Number(stage?.dataset.entryDuration || 0),
+        rotation: Number(stage?.dataset.frameRotation || 0),
+        coreOverlap: stage?.dataset.contributorCoreOverlap,
+        layout: stage?.dataset.contributorLayout,
+        trajectory: stage?.dataset.contributorTrajectory,
         progress: document.querySelector(".site-entry-progress")?.style
           .transform,
         scrollY: Math.round(window.scrollY)
@@ -225,12 +233,24 @@ async function inspectPage(browser, scenario) {
       `${scenario.name}: entry did not start in the document first screen`
     );
     assert(
-      intro.contributors >= 2,
+      intro.contributors >= 2 &&
+        intro.contributors <= visualSettings.home_intro_contributor_limit,
       `${scenario.name}: entry contributors ${intro.contributors}`
+    );
+    assert(
+      intro.contributorParticles > 40 &&
+        intro.layout === "orbital" &&
+        intro.trajectory === "moving-targets" &&
+        intro.coreOverlap === "false",
+      `${scenario.name}: contributor motion targets are invalid`
     );
     assert(
       intro.particles >= 1000,
       `${scenario.name}: entry particle count ${intro.particles}`
+    );
+    assert(
+      intro.duration === visualSettings.home_intro_duration_ms,
+      `${scenario.name}: entry duration is ${intro.duration}`
     );
     assert(
       intro.progress?.startsWith("scaleX("),
@@ -248,6 +268,18 @@ async function inspectPage(browser, scenario) {
       return document.querySelector("[data-entry-sequence]")
         ?.dataset.entryPhase === "holding";
     });
+    const assembled = await page.evaluate(() => {
+      const stage = document.querySelector("[data-entry-sequence]");
+      return {
+        rotation: Number(stage?.dataset.frameRotation || 0),
+        coreOverlap: stage?.dataset.contributorCoreOverlap
+      };
+    });
+    assert(
+      assembled.rotation > intro.rotation &&
+        assembled.coreOverlap === "false",
+      `${scenario.name}: central frames or contributors did not move safely`
+    );
     await page.screenshot({
       path: path.join(
         outputDirectory,
@@ -267,20 +299,34 @@ async function inspectPage(browser, scenario) {
         stageHeight: Math.round(stage?.offsetHeight || 0),
         scrollY: Math.round(window.scrollY),
         headerTop: Math.round(header?.getBoundingClientRect().top || 0),
-        stageConnected: Boolean(stage)
+        stageConnected: Boolean(stage),
+        locked: document.body.dataset.homeIntroLocked
       };
     });
     assert(
-      completedAfter >= 1700 && completedAfter <= 2800,
+      completedAfter >=
+        visualSettings.home_intro_duration_ms - 250 &&
+        completedAfter <= visualSettings.home_intro_duration_ms + 900,
       `${scenario.name}: entry completed after ${completedAfter}ms`
     );
-    assert(
-      completed.stageConnected &&
-        completed.phase === "complete" &&
-        completed.headerTop === 0 &&
-        Math.abs(completed.scrollY - completed.stageHeight) <= 2,
-      `${scenario.name}: entry did not scroll to the main page`
-    );
+    if (visualSettings.home_intro_lock_scroll) {
+      assert(
+        !completed.stageConnected &&
+          completed.locked === "true" &&
+          completed.headerTop === 0 &&
+          completed.scrollY === 0,
+        `${scenario.name}: locked entry remains reachable`
+      );
+    } else {
+      assert(
+        completed.stageConnected &&
+          completed.phase === "complete" &&
+          completed.locked === "false" &&
+          completed.headerTop === 0 &&
+          Math.abs(completed.scrollY - completed.stageHeight) <= 2,
+        `${scenario.name}: entry did not scroll to the main page`
+      );
+    }
     const introCookies = await context.cookies(baseUrl);
     const sessionCookie = introCookies.find((cookie) => {
       return cookie.name === "gck_home_intro_session";
@@ -326,14 +372,26 @@ async function inspectPage(browser, scenario) {
         return {
           phase: stage?.dataset.entryPhase,
           stageHeight: Math.round(stage?.offsetHeight || 0),
-          scrollY: Math.round(window.scrollY)
+          scrollY: Math.round(window.scrollY),
+          stageConnected: Boolean(stage),
+          locked: document.body.dataset.homeIntroLocked
         };
       });
-      assert(
-        skipped.phase === "complete" &&
-          Math.abs(skipped.scrollY - skipped.stageHeight) <= 2,
-        `${scenario.name}: skipped entry did not reach the main page`
-      );
+      if (visualSettings.home_intro_lock_scroll) {
+        assert(
+          !skipped.stageConnected &&
+            skipped.locked === "true" &&
+            skipped.scrollY === 0,
+          `${scenario.name}: skipped locked entry remains reachable`
+        );
+      } else {
+        assert(
+          skipped.phase === "complete" &&
+            skipped.locked === "false" &&
+            Math.abs(skipped.scrollY - skipped.stageHeight) <= 2,
+          `${scenario.name}: skipped entry did not reach the main page`
+        );
+      }
     }
     if (scenario.homeIntro === "disabled") {
       await page.waitForFunction(() => document.body.dataset.homeIntro);
@@ -839,11 +897,15 @@ async function inspectPage(browser, scenario) {
       visualSettings: { pointer_effect_enabled: false }
     },
     {
-      name: "home-reconnected-session-mobile",
+      name: "home-intro-unlocked-mobile",
       route: "/",
       viewport: { width: 390, height: 844 },
       homeIntro: "skip",
-      visualSettings: { home_intro_enabled: true }
+      visualSettings: {
+        home_intro_enabled: true,
+        home_intro_lock_scroll: false,
+        home_intro_contributor_limit: 4
+      }
     },
     {
       name: "home-reduced-motion",
