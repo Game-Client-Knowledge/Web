@@ -8,7 +8,14 @@
     config: null,
     session: null,
     csrf: "",
+    serverDrafts: [],
     drafts: [],
+    localChanges: [],
+    draftRevision: "",
+    workspaceSnapshot: null,
+    workspaceSyncTimer: 0,
+    workspaceSyncPromise: null,
+    workspaceRenderFrame: 0,
     editMode: window.localStorage.getItem("gck-edit-mode") === "1",
     inlinePanel: null,
     inlineEditor: null,
@@ -59,11 +66,16 @@
           });
     if (!response.ok) {
       const detail = payload && payload.detail;
-      throw new Error(
+      const error = new Error(
         Array.isArray(detail)
           ? detail.join("；")
-          : detail || "请求失败（HTTP " + response.status + "）"
+          : typeof detail === "object"
+            ? detail.message || "工作区状态发生冲突"
+            : detail || "请求失败（HTTP " + response.status + "）"
       );
+      error.status = response.status;
+      error.detail = detail;
+      throw error;
     }
     return payload;
   }
@@ -150,6 +162,7 @@
     }
 
     if (!state.session || !state.session.authenticated) {
+      document.body.classList.remove("can-edit-content");
       guest.hidden = false;
       profile.hidden = true;
       trigger.classList.remove("is-authenticated");
@@ -160,6 +173,10 @@
     }
 
     const user = state.session.user;
+    document.body.classList.toggle(
+      "can-edit-content",
+      Boolean(state.session.can_edit && !user.must_change_password)
+    );
     guest.hidden = true;
     profile.hidden = false;
     trigger.classList.add("is-authenticated");
@@ -200,22 +217,91 @@
 
   async function loadDrafts() {
     if (!state.session || !state.session.authenticated || !state.session.can_edit) {
+      state.serverDrafts = [];
       state.drafts = [];
       return;
     }
     try {
       const payload = await api("/drafts");
-      state.drafts = payload.items;
+      state.serverDrafts = payload.items || [];
+      state.draftRevision = payload.revision || "";
+      refreshEffectiveDrafts();
     } catch {
-      state.drafts = [];
+      refreshEffectiveDrafts();
+    }
+  }
+
+  function localBufferChanges() {
+    const buffers = editorBufferApi();
+    const userId = editorUserId();
+    if (!buffers || !buffers.list || !userId) {
+      return [];
+    }
+    return buffers.list(window.localStorage, userId);
+  }
+
+  function refreshEffectiveDrafts() {
+    state.localChanges = localBufferChanges();
+    const drafts = new Map(
+      state.serverDrafts.map(function (draft) {
+        return [draft.path, { ...draft, local: false }];
+      })
+    );
+    state.localChanges.forEach(function (change) {
+      const remote = drafts.get(change.path);
+      drafts.set(change.path, {
+        ...(remote || {}),
+        path: change.path,
+        content: change.content,
+        operation: change.operation || "upsert",
+        base_sha: change.baseSha || (remote && remote.base_sha) || null,
+        revision: Number(change.serverRevision) || 0,
+        updated_at: change.updatedAt,
+        local: true,
+        conflict: Boolean(change.conflict)
+      });
+    });
+    state.drafts = Array.from(drafts.values()).sort(function (left, right) {
+      return Number(right.updated_at || 0) - Number(left.updated_at || 0);
+    });
+    rebuildWorkspaceSnapshot();
+  }
+
+  function rebuildWorkspaceSnapshot() {
+    const tree = window.GCKWorkspaceTree;
+    const root = config.editorContext && config.editorContext.root;
+    if (!tree || !root) {
+      state.workspaceSnapshot = null;
+      return;
+    }
+    const entries = tree.mergeEntries(
+      config.workspaceEntries || [],
+      state.serverDrafts,
+      state.localChanges
+    );
+    state.workspaceSnapshot = tree.buildModuleTree(root, entries);
+    const userId = editorUserId();
+    if (userId) {
+      tree.cacheSnapshot(
+        window.localStorage,
+        userId,
+        config.contentVersion,
+        root,
+        state.workspaceSnapshot
+      );
     }
   }
 
   async function discardDraft(draft) {
-    await api("/drafts/" + draft.id, { method: "DELETE" });
-    state.drafts = state.drafts.filter(function (item) {
-      return item.id !== draft.id;
-    });
+    removeEditorBuffer(draft.path);
+    if (draft.id) {
+      await api("/drafts/" + draft.id, { method: "DELETE" });
+      state.serverDrafts = state.serverDrafts.filter(function (item) {
+        return item.id !== draft.id;
+      });
+      state.draftRevision = "";
+    }
+    refreshEffectiveDrafts();
     updateAccountView();
     addDraftNavigation();
   }
@@ -327,109 +413,322 @@
           ? "is-modify"
           : "is-delete");
     badge.dataset.status = status;
-    badge.textContent =
-      (status === "A" ? "新增" : status === "M" ? "已修改" : "已删除") +
-      " · 个人未提交草稿";
+    badge.textContent = draft.conflict
+      ? "冲突 · 本地更改已保留"
+      : (
+          status === "A"
+            ? "新增"
+            : status === "M"
+              ? "已修改"
+              : "已删除"
+        ) + " · 个人未提交草稿";
   }
 
   function addDraftNavigation() {
-    queryAll("[data-draft-navigation]").forEach(function (element) {
-      element.remove();
-    });
-    const root = config.editorContext && config.editorContext.root;
-    if (!root) {
-      return;
-    }
-    const currentPaths = new Set(
-      queryAll("[data-editor-source]").map(function (element) {
-        return element.dataset.editorSource;
-      })
-    );
-    const relevant = state.drafts.filter(function (draft) {
-      return (
-        draft.path.startsWith(root + "/") &&
-        (!currentPaths.has(draft.path) || !draft.base_sha)
-      );
-    });
-    if (!relevant.length) {
-      return;
-    }
-
+    const snapshot = state.workspaceSnapshot;
+    if (!snapshot) return;
     const docsNavigation = query(".docs-navigation");
     if (docsNavigation) {
-      const section = document.createElement("section");
-      section.className = "docs-nav-unit draft-navigation";
-      section.dataset.draftNavigation = "";
-      const title = document.createElement("p");
-      title.className = "docs-nav-unit-title";
-      title.textContent = "个人草稿";
-      const list = document.createElement("ol");
-      relevant.forEach(function (draft) {
-        const status = draftStatus(draft);
-        const item = document.createElement("li");
-        const link = document.createElement("a");
-        link.href = draftLink(draft.path);
-        link.dataset.status = status;
-        link.classList.toggle(
-          "is-deleted-draft",
-          draft.operation === "delete"
+      docsNavigation.replaceChildren();
+      if (snapshot.rootDocuments.length) {
+        docsNavigation.append(
+          renderRootDocumentsNavigation(snapshot.rootDocuments)
         );
-        const icon = document.createElement("i");
-        icon.dataset.lucide = "file-diff";
-        icon.setAttribute("aria-hidden", "true");
-        link.append(icon);
-        const label = document.createElement("span");
-        label.textContent = draftTitle(draft);
-        link.append(label);
-        const change = document.createElement("small");
-        change.className = "draft-change-badge";
-        change.dataset.status = status;
-        change.textContent = status;
-        link.append(change);
-        item.append(link);
-        list.append(item);
+      }
+      snapshot.rootUnits.forEach(function (unit) {
+        docsNavigation.append(renderNavigationUnit(unit, 0));
       });
-      section.append(title, list);
-      docsNavigation.append(section);
-      refreshIcons(section);
+      refreshIcons(docsNavigation);
     }
 
     const unitList = query(".module-unit-list");
     if (unitList) {
-      const section = document.createElement("section");
-      section.className = "draft-content-list";
-      section.dataset.draftNavigation = "";
-      const heading = document.createElement("div");
-      heading.className = "draft-content-list-heading";
-      heading.innerHTML =
-        '<i data-lucide="git-branch" aria-hidden="true"></i><strong>个人未提交内容</strong>';
-      const list = document.createElement("div");
-      relevant.forEach(function (draft) {
-        const status = draftStatus(draft);
-        const link = document.createElement("a");
-        link.className = "draft-content-link";
-        link.dataset.status = status;
-        link.classList.toggle(
-          "is-deleted-draft",
-          draft.operation === "delete"
-        );
-        link.href = draftLink(draft.path);
-        const change = document.createElement("span");
-        change.dataset.status = status;
-        change.textContent = status;
-        const copy = document.createElement("span");
-        const strong = document.createElement("strong");
-        strong.textContent = draftTitle(draft);
-        const path = document.createElement("small");
-        path.textContent = draft.path;
-        copy.append(strong, path);
-        link.append(change, copy);
-        list.append(link);
+      unitList.replaceChildren();
+      if (snapshot.rootDocuments.length) {
+        unitList.append(renderRootDocuments(snapshot.rootDocuments));
+      }
+      snapshot.rootUnits.forEach(function (unit) {
+        unitList.append(renderModuleUnit(unit, 0));
       });
-      section.append(heading, list);
-      unitList.prepend(section);
-      refreshIcons(section);
+      if (!snapshot.rootUnits.length) {
+        const empty = document.createElement("p");
+        empty.className = "empty-state";
+        empty.textContent = "该模块暂无内容。";
+        unitList.append(empty);
+      }
+      refreshIcons(unitList);
     }
+  }
+
+  function renderRootDocumentsNavigation(entries) {
+    const section = document.createElement("section");
+    section.className = "docs-nav-unit workspace-nav-unit";
+    const title = document.createElement("p");
+    title.className = "docs-nav-unit-title";
+    title.textContent = "直属文件";
+    const list = document.createElement("ol");
+    entries.forEach(function (entry) {
+      const item = document.createElement("li");
+      const link = document.createElement("a");
+      link.href = workspaceEntryHref(entry);
+      const icon = document.createElement("i");
+      icon.dataset.lucide =
+        entry.kind === "code" ? "file-code-2" : "file-text";
+      icon.setAttribute("aria-hidden", "true");
+      const label = document.createElement("span");
+      label.textContent = entry.title;
+      link.append(icon, label);
+      appendWorkspaceStatus(link, entry.status, entry.conflict);
+      item.append(link);
+      list.append(item);
+    });
+    section.append(title, list);
+    return section;
+  }
+
+  function renderRootDocuments(entries) {
+    const branch = document.createElement("section");
+    branch.className = "module-unit-branch workspace-unit-branch";
+    const article = document.createElement("article");
+    article.className = "module-unit";
+    const summary = document.createElement("div");
+    summary.className = "module-unit-summary";
+    const meta = document.createElement("p");
+    meta.className = "unit-meta";
+    meta.textContent = entries.length + " 篇";
+    const heading = document.createElement("h3");
+    heading.textContent = "直属文件";
+    const description = document.createElement("p");
+    description.textContent = "直接归属于当前大模块的内容。";
+    summary.append(meta, heading, description);
+    const content = document.createElement("div");
+    content.className = "module-unit-content";
+    const list = document.createElement("ol");
+    list.className = "module-unit-documents";
+    entries.forEach(function (entry) {
+      const item = document.createElement("li");
+      const link = document.createElement("a");
+      link.href = workspaceEntryHref(entry);
+      const icon = document.createElement("i");
+      icon.dataset.lucide =
+        entry.kind === "code" ? "file-code-2" : "file-text";
+      icon.setAttribute("aria-hidden", "true");
+      const label = document.createElement("span");
+      label.textContent = entry.title;
+      const chevron = document.createElement("i");
+      chevron.dataset.lucide = "chevron-right";
+      chevron.setAttribute("aria-hidden", "true");
+      link.append(icon, label);
+      appendWorkspaceStatus(link, entry.status, entry.conflict);
+      link.append(chevron);
+      item.append(link);
+      list.append(item);
+    });
+    content.append(list);
+    article.append(summary, content);
+    branch.append(article);
+    return branch;
+  }
+
+  function workspaceEntryHref(entry) {
+    if (!entry) return "#";
+    if (entry.status || !entry.route) {
+      return draftLink(entry.path);
+    }
+    return (
+      (config.basePath || "").replace(/\/$/, "") +
+      entry.route
+    );
+  }
+
+  function appendWorkspaceStatus(target, status, conflict) {
+    if (!status) return;
+    target.dataset.status = status;
+    const badge = document.createElement("small");
+    badge.className = "draft-change-badge";
+    badge.dataset.status = status;
+    badge.textContent = conflict ? "!" : status;
+    badge.title = conflict ? "本地与服务器草稿冲突" : "Git " + status;
+    target.append(badge);
+  }
+
+  function renderNavigationUnit(unit, depth) {
+    const section = document.createElement("section");
+    section.className =
+      "docs-nav-unit workspace-nav-unit" +
+      (depth ? " is-subunit" : "");
+    if (unit.status) section.dataset.status = unit.status;
+    const title = document.createElement("a");
+    title.className = "docs-nav-unit-title";
+    title.href = workspaceEntryHref(unit.readme);
+    title.textContent = unit.title;
+    if (unit.readme.operation === "delete") {
+      title.classList.add("is-deleted-draft");
+    }
+    appendWorkspaceStatus(title, unit.status, unit.readme.conflict);
+    section.append(title);
+    if (unit.documents.length) {
+      const list = document.createElement("ol");
+      unit.documents.forEach(function (entry) {
+        const item = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = workspaceEntryHref(entry);
+        if (entry.operation === "delete") {
+          link.classList.add("is-deleted-draft");
+        }
+        const icon = document.createElement("i");
+        icon.dataset.lucide =
+          entry.kind === "code" ? "file-code-2" : "file-text";
+        icon.setAttribute("aria-hidden", "true");
+        const label = document.createElement("span");
+        label.textContent = entry.title;
+        link.append(icon, label);
+        appendWorkspaceStatus(link, entry.status, entry.conflict);
+        item.append(link);
+        list.append(item);
+      });
+      section.append(list);
+    }
+    if (unit.children.length) {
+      const children = document.createElement("div");
+      children.className = "docs-nav-children";
+      unit.children.forEach(function (child) {
+        children.append(renderNavigationUnit(child, depth + 1));
+      });
+      section.append(children);
+    }
+    return section;
+  }
+
+  function createWorkspaceAction(kind, root, parent, label) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.createContext = kind;
+    button.dataset.createRoot = root;
+    button.dataset.createParent = parent;
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    const icon = document.createElement("i");
+    icon.dataset.lucide = kind === "module" ? "folder-plus" : "file-plus-2";
+    icon.setAttribute("aria-hidden", "true");
+    button.append(icon, document.createTextNode(
+      kind === "module" ? "子模块" : "文件"
+    ));
+    return button;
+  }
+
+  function renderModuleUnit(unit, depth) {
+    const branch = document.createElement("section");
+    branch.className =
+      "module-unit-branch workspace-unit-branch" +
+      (depth ? " is-subunit" : "");
+    branch.dataset.unitDepth = String(depth);
+    if (unit.status) branch.dataset.status = unit.status;
+    const article = document.createElement("article");
+    article.className = "module-unit";
+    const summary = document.createElement("div");
+    summary.className = "module-unit-summary";
+    const metadata = document.createElement("p");
+    metadata.className = "unit-meta";
+    const articleCount = unit.documents.filter(function (entry) {
+      return entry.kind === "markdown" && entry.operation !== "delete";
+    }).length;
+    const codeCount = unit.documents.filter(function (entry) {
+      return entry.kind === "code" && entry.operation !== "delete";
+    }).length;
+    metadata.textContent =
+      (depth ? "子专题 · " : "") +
+      articleCount +
+      " 篇" +
+      (codeCount ? " · " + codeCount + " 个源码文件" : "");
+    if (unit.changeCount) {
+      metadata.textContent += " · " + unit.changeCount + " 项更改";
+    }
+    const heading = document.createElement("h3");
+    const headingLink = document.createElement("a");
+    headingLink.href = workspaceEntryHref(unit.readme);
+    headingLink.textContent = unit.title;
+    if (unit.readme.operation === "delete") {
+      headingLink.classList.add("is-deleted-draft");
+    }
+    heading.append(headingLink);
+    appendWorkspaceStatus(heading, unit.status, unit.readme.conflict);
+    const description = document.createElement("p");
+    description.textContent = unit.description || "待补充专题简介。";
+    const actions = document.createElement("div");
+    actions.className = "unit-editor-actions edit-mode-only";
+    actions.dataset.editModeOnly = "";
+    actions.append(
+      createWorkspaceAction(
+        "module",
+        state.workspaceSnapshot.root,
+        unit.id,
+        "在 " + unit.title + " 下新建子模块"
+      ),
+      createWorkspaceAction(
+        "file",
+        state.workspaceSnapshot.root,
+        unit.id,
+        "在 " + unit.title + " 下新建文件"
+      )
+    );
+    summary.append(metadata, heading, description, actions);
+
+    const content = document.createElement("div");
+    content.className = "module-unit-content";
+    if (unit.children.length) {
+      const group = document.createElement("section");
+      group.className = "module-unit-content-group";
+      const label = document.createElement("p");
+      label.className = "module-unit-content-label";
+      label.textContent = "子专题";
+      const children = document.createElement("div");
+      children.className = "module-subunit-list";
+      unit.children.forEach(function (child) {
+        children.append(renderModuleUnit(child, depth + 1));
+      });
+      group.append(label, children);
+      content.append(group);
+    }
+    if (unit.documents.length) {
+      const group = document.createElement("section");
+      group.className = "module-unit-content-group";
+      if (unit.children.length) {
+        const label = document.createElement("p");
+        label.className = "module-unit-content-label";
+        label.textContent = "文件";
+        group.append(label);
+      }
+      const list = document.createElement("ol");
+      list.className = "module-unit-documents";
+      unit.documents.forEach(function (entry) {
+        const item = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = workspaceEntryHref(entry);
+        if (entry.operation === "delete") {
+          link.classList.add("is-deleted-draft");
+        }
+        const icon = document.createElement("i");
+        icon.dataset.lucide =
+          entry.kind === "code" ? "file-code-2" : "file-text";
+        icon.setAttribute("aria-hidden", "true");
+        const label = document.createElement("span");
+        label.textContent = entry.title;
+        const chevron = document.createElement("i");
+        chevron.dataset.lucide = "chevron-right";
+        chevron.setAttribute("aria-hidden", "true");
+        link.append(icon, label);
+        appendWorkspaceStatus(link, entry.status, entry.conflict);
+        link.append(chevron);
+        item.append(link);
+        list.append(item);
+      });
+      group.append(list);
+      content.append(group);
+    }
+    article.append(summary, content);
+    branch.append(article);
+    return branch;
   }
 
   function showDeletedDraft(host, draft) {
@@ -481,7 +780,7 @@
     }
     try {
       const html =
-        activeDraftHtml ||
+        (!draft.local && activeDraftHtml) ||
         (
           await api("/preview", {
             method: "POST",
@@ -516,7 +815,9 @@
     state.csrf = state.session.authenticated
       ? state.session.csrf_token
       : "";
-    state.drafts = payload.drafts || [];
+    state.serverDrafts = payload.drafts || [];
+    state.draftRevision = payload.draft_revision || "";
+    refreshEffectiveDrafts();
     const githubAuthError = takeGithubAuthError();
     updateAccountView();
     if (githubAuthError) {
@@ -534,6 +835,7 @@
     ) {
       await openCurrentEditor();
     }
+    beginWorkspaceSync();
   }
 
   function renderOnboarding() {
@@ -723,6 +1025,196 @@
     if (buffers && userId) {
       buffers.remove(window.localStorage, userId, path);
     }
+  }
+
+  function writeEditorBuffer(path, value) {
+    const buffers = editorBufferApi();
+    const userId = editorUserId();
+    if (!buffers || !userId) return null;
+    const saved = buffers.write(window.localStorage, userId, path, value);
+    scheduleWorkspaceRender();
+    return saved;
+  }
+
+  function scheduleWorkspaceRender() {
+    if (state.workspaceRenderFrame) return;
+    state.workspaceRenderFrame = window.requestAnimationFrame(function () {
+      state.workspaceRenderFrame = 0;
+      refreshEffectiveDrafts();
+      addDraftNavigation();
+      updateAccountView();
+    });
+  }
+
+  function replaceServerDraft(saved) {
+    const index = state.serverDrafts.findIndex(function (item) {
+      return item.path === saved.path;
+    });
+    if (index >= 0) state.serverDrafts[index] = saved;
+    else state.serverDrafts.push(saved);
+    state.draftRevision = "";
+    refreshEffectiveDrafts();
+  }
+
+  function mergeLocalWithRemote(change, remote) {
+    if (
+      !remote ||
+      typeof change.baseContent !== "string" ||
+      !window.JsDiff
+    ) {
+      return null;
+    }
+    const patch = window.JsDiff.createPatch(
+      change.path,
+      change.baseContent,
+      change.content,
+      "",
+      ""
+    );
+    const merged = window.JsDiff.applyPatch(remote.content, patch);
+    return typeof merged === "string" ? merged : null;
+  }
+
+  async function syncBufferedChange(change, options, retried) {
+    try {
+      const saved = await api("/drafts", {
+        method: "PUT",
+        keepalive: Boolean(options && options.keepalive),
+        body: JSON.stringify({
+          path: change.path,
+          content: change.operation === "delete" ? "" : change.content,
+          base_sha: change.baseSha || null,
+          base_revision: Number(change.serverRevision) || 0,
+          operation: change.operation || "upsert"
+        })
+      });
+      replaceServerDraft(saved);
+      const latest = readEditorBuffer(change.path);
+      if (!latest || latest.updatedAt === change.updatedAt) {
+        removeEditorBuffer(change.path);
+      } else {
+        latest.serverRevision = saved.revision;
+        latest.baseContent = saved.content;
+        writeEditorBuffer(change.path, latest);
+      }
+      refreshEffectiveDrafts();
+      const panel = state.inlinePanel;
+      if (
+        panel &&
+        panel.dataset.path === change.path &&
+        panel.bufferedContent === change.content
+      ) {
+        panel.dataset.draftId = String(saved.id);
+        panel.serverRevision = saved.revision;
+        panel.lastSyncedContent = saved.content;
+        panel.originalContent = saved.content;
+        setEditorSyncState(
+          panel,
+          "synced",
+          "更改已同步到服务器。",
+          "success"
+        );
+      }
+      return saved;
+    } catch (error) {
+      const remote =
+        error.status === 409 &&
+        error.detail &&
+        error.detail.code === "draft_revision_conflict"
+          ? error.detail.draft
+          : null;
+      if (!retried && remote) {
+        const merged = mergeLocalWithRemote(change, remote);
+        if (merged !== null) {
+          const updated = {
+            ...change,
+            content: merged,
+            baseContent: remote.content,
+            serverRevision: remote.revision,
+            conflict: false,
+            updatedAt: Date.now()
+          };
+          writeEditorBuffer(change.path, updated);
+          replaceServerDraft(remote);
+          return syncBufferedChange(updated, options, true);
+        }
+      }
+      writeEditorBuffer(change.path, {
+        ...change,
+        conflict:
+          error.status === 409 ||
+          Boolean(change.conflict),
+        updatedAt: change.updatedAt || Date.now()
+      });
+      return null;
+    }
+  }
+
+  async function pullServerDrafts() {
+    if (!state.session || !state.session.can_edit) return false;
+    const suffix = state.draftRevision
+      ? "?revision=" + encodeURIComponent(state.draftRevision)
+      : "";
+    const payload = await api("/drafts" + suffix);
+    state.draftRevision = payload.revision || state.draftRevision;
+    if (!payload.changed) return false;
+    state.serverDrafts = payload.items || [];
+    refreshEffectiveDrafts();
+    addDraftNavigation();
+    return true;
+  }
+
+  async function syncWorkspaceState(options) {
+    if (
+      state.workspaceSyncPromise ||
+      !state.session ||
+      !state.session.can_edit
+    ) {
+      return state.workspaceSyncPromise;
+    }
+    state.workspaceSyncPromise = (async function () {
+      try {
+        await pullServerDrafts();
+      } catch {
+        // Local changes remain authoritative while the server is unavailable.
+      }
+      const changes = localBufferChanges();
+      for (const change of changes) {
+        await syncBufferedChange(change, options, false);
+      }
+      refreshEffectiveDrafts();
+      addDraftNavigation();
+      updateAccountView();
+    })().finally(function () {
+      state.workspaceSyncPromise = null;
+    });
+    return state.workspaceSyncPromise;
+  }
+
+  function beginWorkspaceSync() {
+    window.clearInterval(state.workspaceSyncTimer);
+    if (!state.session || !state.session.can_edit) return;
+    const seconds = Math.max(
+      15,
+      Math.min(
+        3600,
+        Number(state.config.workspace_sync_interval_seconds) || 60
+      )
+    );
+    window.setTimeout(function () {
+      pullServerDrafts()
+        .then(function () {
+          refreshEffectiveDrafts();
+          addDraftNavigation();
+          updateAccountView();
+        })
+        .catch(function () {
+          // Cached worktree remains usable while the server is unavailable.
+        });
+    }, 0);
+    state.workspaceSyncTimer = window.setInterval(function () {
+      if (!document.hidden) syncWorkspaceState();
+    }, seconds * 1000);
   }
 
   function createInlinePanel(host, sourcePath) {
@@ -1061,18 +1553,16 @@
     panel.bufferedContent = content.serialized;
     if (content.serialized === panel.lastSyncedContent) {
       removeEditorBuffer(path);
+      scheduleWorkspaceRender();
       setEditorSyncState(panel, "synced", "所有更改已同步。", "success");
       return content;
     }
 
-    const buffers = editorBufferApi();
-    const userId = editorUserId();
-    const cached =
-      buffers &&
-      userId &&
-      buffers.write(window.localStorage, userId, path, {
+    const cached = writeEditorBuffer(path, {
         content: content.serialized,
         baseSha: panel.dataset.baseSha || null,
+        baseContent: panel.lastSyncedContent,
+        operation: "upsert",
         serverRevision: panel.serverRevision,
         updatedAt: Date.now()
       });
@@ -1093,14 +1583,7 @@
   }
 
   function replaceDraft(saved) {
-    const index = state.drafts.findIndex(function (item) {
-      return item.path === saved.path;
-    });
-    if (index >= 0) {
-      state.drafts[index] = saved;
-    } else {
-      state.drafts.push(saved);
-    }
+    replaceServerDraft(saved);
   }
 
   async function syncInlineBuffer(panel, options) {
@@ -1122,18 +1605,31 @@
     const path = panel.dataset.path;
     const contentAtRequest = content.serialized;
     const canonicalAtRequest = content.canonical;
+    const buffered = readEditorBuffer(path) || {
+      path,
+      content: contentAtRequest,
+      baseSha: panel.dataset.baseSha || null,
+      baseContent: panel.lastSyncedContent,
+      operation: "upsert",
+      serverRevision: panel.serverRevision,
+      updatedAt: Date.now()
+    };
     setEditorSyncState(panel, "syncing", "正在同步更改…");
-    panel.syncPromise = api("/drafts", {
-      method: "PUT",
-      keepalive: Boolean(options && options.keepalive),
-      body: JSON.stringify({
-        path,
-        content: contentAtRequest,
-        base_sha: panel.dataset.baseSha || null,
-        operation: "upsert"
-      })
-    })
+    panel.syncPromise = syncBufferedChange(
+      buffered,
+      options,
+      false
+    )
       .then(function (saved) {
+        if (!saved) {
+          setEditorSyncState(
+            panel,
+            "local",
+            "服务器内容已变化；本地更改已保留，请检查冲突。",
+            "error"
+          );
+          return null;
+        }
         replaceDraft(saved);
         panel.dataset.draftId = String(saved.id);
         panel.serverRevision = saved.revision;
@@ -1180,12 +1676,8 @@
   }
 
   function beginInlineAutoSync(panel) {
-    const buffers = editorBufferApi();
-    const interval = buffers ? buffers.AUTO_SYNC_MS : 30000;
     window.clearInterval(panel.syncTimer);
-    panel.syncTimer = window.setInterval(function () {
-      syncInlineBuffer(panel);
-    }, interval);
+    panel.syncTimer = 0;
   }
 
   function activateInlinePanel(panel, host) {
@@ -1244,26 +1736,41 @@
       const draft = state.drafts.find(function (item) {
         return item.path === sourcePath;
       });
-      let source = draft
-        ? { ...draft, sourceType: "draft" }
+      const remoteDraft = state.serverDrafts.find(function (item) {
+        return item.path === sourcePath;
+      });
+      let source = remoteDraft
+        ? { ...remoteDraft, sourceType: "draft" }
         : await loadDeployedSource(sourcePath);
+      const cached = readEditorBuffer(sourcePath);
+      if (!source && cached && !cached.baseSha) {
+        source = {
+          path: sourcePath,
+          content: cached.baseContent || "",
+          sha: null,
+          sourceType: "local-new"
+        };
+      }
       if (!source) {
         source = await api(
           "/repository/file?path=" + encodeURIComponent(sourcePath)
         );
         source.sourceType = "repository-api";
       }
-      const cached = readEditorBuffer(sourcePath);
       const editorContent = cached ? cached.content : source.content;
       panel.dataset.baseSha =
         (cached && cached.baseSha) ||
         source.base_sha ||
         source.sha ||
         "";
-      panel.dataset.draftId = draft ? String(draft.id) : "";
-      panel.serverRevision = draft ? draft.revision : 0;
+      panel.dataset.draftId = remoteDraft ? String(remoteDraft.id) : "";
+      panel.serverRevision = remoteDraft
+        ? remoteDraft.revision
+        : cached
+          ? cached.serverRevision
+          : 0;
       panel.lastSyncedContent = source.content;
-      panel.renderedContent = source.content;
+      panel.renderedContent = draft ? draft.content : source.content;
       panel.bufferedContent = editorContent;
       const deleteButton = query("[data-inline-delete]", panel);
       if (deleteButton) {
@@ -1297,7 +1804,9 @@
         setEditorSyncState(
           panel,
           "synced",
-          draft ? "已加载服务器更改。" : "已加载 main 分支源文件。",
+          remoteDraft
+            ? "已加载服务器更改。"
+            : "已加载 main 分支源文件。",
           "success"
         );
       }
@@ -1390,21 +1899,23 @@
         window.location.href = "/" + path.split("/")[0] + "/";
         return;
       }
-      const deleted = await api("/drafts", {
-        method: "PUT",
-        body: JSON.stringify({
-          path: path,
-          content: "",
-          base_sha: remoteSha,
-          operation: "delete"
-        })
+      const remoteDraft = state.serverDrafts.find(function (item) {
+        return item.path === path;
       });
-      replaceDraft(deleted);
-      removeEditorBuffer(path);
+      const deleted = writeEditorBuffer(path, {
+        content: "",
+        baseSha: remoteSha,
+        baseContent: panel.lastSyncedContent || "",
+        operation: "delete",
+        serverRevision: remoteDraft ? remoteDraft.revision : 0,
+        updatedAt: Date.now()
+      });
+      refreshEffectiveDrafts();
       await closeInlineEditor({ renderLatest: false });
       showDeletedDraft(host, deleted);
       updateAccountView();
       addDraftNavigation();
+      syncWorkspaceState();
     } catch (error) {
       setInlineFeedback(panel, error.message, "error");
     }
@@ -1463,45 +1974,66 @@
     const submit = form.querySelector('button[type="submit"]');
     submit.disabled = true;
     try {
-      let saved;
+      const slug = values.slug
+        .trim()
+        .replace(/\\/g, "/")
+        .replace(/^\/+|\/+$/g, "");
+      if (
+        !slug ||
+        slug.includes("/") ||
+        slug === "." ||
+        slug === ".."
+      ) {
+        throw new Error("目录或文件名无效");
+      }
+      let path;
+      let content;
       if (values.kind === "module") {
-        saved = await api("/topics", {
-          method: "POST",
-          body: JSON.stringify({
-            root: values.root,
-            parent: values.parent,
-            slug: values.slug,
-            title: values.title,
-            description: values.description
-          })
-        });
+        path = [
+          values.root,
+          values.parent,
+          slug,
+          "README.md"
+        ].filter(Boolean).join("/");
+        content = "# " + values.title.trim() + "\n\n";
+        if (values.description.trim()) {
+          content += values.description.trim() + "\n\n";
+        }
+        content +=
+          "## 阅读导航\n\n请在此处补充章节入口和推荐阅读顺序。\n";
       } else {
-        let filename = values.slug.trim();
+        let filename = slug;
         if (!filename.includes(".")) {
           filename += ".md";
         }
-        const path = [values.root, values.parent, filename]
+        path = [values.root, values.parent, filename]
           .filter(Boolean)
           .join("/");
         const markdown = filename.toLowerCase().endsWith(".md");
-        saved = await api("/drafts", {
-          method: "PUT",
-          body: JSON.stringify({
-            path: path,
-            content: markdown ? "# " + values.title.trim() + "\n\n" : "",
-            base_sha: null,
-            operation: "upsert"
-          })
-        });
+        content = markdown ? "# " + values.title.trim() + "\n\n" : "";
       }
-      const existing = state.drafts.findIndex(function (item) {
-        return item.path === saved.path;
+      const occupied = (
+        state.workspaceSnapshot
+          ? state.workspaceSnapshot.entries
+          : []
+      ).some(function (entry) {
+        return entry.path === path && entry.operation !== "delete";
       });
-      if (existing >= 0) {
-        state.drafts[existing] = saved;
-      } else {
-        state.drafts.push(saved);
+      if (occupied) {
+        throw new Error("工作树中已存在同名内容");
       }
+      const saved = writeEditorBuffer(path, {
+        content,
+        baseSha: null,
+        baseContent: "",
+        operation: "upsert",
+        serverRevision: 0,
+        updatedAt: Date.now()
+      });
+      if (!saved) {
+        throw new Error("本地缓存不可用，无法安全创建内容");
+      }
+      refreshEffectiveDrafts();
       feedback(
         target,
         "已创建 " + saved.path + "，正在打开预览。",
@@ -1509,9 +2041,10 @@
       );
       updateAccountView();
       addDraftNavigation();
+      syncWorkspaceState({ keepalive: true });
       window.setTimeout(function () {
         window.location.href = draftLink(saved.path);
-      }, 450);
+      }, 180);
     } catch (error) {
       feedback(target, error.message);
     } finally {
@@ -1545,6 +2078,7 @@
         await loadDrafts();
         updateAccountView();
         await applyDraftsToReader();
+        beginWorkspaceSync();
         openOnboardingIfNeeded();
       } catch (error) {
         feedback(target, error.message);
@@ -1564,6 +2098,7 @@
         await loadDrafts();
         updateAccountView();
         await applyDraftsToReader();
+        beginWorkspaceSync();
         openOnboardingIfNeeded();
       } catch (error) {
         feedback(target, error.message);
@@ -1610,12 +2145,13 @@
       link.textContent = "正在前往 GitHub";
       window.location.assign(link.href);
     });
-    queryAll("[data-create-context]").forEach(function (button) {
-      button.addEventListener("click", function () {
-        openCreateDialog(button);
-      });
-    });
     document.addEventListener("click", function (event) {
+      const create = event.target.closest("[data-create-context]");
+      if (create) {
+        event.preventDefault();
+        openCreateDialog(create);
+        return;
+      }
       const panel = event.target.closest("[data-inline-editor]");
       if (!panel) {
         return;
@@ -1665,7 +2201,10 @@
         state.inlinePanel &&
         state.inlinePanel.classList.contains("is-modern")
       ) {
-        syncInlineBuffer(state.inlinePanel, { keepalive: true });
+        cacheInlineEditor(state.inlinePanel);
+      }
+      if (!document.hidden) {
+        syncWorkspaceState();
       }
     });
     window.addEventListener("pagehide", function () {
@@ -1673,7 +2212,7 @@
         state.inlinePanel &&
         state.inlinePanel.classList.contains("is-modern")
       ) {
-        syncInlineBuffer(state.inlinePanel, { keepalive: true });
+        cacheInlineEditor(state.inlinePanel);
       }
     });
   }

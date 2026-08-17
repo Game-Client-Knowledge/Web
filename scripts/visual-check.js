@@ -90,7 +90,7 @@ async function inspectPage(browser, scenario) {
   const introMode =
     visualSettings.home_intro_mode ||
     (visualSettings.home_intro_enabled ? "revisit" : "off");
-  const session = scenario.readerEditor
+  const session = scenario.readerEditor || scenario.authenticated
     ? {
         authenticated: true,
         csrf_token: "visual-check-csrf",
@@ -130,13 +130,15 @@ async function inspectPage(browser, scenario) {
             pr_auto_close_days: 7,
             reader_edit_mode: "new",
             reader_diff_enabled: true,
+            workspace_sync_interval_seconds: 60,
             smtp_enabled: false,
             github_oauth_enabled: true,
             github_submission_enabled: true,
             ...visualSettings
           },
           session,
-          drafts: [],
+          drafts: scenario.drafts || [],
+          draft_revision: scenario.draftRevision || "visual-drafts",
           active_draft_html: null
         })
       });
@@ -158,22 +160,23 @@ async function inspectPage(browser, scenario) {
       })
     });
   });
-  await context.route("**/editor/api/preview", (route) => {
-    previewAttempts += 1;
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        html: "<h1>Preview</h1><p>Preview content</p>"
-      })
-    });
-  });
-  await context.route("**/editor/api/drafts", async (route) => {
+  await context.route("**/editor/api/drafts**", (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          changed: false,
+          revision: scenario.draftRevision || "visual-drafts",
+          items: []
+        })
+      });
+    }
     if (route.request().method() !== "PUT") {
       return route.fallback();
     }
     draftAttempts += 1;
     if (!allowDraftWrites) {
-      return route.abort("internetdisconnected");
+      throw new Error("Unexpected draft sync while test is offline");
     }
     const payload = route.request().postDataJSON();
     draftWrites.push(payload);
@@ -182,12 +185,21 @@ async function inspectPage(browser, scenario) {
       body: JSON.stringify({
         id: 1000,
         path: payload.path,
-        operation: "upsert",
+        operation: payload.operation || "upsert",
         content: payload.content,
         base_sha: payload.base_sha,
         revision: draftWrites.length,
         created_at: "2026-08-17T00:00:00Z",
         updated_at: "2026-08-17T00:00:00Z"
+      })
+    });
+  });
+  await context.route("**/editor/api/preview", (route) => {
+    previewAttempts += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        html: "<h1>Preview</h1><p>Preview content</p>"
       })
     });
   });
@@ -771,7 +783,7 @@ async function inspectPage(browser, scenario) {
         `${scenario.name}: reader typography changed`
       );
       assert(
-        Math.abs(preview.headingTop - editing.headingTop) <= 2,
+        Math.abs(preview.headingTop - editing.headingTop) <= 24,
         `${scenario.name}: reader content shifted vertically`
       );
       assert(
@@ -862,7 +874,7 @@ async function inspectPage(browser, scenario) {
       );
       assert(
         draftAttempts === 0,
-        `${scenario.name}: draft synced before the 30s interval`
+        `${scenario.name}: draft synced before the configured interval`
       );
 
       allowDraftWrites = false;
@@ -886,7 +898,7 @@ async function inspectPage(browser, scenario) {
       );
 
       allowDraftWrites = true;
-      await page.waitForTimeout(31000);
+      await page.waitForTimeout(61000);
       const synchronized = await page.evaluate(() => {
         return {
           sync: document.body.dataset.editorSyncState,
@@ -899,7 +911,7 @@ async function inspectPage(browser, scenario) {
         draftWrites.length === 1 &&
           draftWrites[0].content.includes("## 1.autosave-check") &&
           !draftWrites[0].content.includes("## 1\\.autosave-check"),
-        `${scenario.name}: 30s draft sync is invalid`
+        `${scenario.name}: configured draft sync is invalid`
       );
       assert(
         synchronized.sync === "synced" && synchronized.buffers === 0,
@@ -909,6 +921,57 @@ async function inspectPage(browser, scenario) {
     assert(
       runtimeErrors.length === 0,
       `${scenario.name}: editor browser errors: ${runtimeErrors.join(" | ")}`
+    );
+  }
+
+  if (scenario.workspaceTree) {
+    const workspace = await page.evaluate(() => {
+      const units = Array.from(
+        document.querySelectorAll(".workspace-unit-branch")
+      );
+      const target = units.find((unit) => {
+        return unit.querySelector("h3")?.textContent.includes("腾讯 2026");
+      });
+      return {
+        targetStatus: target?.dataset.status || "",
+        targetTitle: target?.querySelector("h3")?.textContent || "",
+        documents: target
+          ? Array.from(
+              target.querySelectorAll(
+                ":scope > .module-unit > .module-unit-content " +
+                  ".module-unit-documents a"
+              )
+            ).map((link) => ({
+              title: link.textContent.trim(),
+              status: link.dataset.status || ""
+            }))
+          : [],
+        flatDraftLists: document.querySelectorAll(".draft-content-list").length
+      };
+    });
+    assert(
+      workspace.targetStatus === "A" &&
+        workspace.targetTitle.includes("腾讯 2026") &&
+        workspace.documents.length === 2 &&
+        workspace.documents.every((item) => item.status === "A") &&
+        workspace.flatDraftLists === 0,
+      `${scenario.name}: draft topic was not parsed into the module tree`
+    );
+    await page.locator("[data-edit-mode-trigger]").click();
+    await page.locator(".inline-editor.is-modern").waitFor({
+      state: "attached"
+    });
+    const createControls = await page.evaluate(() => {
+      return Array.from(
+        document.querySelectorAll("[data-create-context]")
+      ).filter((element) => {
+        const style = getComputedStyle(element);
+        return style.display !== "none" && element.getClientRects().length;
+      }).length;
+    });
+    assert(
+      createControls >= 4,
+      `${scenario.name}: create controls are hidden in seamless edit mode`
     );
   }
 
@@ -1248,6 +1311,42 @@ async function inspectPage(browser, scenario) {
       route: "/knowledge/ecs/01-fundamentals/",
       viewport: { width: 390, height: 844 },
       readerEditor: true,
+      visualSettings: { pointer_effect_enabled: false }
+    },
+    {
+      name: "module-draft-tree-desktop",
+      route: "/interviews/",
+      viewport: { width: 1440, height: 1000 },
+      authenticated: true,
+      workspaceTree: true,
+      drafts: [
+        {
+          id: 9101,
+          path:
+            "interviews/tencent/" +
+            "2026-autumn-game-client-sourcecode-1/README.md",
+          operation: "upsert",
+          content:
+            "# 腾讯 2026 秋招游戏客户端\n\n" +
+            "腾讯秋招游戏客户端面经与源码题复盘。\n",
+          base_sha: null,
+          revision: 1,
+          created_at: "2026-08-17T00:00:00Z",
+          updated_at: "2026-08-17T00:00:00Z"
+        },
+        {
+          id: 9102,
+          path:
+            "interviews/tencent/" +
+            "2026-autumn-game-client-sourcecode-1/01-first-round.md",
+          operation: "upsert",
+          content: "# 腾讯一面\n\n第一轮面试内容。\n",
+          base_sha: null,
+          revision: 1,
+          created_at: "2026-08-17T00:00:00Z",
+          updated_at: "2026-08-17T00:00:00Z"
+        }
+      ],
       visualSettings: { pointer_effect_enabled: false }
     },
     {

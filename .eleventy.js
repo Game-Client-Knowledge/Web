@@ -117,7 +117,14 @@ module.exports = function configureEleventy(eleventyConfig) {
     const route =
       catalog.sourceRoutes[target] ||
       catalog.sourceRoutes[`${target}.md`] ||
-      catalog.sourceRoutes[path.posix.join(target, "README.md")];
+      catalog.sourceRoutes[path.posix.join(target, "README.md")] ||
+      (
+        target.toLowerCase() === "readme.md"
+          ? catalog.sourceRoutes[
+              `${sourceRelative.split("/")[0]}/README.md`
+            ]
+          : null
+      );
 
     if (route) {
       return `${withBase(route)}${suffix}`;
