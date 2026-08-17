@@ -24,11 +24,22 @@ const trigger = fs.readFileSync(
   ),
   "utf8"
 );
+const failureNotifier = fs.readFileSync(
+  path.join(
+    root,
+    "editor/app/site_update_notifications.py"
+  ),
+  "utf8"
+);
 
 assert.match(updater, /site_auto_update_interval_minutes/);
 assert.match(updater, /UPDATE_REQUEST_FILE/);
 assert.match(updater, /write_status "building"/);
 assert.match(updater, /npm ci \\\n  --include=dev/);
+assert.match(updater, /exec > >\(tee -a "\$run_log_file"\) 2>&1/);
+assert.match(updater, /update_stage="audit-and-build"/);
+assert.match(updater, /-m app\.site_update_notifications/);
+assert.match(updater, /FAILURE_NOTIFICATION_STATE_FILE/);
 assert.equal(manifest.dependencies["playwright-core"], "1.62.1");
 assert.equal(manifest.devDependencies?.["playwright-core"], undefined);
 assert.doesNotMatch(
@@ -41,5 +52,7 @@ assert.match(
   trigger,
   /PathExists=\/var\/lib\/game-client-knowledge-editor\/site-update\.request/
 );
+assert.match(failureNotifier, /site_update_failed/);
+assert.match(failureNotifier, /previous\.get\("status"\) == "sent"/);
 
 process.stdout.write("Site update control checks passed\n");

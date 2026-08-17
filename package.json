@@ -14,7 +14,7 @@
     "test:source-cache": "node scripts/test-source-cache.js",
     "test:editor-buffer": "node scripts/test-editor-buffer.js",
     "test:workspace-tree": "node scripts/test-workspace-tree.js",
-    "test:site-update": "node scripts/test-site-update-control.js",
+    "test:site-update": "node scripts/test-site-update-control.js && bash scripts/test-site-update-failure.sh",
     "test:home-intro-policy": "node scripts/test-home-intro-policy.js",
     "test:content-loader": "node scripts/test-content-loader.js",
     "test:code-projects": "node scripts/test-code-project-loader.js",

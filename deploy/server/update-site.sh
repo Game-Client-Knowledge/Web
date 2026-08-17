@@ -14,6 +14,9 @@ AUTO_CHECK_STATE_FILE="${AUTO_CHECK_STATE_FILE:-${BUILDER_ROOT}/last-auto-check}
 UPDATE_REQUEST_FILE="${UPDATE_REQUEST_FILE:-/var/lib/game-client-knowledge-editor/site-update.request}"
 UPDATE_STATUS_FILE="${UPDATE_STATUS_FILE:-/var/lib/game-client-knowledge-editor/site-update-status.json}"
 EDITOR_DB_PATH="${EDITOR_DB_PATH:-/var/lib/game-client-knowledge-editor/editor.db}"
+FAILURE_NOTIFICATION_STATE_FILE="${FAILURE_NOTIFICATION_STATE_FILE:-${BUILDER_ROOT}/last-update-failure-notification.json}"
+EDITOR_PYTHON="${EDITOR_PYTHON:-/opt/game-client-knowledge-editor/venv/bin/python}"
+EDITOR_APP_ROOT="${EDITOR_APP_ROOT:-/opt/game-client-knowledge-editor/current/editor}"
 CONTENT_REPOSITORY="${CONTENT_REPOSITORY:-Game-Client-Knowledge/Game-Client-Knowledge}"
 WEB_REPOSITORY="${WEB_REPOSITORY:-Game-Client-Knowledge/Web}"
 
@@ -21,7 +24,19 @@ mkdir -p "$BUILDER_ROOT"
 exec 9>"$LOCK_FILE"
 flock -n 9 || exit 0
 
+run_log_file="$(mktemp)"
+workspace=""
+expected_source=""
+cleanup() {
+  [[ -z "$workspace" ]] || rm -rf "$workspace"
+  [[ -z "$expected_source" ]] || rm -f "$expected_source"
+  rm -f "$run_log_file"
+}
+trap cleanup EXIT
+exec > >(tee -a "$run_log_file") 2>&1
+
 update_mode="auto"
+update_stage="initialize"
 run_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 content_commit=""
 web_commit=""
@@ -68,16 +83,53 @@ os.replace(temporary, path)
 PY
 }
 
+notify_failure() {
+  local exit_code="$1"
+  local failed_command="$2"
+
+  if [[ ! -x "$EDITOR_PYTHON" ]]; then
+    echo "Failure email skipped: editor Python is unavailable at ${EDITOR_PYTHON}." >&2
+    return
+  fi
+  if [[ ! -f "${EDITOR_APP_ROOT}/app/site_update_notifications.py" ]]; then
+    echo "Failure email skipped: notification module is not deployed." >&2
+    return
+  fi
+
+  PYTHONPATH="$EDITOR_APP_ROOT" \
+    "$EDITOR_PYTHON" \
+    -m app.site_update_notifications \
+    --mode "$update_mode" \
+    --stage "$update_stage" \
+    --exit-code "$exit_code" \
+    --failed-command "$failed_command" \
+    --web-commit "$web_commit" \
+    --content-commit "$content_commit" \
+    --started-at "$run_started_at" \
+    --log-file "$run_log_file" \
+    --dedupe-file "$FAILURE_NOTIFICATION_STATE_FILE" ||
+    echo "Failure email delivery command failed." >&2
+}
+
 on_error() {
-  local exit_code=$?
+  local exit_code="$1"
+  local failed_command="$2"
   trap - ERR
+  set +e
+  sleep 0.1
   write_status \
     "failed" \
-    "更新失败（退出码 ${exit_code}），请检查 game-client-knowledge-update.service 日志" \
+    "更新失败（阶段 ${update_stage}，退出码 ${exit_code}），请检查服务日志" \
     1 || true
+  notify_failure "$exit_code" "$failed_command"
   exit "$exit_code"
 }
-trap on_error ERR
+trap 'on_error "$?" "$BASH_COMMAND"' ERR
+
+fail_update() {
+  echo "$1" >&2
+  return 1
+}
 
 read_auto_interval_minutes() {
   python3 - "$EDITOR_DB_PATH" <<'PY'
@@ -118,8 +170,7 @@ PY
   )"
   rm -f "$UPDATE_REQUEST_FILE"
   if [[ "$update_mode" != "content" && "$update_mode" != "site" ]]; then
-    echo "Invalid update mode: $update_mode" >&2
-    exit 1
+    fail_update "Invalid update mode: $update_mode"
   fi
 else
   interval_minutes="$(read_auto_interval_minutes)"
@@ -298,6 +349,7 @@ update_git_mirror() {
     --authored-at "$authored_at"
 }
 
+update_stage="resolve-content-commit"
 IFS=$'\t' read -r \
   content_commit \
   content_updated_at \
@@ -305,6 +357,7 @@ IFS=$'\t' read -r \
   content_author_email_b64 < <(
   github_commit_metadata "$CONTENT_REPOSITORY"
 )
+update_stage="resolve-web-commit"
 if [[
   "$update_mode" == "content"
   && -f "${RELEASE_ROOT}/current/.release-source"
@@ -327,10 +380,10 @@ content_author_email="$(
 )"
 
 if [[ -z "$content_commit" || -z "$web_commit" ]]; then
-  echo "Unable to resolve pushed main commits." >&2
-  exit 1
+  fail_update "Unable to resolve pushed main commits."
 fi
 
+update_stage="prepare-snapshots"
 expected_source="$(mktemp)"
 printf 'web=%s\ncontent=%s\n' "$web_commit" "$content_commit" >"$expected_source"
 
@@ -354,12 +407,14 @@ fi
 
 write_status "building" "正在下载快照并执行完整构建检查" 0
 workspace="$(mktemp -d)"
-trap 'rm -rf "$workspace"; rm -f "$expected_source"' EXIT
 web_snapshot="${workspace}/web"
 content_snapshot="${workspace}/content"
 
+update_stage="download-web-snapshot"
 download_snapshot "$WEB_REPOSITORY" "$web_commit" "$web_snapshot"
+update_stage="download-content-snapshot"
 download_snapshot "$CONTENT_REPOSITORY" "$content_commit" "$content_snapshot"
+update_stage="import-content-history"
 mirror_revision="$(
   update_git_mirror \
     "$CONTENT_REPOSITORY" \
@@ -373,11 +428,13 @@ mirror_revision="$(
 )"
 
 cd "$web_snapshot"
+update_stage="install-dependencies"
 npm ci \
   --include=dev \
   --no-audit \
   --no-fund \
   --cache "${BUILDER_ROOT}/npm-cache"
+update_stage="audit-and-build"
 CONTENT_REPO_PATH="$content_snapshot" \
 CONTENT_COMMIT="$content_commit" \
 CONTENT_UPDATED_AT="$content_updated_at" \
@@ -386,6 +443,7 @@ CONTENT_GIT_REVISION="$mirror_revision" \
 WEB_COMMIT="$web_commit" \
   npm run check
 
+update_stage="sync-line-authors"
 previous_attribution_commit=""
 if [[ -f "$ATTRIBUTION_STATE_FILE" ]]; then
   candidate="$(cat "$ATTRIBUTION_STATE_FILE")"
@@ -406,6 +464,7 @@ python3 scripts/sync-line-authors.py \
   --content-revision "$content_commit" \
   --previous "$previous_attribution_commit"
 
+update_stage="publish-release"
 release_id="$(
   printf '%s-%s-%s' \
     "$(date -u +%Y%m%dT%H%M%SZ)" \
@@ -425,6 +484,7 @@ printf '%s\n' "$web_commit" >"$WEB_STATE_FILE"
 printf '%s\n' "$content_commit" >"$ATTRIBUTION_STATE_FILE"
 
 # Keep the installed updater aligned with the pushed Web commit for the next run.
+update_stage="sync-updater"
 mkdir -p "$WEB_ROOT"
 rsync \
   --archive \
@@ -434,6 +494,7 @@ rsync \
   "$web_snapshot/" \
   "$WEB_ROOT/"
 
+update_stage="prune-releases"
 find "${RELEASE_ROOT}/releases" \
   -mindepth 1 \
   -maxdepth 1 \
@@ -444,5 +505,6 @@ find "${RELEASE_ROOT}/releases" \
   cut -d' ' -f2- |
   xargs -r rm -rf
 
+update_stage="complete"
 write_status "success" "更新已发布" 1
 echo "Published ${release_id}"

@@ -26,6 +26,30 @@ never replace the current release.
 the legacy `npm ci --omit=dev` updater can complete one recovery build, publish
 this fix, and replace their installed updater script.
 
+## Audit Gates
+
+Every candidate release runs `npm run check` before any production symlink is
+changed. The command applies two audit layers.
+
+The source-content audit checks:
+
+- required top-level content directories and repository conventions;
+- YAML frontmatter parsing;
+- exactly one H1 per Markdown document;
+- heading-level continuity and closed fenced code blocks;
+- relative Markdown links and directory README targets;
+- duplicate generated routes;
+- whether content files are included by the catalog scanner.
+
+After the Eleventy build, the generated-site audit checks:
+
+- every local `href` and `src` target in generated HTML;
+- path traversal outside the output directory;
+- whether every Mermaid block was pre-rendered to SVG.
+
+Any audit error exits non-zero. The updater leaves the current release symlink
+unchanged and records the failed candidate commits.
+
 ## Scheduling
 
 `game-client-knowledge-update.timer` wakes the oneshot service every minute. The
@@ -67,6 +91,36 @@ immutable snapshot build, and writes status to:
 
 The administration page polls that status while a request is queued or
 running.
+
+## Failure Notifications
+
+When a scheduled or manual update fails, the updater captures the current
+stage, failed command, candidate Web and content commits, exit code, and the
+last 80 non-empty log lines. It then uses the editor notification service to
+email every active administrator through the SMTP configuration saved in the
+administration page.
+
+The notification is also recorded as `site_update_failed` in the existing
+notification history. Successful delivery fingerprints are stored at:
+
+```text
+/home/sourcecode/gck-builder/last-update-failure-notification.json
+```
+
+The fingerprint includes the candidate commits, stage, command, and sanitized
+log summary. An identical successfully delivered failure is not emailed again
+on later timer retries. A failed or unconfigured SMTP attempt is not marked as
+delivered, so a later retry can still notify administrators after SMTP is
+restored.
+
+The updater invokes the notification module through:
+
+```text
+/opt/game-client-knowledge-editor/venv/bin/python
+```
+
+and therefore reuses the encrypted database SMTP password without exposing it
+to the shell script or status JSON.
 
 ## Status
 
