@@ -530,6 +530,7 @@
         assetVersion: {{ site.assetVersion | json | safe }},
         contentVersion: {{ catalog.repository.commit | json | safe }},
         rawBase: {{ '/raw/' | withBase | json | safe }},
+        contentRoutes: {{ catalog.sourceRoutes | json | safe }},
         contributors: {{ catalog.contributors | json | safe }},
         editorContext: {
           pageKind: {{ (pageKind or "default") | json | safe }},

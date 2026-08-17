@@ -75,6 +75,7 @@ async function canvasMetrics(page, selector) {
 async function inspectPage(browser, scenario) {
   let allowDraftWrites = true;
   let draftAttempts = 0;
+  let previewAttempts = 0;
   const draftWrites = [];
   const visualSettings = {
     ...defaultVisualSettings,
@@ -145,6 +146,15 @@ async function inspectPage(browser, scenario) {
         revision: null,
         authors: [],
         comments: []
+      })
+    });
+  });
+  await context.route("**/editor/api/preview", (route) => {
+    previewAttempts += 1;
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        html: "<h1>Preview</h1><p>Preview content</p>"
       })
     });
   });
@@ -484,10 +494,13 @@ async function inspectPage(browser, scenario) {
 
   if (scenario.readerEditor) {
     const preview = await page.evaluate(() => {
+      const rendered = document.querySelector("[data-editable-rendered]");
       const prose = document.querySelector("[data-editable-rendered] .prose");
       const heading = prose && prose.querySelector("h2");
-      if (!prose || !heading) return null;
+      if (!rendered || !prose || !heading) return null;
       return {
+        html: rendered.innerHTML,
+        draftOverlay: rendered.hasAttribute("data-draft-overlay"),
         fontSize: getComputedStyle(prose).fontSize,
         lineHeight: getComputedStyle(prose).lineHeight,
         headingSize: getComputedStyle(heading).fontSize,
@@ -557,6 +570,52 @@ async function inspectPage(browser, scenario) {
       path: path.join(outputDirectory, `${scenario.name}-editing.png`),
       fullPage: false
     });
+    if (scenario.readerRoundTrip) {
+      await page.locator("[data-edit-mode-trigger]").click();
+      await page.locator("[data-inline-editor]").waitFor({
+        state: "detached"
+      });
+      const roundTrip = await page.evaluate(() => {
+        const rendered = document.querySelector("[data-editable-rendered]");
+        return {
+          html: rendered?.innerHTML,
+          draftOverlay: rendered?.hasAttribute("data-draft-overlay"),
+          localBuffers: Object.keys(localStorage).filter((key) => {
+            return key.startsWith("gck-reader-buffer:v1:");
+          }).length
+        };
+      });
+      assert(
+        roundTrip.html === preview.html &&
+          roundTrip.draftOverlay === preview.draftOverlay &&
+          roundTrip.localBuffers === 0 &&
+          previewAttempts === 0 &&
+          draftAttempts === 0,
+        `${scenario.name}: unchanged edit round trip mutated the document`
+      );
+    }
+    if (scenario.readerLinkNavigation) {
+      await page.locator("[data-edit-mode-trigger]").click();
+      const editorLink = page
+        .locator(".toastui-editor-ww-container .ProseMirror a")
+        .filter({ hasText: "组件存储与查询实现" })
+        .first();
+      await editorLink.waitFor({ state: "attached" });
+      const sourceHref = await editorLink.getAttribute("href");
+      await Promise.all([
+        page.waitForURL(
+          "**/knowledge/ecs/06-component-query-implementation/"
+        ),
+        editorLink.click()
+      ]);
+      assert(
+        sourceHref === "./06-component-query-implementation.md" &&
+          page.url().endsWith(
+            "/knowledge/ecs/06-component-query-implementation/"
+          ),
+        `${scenario.name}: editor link did not resolve to the reader route`
+      );
+    }
     if (scenario.readerAutosave) {
       const heading = page
         .locator(".toastui-editor-ww-container .ProseMirror h2")
@@ -862,6 +921,15 @@ async function inspectPage(browser, scenario) {
       viewport: { width: 1440, height: 1000 },
       readerEditor: true,
       readerAutosave: true,
+      visualSettings: { pointer_effect_enabled: false }
+    },
+    {
+      name: "reader-editor-roundtrip-desktop",
+      route: "/knowledge/ecs/01-fundamentals/",
+      viewport: { width: 1440, height: 1000 },
+      readerEditor: true,
+      readerRoundTrip: true,
+      readerLinkNavigation: true,
       visualSettings: { pointer_effect_enabled: false }
     },
     {

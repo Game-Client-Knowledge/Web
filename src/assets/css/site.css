@@ -1886,6 +1886,7 @@ body.reader-edit-old [data-editor-host]::before {
 
 .inline-editor.is-modern .ProseMirror a {
   color: var(--teal-dark);
+  cursor: pointer;
   font-weight: 550;
 }
 

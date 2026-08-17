@@ -13,8 +13,17 @@ lists, quotes, code blocks, and tables used by the rendered reader.
 
 The published preview remains visible until the editor is initialized. The DOM
 swap happens only after the editable document is ready, which prevents a blank
-loading state. Exiting edit mode renders the latest local content back into the
-normal preview without requiring a server save.
+loading state. Exiting edit mode preserves the original rendered DOM when the
+serialized source is unchanged. This avoids replacing a published page with a
+draft-styled preview merely because the editor was opened and closed. When
+local content actually differs from the rendered source, exit renders that
+latest content back into the normal preview without requiring a server save.
+
+Links remain navigable in WYSIWYG mode. The build exposes the existing
+source-path-to-reader-route index to the client, so relative Markdown targets
+such as `./02-details.md` open the corresponding reader page instead of a raw
+`.md` URL. Standard HTTP, HTTPS, mail, telephone, and same-page links retain
+their normal destinations.
 
 The `old` mode remains available as an administrative fallback and retains its
 explicit file, close, and save controls.
@@ -98,6 +107,9 @@ Automated checks cover:
 - buffer removal after a successful update;
 - preview-to-edit typography and heading-position equality;
 - no reader, inline, Toast UI, or save toolbar in `new` mode;
-- preview rendering when edit mode exits;
+- unchanged edit-mode round trips preserve the exact rendered DOM;
+- unchanged round trips create no preview request, buffer, or draft write;
+- relative Markdown links navigate to their generated reader routes;
+- preview rendering after real edits when edit mode exits;
 - desktop and mobile horizontal overflow;
 - preservation of the explicit toolbar in `old` mode.

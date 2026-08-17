@@ -231,6 +231,71 @@
     return url.pathname + url.search;
   }
 
+  function resolveEditorLink(href, sourcePath) {
+    const value = (href || "").trim();
+    if (!value) {
+      return "";
+    }
+    if (
+      value.startsWith("#") ||
+      /^(?:https?:|mailto:|tel:)/i.test(value)
+    ) {
+      return value;
+    }
+    if (
+      value.startsWith("//") ||
+      /^[a-z][a-z0-9+.-]*:/i.test(value)
+    ) {
+      return "";
+    }
+
+    let targetUrl;
+    try {
+      targetUrl = new URL(
+        value,
+        "https://content.invalid/" + sourcePath.replace(/^\/+/, "")
+      );
+    } catch {
+      return "";
+    }
+
+    let target;
+    try {
+      target = decodeURI(targetUrl.pathname).replace(/^\/+/, "");
+    } catch {
+      return "";
+    }
+    const routes = config.contentRoutes || {};
+    const directRoute = Object.values(routes).find(function (route) {
+      return route === targetUrl.pathname;
+    });
+    if (directRoute) {
+      return targetUrl.pathname + targetUrl.search + targetUrl.hash;
+    }
+    if (targetUrl.pathname.endsWith("/")) {
+      target += "README.md";
+    }
+    const route =
+      routes[target] ||
+      routes[target + ".md"] ||
+      routes[target.replace(/\/?$/, "/README.md")];
+    if (route) {
+      const base = (config.basePath || "").replace(/\/$/, "");
+      return base + route + targetUrl.search + targetUrl.hash;
+    }
+    return (
+      (config.rawBase || "/raw/") +
+      target
+        .split("/")
+        .map(function (part) {
+          return encodeURIComponent(part);
+        })
+        .join("/") +
+      targetUrl.search +
+      targetUrl.hash
+    );
+  }
+
   function draftTitle(draft) {
     const heading = draft.content.match(/^#\s+(.+?)\s*$/m);
     return heading
@@ -745,6 +810,7 @@
       if (
         settings.renderLatest !== false &&
         buffered &&
+        buffered.serialized !== panel.renderedContent &&
         panel.dataset.path.toLowerCase().endsWith(".md")
       ) {
         try {
@@ -858,6 +924,32 @@
     });
   }
 
+  function bindModernEditorLinks(panel, mount) {
+    mount.addEventListener("click", function (event) {
+      if (event.button !== 0) {
+        return;
+      }
+      const anchor = event.target.closest(".ProseMirror a[href]");
+      if (!anchor) {
+        return;
+      }
+      const destination = resolveEditorLink(
+        anchor.getAttribute("href"),
+        panel.dataset.path
+      );
+      if (!destination) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.metaKey || event.ctrlKey || event.shiftKey) {
+        window.open(destination, "_blank", "noopener");
+      } else {
+        window.location.assign(destination);
+      }
+    });
+  }
+
   function initializeVisualEditor(panel, host, content) {
     const mount = query("[data-visual-editor]", panel);
     const textarea = query("[data-inline-input]", panel);
@@ -907,6 +999,9 @@
         }
       }
     });
+    if (modern) {
+      bindModernEditorLinks(panel, mount);
+    }
     panel.canonicalContent = modern
       ? assembleMarkdownDocument(
           parts,
@@ -1165,6 +1260,7 @@
       panel.dataset.draftId = draft ? String(draft.id) : "";
       panel.serverRevision = draft ? draft.revision : 0;
       panel.lastSyncedContent = source.content;
+      panel.renderedContent = source.content;
       panel.bufferedContent = editorContent;
       const deleteButton = query("[data-inline-delete]", panel);
       if (deleteButton) {
