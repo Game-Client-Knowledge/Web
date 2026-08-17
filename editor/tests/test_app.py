@@ -263,6 +263,7 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert payload["config"]["edit_policy"] == "local_authenticated"
     assert payload["config"]["reader_edit_mode"] == "new"
     assert payload["config"]["reader_diff_enabled"] is True
+    assert payload["config"]["workspace_sync_interval_seconds"] == 60
     assert payload["config"]["catalog_background_style"] == "circuit"
     assert payload["config"]["reader_background_style"] == "blueprint"
     assert payload["config"]["pointer_effect_enabled"] is True
@@ -624,6 +625,68 @@ def test_file_delete_and_discard_change(client: TestClient) -> None:
     assert client.get("/api/drafts").json()["items"] == []
 
 
+def test_draft_revision_polling_and_conflict_protection(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "revision@example.test",
+            "username": "revision-user",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    created = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": "knowledge/revision/README.md",
+            "content": "# Revision\n",
+            "base_revision": 0,
+            "operation": "upsert",
+        },
+    )
+    assert created.status_code == 200, created.text
+    first = client.get("/api/drafts").json()
+    assert first["changed"] is True
+    assert len(first["revision"]) == 16
+    unchanged = client.get(
+        "/api/drafts",
+        params={"revision": first["revision"]},
+    ).json()
+    assert unchanged == {
+        "changed": False,
+        "revision": first["revision"],
+        "items": [],
+    }
+
+    updated = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": "knowledge/revision/README.md",
+            "content": "# Revision two\n",
+            "base_revision": created.json()["revision"],
+            "operation": "upsert",
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    conflict = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": "knowledge/revision/README.md",
+            "content": "# Stale write\n",
+            "base_revision": created.json()["revision"],
+            "operation": "upsert",
+        },
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"]["code"] == "draft_revision_conflict"
+    assert conflict.json()["detail"]["draft"]["content"] == "# Revision two\n"
+
+
 def test_admin_can_switch_to_github_required_policy(client: TestClient) -> None:
     payload = login(client, "sourcecode", TEST_BOOTSTRAP_PASSWORD)
     csrf = payload["csrf_token"]
@@ -645,6 +708,7 @@ def test_admin_can_switch_to_github_required_policy(client: TestClient) -> None:
             "pr_auto_close_days": 14,
             "reader_edit_mode": "old",
             "reader_diff_enabled": False,
+            "workspace_sync_interval_seconds": 120,
         },
     )
     assert response.status_code == 200, response.text
@@ -652,9 +716,11 @@ def test_admin_can_switch_to_github_required_policy(client: TestClient) -> None:
     assert response.json()["pr_auto_close_days"] == 14
     assert response.json()["reader_edit_mode"] == "old"
     assert response.json()["reader_diff_enabled"] is False
+    assert response.json()["workspace_sync_interval_seconds"] == 120
     config = client.get("/api/config").json()
     assert config["reader_edit_mode"] == "old"
     assert config["reader_diff_enabled"] is False
+    assert config["workspace_sync_interval_seconds"] == 120
 
     invalid = client.put(
         "/api/admin/settings",

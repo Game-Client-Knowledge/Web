@@ -4,6 +4,7 @@ import asyncio
 import base64
 import binascii
 import json
+import time
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -49,6 +50,8 @@ class SubmissionResult:
 class GitHubClient:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self._tree_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+        self._tree_locks: dict[str, asyncio.Lock] = {}
 
     def _headers(self, token: str | None = None) -> dict[str, str]:
         headers = {
@@ -126,17 +129,29 @@ class GitHubClient:
         ref: str = "main",
         token: str | None = None,
     ) -> list[dict[str, Any]]:
-        response = await self._request(
-            "GET",
-            f"/repos/{self.settings.github_repo}/git/trees/{ref}",
-            token=token or self.settings.github_bot_token or None,
-            params={"recursive": "1"},
-        )
-        return [
-            item
-            for item in response.json().get("tree", [])
-            if item.get("type") == "blob"
-        ]
+        cached = self._tree_cache.get(ref)
+        now = time.monotonic()
+        if cached and now - cached[0] < 60:
+            return [dict(item) for item in cached[1]]
+        lock = self._tree_locks.setdefault(ref, asyncio.Lock())
+        async with lock:
+            cached = self._tree_cache.get(ref)
+            now = time.monotonic()
+            if cached and now - cached[0] < 60:
+                return [dict(item) for item in cached[1]]
+            response = await self._request(
+                "GET",
+                f"/repos/{self.settings.github_repo}/git/trees/{ref}",
+                token=token or self.settings.github_bot_token or None,
+                params={"recursive": "1"},
+            )
+            items = [
+                item
+                for item in response.json().get("tree", [])
+                if item.get("type") == "blob"
+            ]
+            self._tree_cache[ref] = (now, items)
+            return [dict(item) for item in items]
 
     async def repository_file(self, path: str) -> dict[str, Any]:
         response = await self._request(

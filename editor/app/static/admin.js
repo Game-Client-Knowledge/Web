@@ -355,6 +355,8 @@ async function loadOverview() {
     data.settings.reader_edit_mode;
   byId("settingsForm").reader_diff_enabled.checked =
     data.settings.reader_diff_enabled;
+  byId("settingsForm").workspace_sync_interval_seconds.value =
+    String(data.settings.workspace_sync_interval_seconds);
   byId("visualSettingsForm").catalog_background_style.value =
     data.settings.catalog_background_style;
   byId("visualSettingsForm").reader_background_style.value =
@@ -399,7 +401,10 @@ byId("settingsForm").addEventListener("submit", async (event) => {
         ),
         reader_edit_mode: event.currentTarget.reader_edit_mode.value,
         reader_diff_enabled:
-          event.currentTarget.reader_diff_enabled.checked
+          event.currentTarget.reader_diff_enabled.checked,
+        workspace_sync_interval_seconds: Number(
+          event.currentTarget.workspace_sync_interval_seconds.value
+        )
       })
     });
     feedback("编辑策略已保存", "success");

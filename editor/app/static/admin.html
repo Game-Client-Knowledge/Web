@@ -75,6 +75,17 @@
           <input name="reader_diff_enabled" type="checkbox">
           客户端显示行级 Diff 开关
         </label>
+        <label>
+          工作树同步周期（秒）
+          <input
+            name="workspace_sync_interval_seconds"
+            type="number"
+            min="15"
+            max="3600"
+            step="5"
+            required
+          >
+        </label>
         <button class="primary-button" type="submit">保存策略</button>
       </form>
       <div id="integrationStatus" class="integration-status"></div>

@@ -2,6 +2,7 @@ const state = {
   config: null,
   session: null,
   csrf: "",
+  draftRevision: "",
   drafts: [],
   repository: [],
   active: null,
@@ -11,7 +12,8 @@ const state = {
   visualEditor: null,
   remoteContent: new Map(),
   onboardingStep: 0,
-  onboardingSaving: false
+  onboardingSaving: false,
+  repositorySyncTimer: 0
 };
 
 const byId = (id) => document.getElementById(id);
@@ -211,12 +213,16 @@ async function loadSession() {
   }
   state.csrf = session.csrf_token;
   state.drafts = bootstrap.drafts || [];
+  state.draftRevision = bootstrap.draft_revision || "";
+  mergeReaderBuffersIntoDrafts();
   if (session.user.must_change_password) {
     showView("password");
     return;
   }
   showView("workspace");
   await initializeWorkspace(true);
+  syncReaderBuffers();
+  beginRepositorySync();
   openOnboardingIfNeeded();
   if (githubAuthError) feedback(byId("editorFeedback"), githubAuthError);
 }
@@ -278,8 +284,125 @@ async function loadDrafts() {
     return;
   }
   const payload = await api("/drafts");
-  state.drafts = payload.items;
+  state.drafts = payload.items || [];
+  state.draftRevision = payload.revision || "";
+  mergeReaderBuffersIntoDrafts();
   renderResources();
+}
+
+function readerBuffers() {
+  if (
+    !window.GCKEditorBuffer ||
+    !window.GCKEditorBuffer.list ||
+    !state.session?.user?.id
+  ) {
+    return [];
+  }
+  return window.GCKEditorBuffer.list(
+    window.localStorage,
+    state.session.user.id
+  );
+}
+
+function mergeReaderBuffersIntoDrafts() {
+  const drafts = new Map(
+    state.drafts.map((draft) => [draft.path, draft])
+  );
+  for (const change of readerBuffers()) {
+    const remote = drafts.get(change.path);
+    drafts.set(change.path, {
+      ...(remote || {}),
+      path: change.path,
+      content: change.content,
+      operation: change.operation || "upsert",
+      base_sha: change.baseSha || remote?.base_sha || null,
+      revision: change.serverRevision || 0,
+      updated_at: change.updatedAt,
+      local: true,
+      conflict: Boolean(change.conflict)
+    });
+  }
+  state.drafts = Array.from(drafts.values());
+}
+
+async function syncReaderBuffers() {
+  if (!state.session?.can_edit || !window.GCKEditorBuffer) return;
+  for (const change of readerBuffers()) {
+    await syncReaderBuffer(change, false);
+  }
+  mergeReaderBuffersIntoDrafts();
+  renderResources();
+}
+
+async function syncReaderBuffer(change, retried) {
+  try {
+    const saved = await api("/drafts", {
+      method: "PUT",
+      body: JSON.stringify({
+        path: change.path,
+        content: change.operation === "delete" ? "" : change.content,
+        operation: change.operation || "upsert",
+        base_sha: change.baseSha || null,
+        base_revision: change.serverRevision || 0
+      })
+    });
+    window.GCKEditorBuffer.remove(
+      window.localStorage,
+      state.session.user.id,
+      change.path
+    );
+    const index = state.drafts.findIndex(
+      (draft) => draft.path === saved.path
+    );
+    if (index >= 0) state.drafts[index] = saved;
+    else state.drafts.push(saved);
+    return saved;
+  } catch (error) {
+    const remote =
+      error.status === 409 &&
+      error.detail?.code === "draft_revision_conflict"
+        ? error.detail.draft
+        : null;
+    if (
+      !retried &&
+      remote &&
+      typeof change.baseContent === "string" &&
+      window.JsDiff
+    ) {
+      const patch = window.JsDiff.createPatch(
+        change.path,
+        change.baseContent,
+        change.content,
+        "",
+        ""
+      );
+      const merged = window.JsDiff.applyPatch(remote.content, patch);
+      if (typeof merged === "string") {
+        const updated = {
+          ...change,
+          content: merged,
+          baseContent: remote.content,
+          serverRevision: remote.revision,
+          conflict: false,
+          updatedAt: Date.now()
+        };
+        window.GCKEditorBuffer.write(
+          window.localStorage,
+          state.session.user.id,
+          change.path,
+          updated
+        );
+        return syncReaderBuffer(updated, true);
+      }
+    }
+    window.GCKEditorBuffer.write(
+      window.localStorage,
+      state.session.user.id,
+      change.path,
+      { ...change, conflict: true }
+    );
+    return null;
+  }
 }
 
 function resourceEntries() {
@@ -377,7 +500,10 @@ function renderTreeNode(node, target, depth) {
       badge.className = "resource-change-badge";
       const status = draftStatus(file.draft);
       badge.dataset.status = status;
-      badge.textContent = status;
+      badge.textContent = file.draft.conflict ? "!" : status;
+      badge.title = file.draft.conflict
+        ? "本地与服务器草稿冲突"
+        : `Git ${status}`;
       button.dataset.status = status;
       button.append(badge);
     }
@@ -398,8 +524,8 @@ function renderChanges() {
     button.className = "change-item";
     button.type = "button";
     const change = document.createElement("small");
-    change.textContent = draftStatus(draft);
-    change.dataset.status = change.textContent;
+    change.dataset.status = draftStatus(draft);
+    change.textContent = draft.conflict ? "!" : change.dataset.status;
     const label = document.createElement("span");
     label.textContent = draft.path.split("/").pop();
     const meta = document.createElement("small");
@@ -717,15 +843,63 @@ async function loadRepository(force = false) {
     renderResources();
     return;
   }
+  const cacheKey =
+    "gck-repository-tree:v1:" +
+    encodeURIComponent(state.config?.repository || "content");
+  if (!force) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(cacheKey));
+      const maxAge =
+        (Number(state.config?.workspace_sync_interval_seconds) || 60) *
+        1000;
+      if (
+        cached &&
+        Array.isArray(cached.items) &&
+        Date.now() - cached.updatedAt < maxAge
+      ) {
+        state.repository = cached.items;
+        renderResources();
+        return;
+      }
+    } catch {
+      // The server-backed tree remains available when cache access fails.
+    }
+  }
   byId("resourceTree").textContent = "正在读取仓库目录…";
   if (force) state.remoteContent.clear();
   try {
     const payload = await api("/repository/tree");
     state.repository = payload.items;
+    try {
+      localStorage.setItem(
+        cacheKey,
+        JSON.stringify({
+          updatedAt: Date.now(),
+          items: state.repository
+        })
+      );
+    } catch {
+      // Repository browsing does not depend on persistent cache access.
+    }
     renderResources();
   } catch (error) {
     byId("resourceTree").textContent = error.message;
   }
+}
+
+function beginRepositorySync() {
+  window.clearInterval(state.repositorySyncTimer);
+  const seconds = Math.max(
+    15,
+    Math.min(
+      3600,
+      Number(state.config?.workspace_sync_interval_seconds) || 60
+    )
+  );
+  state.repositorySyncTimer = window.setInterval(async () => {
+    if (document.hidden) return;
+    await Promise.all([loadDrafts(), loadRepository(true)]);
+  }, seconds * 1000);
 }
 
 async function loadStaticRepositoryFile(path, expectedSha) {
@@ -1321,6 +1495,13 @@ byId("submitForm").addEventListener("submit", async (event) => {
   button.disabled = true;
   button.textContent = "正在创建分支和 PR";
   try {
+    await syncReaderBuffers();
+    const pendingLocal = readerBuffers();
+    if (pendingLocal.length) {
+      throw new Error(
+        "仍有本地更改未完成合并，请先处理冲突后再提交。"
+      );
+    }
     const submitChanges = (overwrite) =>
       api("/submit", {
         method: "POST",

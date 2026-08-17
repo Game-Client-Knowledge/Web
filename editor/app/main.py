@@ -102,6 +102,7 @@ class DraftRequest(BaseModel):
     content: str = Field(default="", max_length=MAX_DRAFT_BYTES)
     operation: str = Field(default="upsert")
     base_sha: str | None = Field(default=None, max_length=64)
+    base_revision: int | None = Field(default=None, ge=0)
 
 
 class TopicRequest(BaseModel):
@@ -147,6 +148,11 @@ class SettingsRequest(BaseModel):
     pr_auto_close_days: int = Field(ge=0, le=365)
     reader_edit_mode: str = "new"
     reader_diff_enabled: bool = True
+    workspace_sync_interval_seconds: int = Field(
+        default=60,
+        ge=15,
+        le=3600,
+    )
 
 
 class VisualSettingsRequest(BaseModel):
@@ -712,6 +718,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "reader_diff_enabled": (
                 db.setting("reader_diff_enabled", "1") == "1"
             ),
+            "workspace_sync_interval_seconds": int(
+                db.setting("workspace_sync_interval_seconds", "60")
+            ),
             "catalog_background_style": db.setting(
                 "catalog_background_style", "circuit"
             ),
@@ -769,6 +778,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     (user_id,),
                 ).fetchall()
             ]
+
+    def drafts_revision(drafts: list[dict[str, Any]]) -> str:
+        fingerprint = "\n".join(
+            (
+                f"{draft['id']}:{draft['revision']}:"
+                f"{draft['updated_at']}:{draft['operation']}"
+            )
+            for draft in sorted(drafts, key=lambda item: item["id"])
+        )
+        return hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:16]
 
     @app.get("/")
     async def editor_page():
@@ -916,6 +935,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "config": config_payload(),
             "session": session_data,
             "drafts": drafts,
+            "draft_revision": drafts_revision(drafts),
             "active_draft_html": (
                 render_markdown_preview(active_draft["content"])
                 if active_draft
@@ -1490,9 +1510,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/drafts")
     async def list_drafts(
+        revision: str | None = None,
         user: dict[str, Any] = Depends(require_editor),
     ) -> dict[str, Any]:
-        return {"items": user_drafts(user["id"])}
+        drafts = user_drafts(user["id"])
+        current_revision = drafts_revision(drafts)
+        return {
+            "changed": revision != current_revision,
+            "revision": current_revision,
+            "items": drafts if revision != current_revision else [],
+        }
 
     @app.put("/api/drafts")
     async def save_draft(
@@ -1530,11 +1557,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 (user["id"],),
             ).fetchone()["count"]
             existing = connection.execute(
-                "SELECT id FROM drafts WHERE user_id = ? AND path = ?",
+                "SELECT * FROM drafts WHERE user_id = ? AND path = ?",
                 (user["id"], path),
             ).fetchone()
+            if payload.base_revision is not None:
+                if (
+                    existing
+                    and existing["revision"] != payload.base_revision
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "draft_revision_conflict",
+                            "draft": dict(existing),
+                        },
+                    )
+                if not existing and payload.base_revision > 0:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "code": "draft_revision_conflict",
+                            "draft": None,
+                        },
+                    )
             if not existing and count >= MAX_DRAFTS:
                 raise HTTPException(status_code=413, detail="草稿文件数量已达上限")
+            next_content = (
+                "" if payload.operation == "delete" else payload.content
+            )
+            if (
+                existing
+                and existing["operation"] == payload.operation
+                and existing["content"] == next_content
+                and existing["base_sha"] == payload.base_sha
+            ):
+                return dict(existing)
             connection.execute(
                 """
                 INSERT INTO drafts(
@@ -1553,7 +1610,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     user["id"],
                     path,
                     payload.operation,
-                    "" if payload.operation == "delete" else payload.content,
+                    next_content,
                     payload.base_sha,
                     now,
                     now,
@@ -2477,6 +2534,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "reader_diff_enabled": (
                     db.setting("reader_diff_enabled", "1") == "1"
                 ),
+                "workspace_sync_interval_seconds": int(
+                    db.setting("workspace_sync_interval_seconds", "60")
+                ),
                 "catalog_background_style": db.setting(
                     "catalog_background_style", "circuit"
                 ),
@@ -2613,6 +2673,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "reader_diff_enabled": (
                     "1" if payload.reader_diff_enabled else "0"
                 ),
+                "workspace_sync_interval_seconds": str(
+                    payload.workspace_sync_interval_seconds
+                ),
             }.items():
                 connection.execute(
                     """
@@ -2637,6 +2700,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "pr_auto_close_days": payload.pr_auto_close_days,
             "reader_edit_mode": payload.reader_edit_mode,
             "reader_diff_enabled": payload.reader_diff_enabled,
+            "workspace_sync_interval_seconds": (
+                payload.workspace_sync_interval_seconds
+            ),
         }
 
     @app.put("/api/admin/visual-settings")
