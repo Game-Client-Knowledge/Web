@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const {
   AUTO_SYNC_MS,
+  list,
   read,
   remove,
   storageKey,
@@ -10,8 +11,14 @@ const {
 function memoryStorage() {
   const values = new Map();
   return {
+    get length() {
+      return values.size;
+    },
     getItem(key) {
       return values.has(key) ? values.get(key) : null;
+    },
+    key(index) {
+      return Array.from(values.keys())[index] || null;
     },
     removeItem(key) {
       values.delete(key);
@@ -34,7 +41,10 @@ const saved = write(storage, 7, path, {
 
 assert.equal(AUTO_SYNC_MS, 30000);
 assert.equal(saved.content, "# C++\n");
+assert.equal(saved.version, 2);
+assert.equal(saved.operation, "upsert");
 assert.deepEqual(read(storage, 7, path), saved);
+assert.deepEqual(list(storage, 7), [saved]);
 assert.equal(read(storage, 8, path), null, "buffers must be user-scoped");
 assert.equal(
   read(storage, 7, "knowledge/cpp/02-cpp11.md"),
@@ -54,6 +64,8 @@ assert.equal(storage.getItem(storageKey(7, path)), null);
 write(storage, 7, path, {
   content: "pending",
   baseSha: null,
+  baseContent: "",
+  operation: "upsert",
   serverRevision: 0
 });
 assert.equal(remove(storage, 7, path), true);

@@ -4,3 +4,6 @@ _content/
 .cache/
 .DS_Store
 npm-debug.log*
+__pycache__/
+*.pyc
+.pytest_cache/

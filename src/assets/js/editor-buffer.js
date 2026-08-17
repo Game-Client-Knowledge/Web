@@ -19,7 +19,7 @@
       const value = JSON.parse(storage.getItem(key));
       if (
         !value ||
-        value.version !== 1 ||
+        ![1, 2].includes(value.version) ||
         String(value.userId) !== String(userId) ||
         value.path !== path ||
         typeof value.content !== "string" ||
@@ -41,12 +41,16 @@
 
   function write(storage, userId, path, value) {
     const payload = {
-      version: 1,
+      version: 2,
       userId: String(userId),
       path,
       content: value.content,
       baseSha: value.baseSha || null,
+      baseContent:
+        typeof value.baseContent === "string" ? value.baseContent : null,
+      operation: value.operation === "delete" ? "delete" : "upsert",
       serverRevision: Number(value.serverRevision) || 0,
+      conflict: Boolean(value.conflict),
       updatedAt: value.updatedAt || Date.now()
     };
     try {
@@ -58,6 +62,26 @@
     } catch {
       return null;
     }
+  }
+
+  function list(storage, userId) {
+    const prefix =
+      PREFIX + encodeURIComponent(String(userId)) + ":";
+    const values = [];
+    try {
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index);
+        if (!key || !key.startsWith(prefix)) continue;
+        const path = decodeURIComponent(key.slice(prefix.length));
+        const value = read(storage, userId, path);
+        if (value) values.push(value);
+      }
+    } catch {
+      return [];
+    }
+    return values.sort(function (left, right) {
+      return right.updatedAt - left.updatedAt;
+    });
   }
 
   function remove(storage, userId, path) {
@@ -72,6 +96,7 @@
   const api = {
     AUTO_SYNC_MS,
     PREFIX,
+    list,
     read,
     remove,
     storageKey,

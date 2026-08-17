@@ -91,6 +91,15 @@ order: 40
     graphics.rootUnits[0].children[0].ancestorIds,
     ["graphics/rendering"]
   );
+  assert(
+    catalog.workspaceEntries.some(
+      (entry) =>
+        entry.path === "graphics/rendering/materials/README.md" &&
+        entry.isReadme &&
+        entry.title === "材质系统"
+    ),
+    "the client workspace tree must receive generated content metadata"
+  );
   assert.deepEqual(
     catalog.contributors,
     ["sourcecode", "Game Client Knowledge"],
