@@ -190,6 +190,9 @@
     const visualSettings = await (
       window.GCK_VISUAL_SETTINGS || Promise.resolve({})
     );
+    await (
+      window.GCK_HOME_INTRO_READY || Promise.resolve("skipped")
+    );
     const pointerEnabled =
       visualSettings.pointer_effect_enabled !== false;
 

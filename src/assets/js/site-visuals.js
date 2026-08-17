@@ -7,6 +7,19 @@
     pointer_effect_enabled: true,
     home_intro_enabled: true
   };
+  let releaseHomeIntro;
+  let homeIntroReleased = false;
+  window.GCK_HOME_INTRO_READY = new Promise((resolve) => {
+    releaseHomeIntro = resolve;
+  });
+
+  function markHomeIntroReady(status) {
+    document.body.dataset.homeIntro = status;
+    if (!homeIntroReleased) {
+      homeIntroReleased = true;
+      releaseHomeIntro(status);
+    }
+  }
 
   function seededRandom(seed) {
     let value = seed >>> 0;
@@ -345,19 +358,23 @@
   }
 
   function createEntrySequence(settings, reducedMotion) {
+    const stage = document.querySelector("[data-entry-sequence]");
     if (
       !document.body.classList.contains("page-home") ||
       !settings.home_intro_enabled ||
       reducedMotion
     ) {
-      document.body.dataset.homeIntro = "skipped";
+      if (stage) stage.remove();
+      markHomeIntroReady("skipped");
       return;
     }
     const config = window.GCK_CONFIG || {};
     const key = `gck-home-intro:${config.assetVersion || "v1"}`;
     try {
       if (window.sessionStorage.getItem(key) === "1") {
-        document.body.dataset.homeIntro = "seen";
+        document.documentElement.classList.add("home-intro-seen");
+        if (stage) stage.remove();
+        markHomeIntroReady("seen");
         return;
       }
       window.sessionStorage.setItem(key, "1");
@@ -365,102 +382,256 @@
       // Private browsing may deny storage; the animation can still run.
     }
 
-    const overlay = document.createElement("div");
-    overlay.className = "site-entry-sequence";
-    overlay.dataset.entrySequence = "";
-    overlay.setAttribute("aria-hidden", "true");
-    const canvas = document.createElement("canvas");
-    const copy = document.createElement("div");
-    copy.className = "site-entry-copy";
+    if (!stage) {
+      markHomeIntroReady("skipped");
+      return;
+    }
+    document.documentElement.classList.remove("home-intro-seen");
+    const canvas = stage.querySelector("[data-entry-canvas]");
+    const progress = stage.querySelector("[data-entry-progress]");
+    const context = canvas && canvas.getContext("2d");
+    if (!canvas || !context) {
+      stage.remove();
+      markHomeIntroReady("skipped");
+      return;
+    }
     const contributors = (config.contributors || []).slice(0, 8);
-    const eyebrow = document.createElement("span");
-    eyebrow.textContent = "OPEN KNOWLEDGE GRAPH / CLIENT SYSTEMS";
-    const title = document.createElement("strong");
-    title.textContent = "Game Client Knowledge";
-    const description = document.createElement("p");
-    description.textContent = "游戏客户端开发与面试知识库";
-    const contributorList = document.createElement("div");
-    contributors.forEach((name, index) => {
-      if (index) {
-        const separator = document.createElement("i");
-        separator.textContent = "/";
-        contributorList.append(separator);
-      }
-      const contributor = document.createElement("b");
-      contributor.textContent = String(name);
-      contributorList.append(contributor);
-    });
-    copy.append(eyebrow, title, description, contributorList);
-    const progress = document.createElement("span");
-    progress.className = "site-entry-progress";
-    overlay.append(canvas, copy, progress);
-    document.body.append(overlay);
     document.body.classList.add("has-entry-sequence");
     document.body.dataset.homeIntro = "playing";
+    stage.dataset.contributorCount = String(contributors.length);
 
-    const context = canvas.getContext("2d");
-    const random = seededRandom(0x1a2b3c4d);
-    const particles = Array.from({ length: 80 }, (_, index) => ({
-      angle: random() * Math.PI * 2,
-      radius: 50 + random() * 420,
-      speed: 0.2 + random() * 0.65,
-      size: index % 7 === 0 ? 3 : 1 + random() * 1.3,
-      square: index % 5 === 0,
-      phase: random() * Math.PI * 2
-    }));
     let width = 1;
     let height = 1;
     let ratio = 1;
+    let artwork = null;
+    let particles = [];
     let started = performance.now();
     let frame = 0;
     let finished = false;
-    const duration = 1450;
+    let scrollStarted = 0;
+    let scrollDuration = 620;
+    let scrollFrom = 0;
+    let previousScrollBehavior = "";
+    const assembleDuration = 1080;
+    const holdDuration = 360;
+
+    function clamp(value, minimum = 0, maximum = 1) {
+      return Math.max(minimum, Math.min(maximum, value));
+    }
+
+    function easeOutQuart(value) {
+      return 1 - Math.pow(1 - clamp(value), 4);
+    }
+
+    function easeInOutCubic(value) {
+      const progress = clamp(value);
+      return progress < 0.5
+        ? 4 * progress * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+    }
+
+    function fitFont(target, text, maximum, preferred, minimum, weight) {
+      let size = preferred;
+      do {
+        target.font =
+          `${weight} ${size}px Inter, system-ui, -apple-system, sans-serif`;
+        if (target.measureText(text).width <= maximum) return size;
+        size -= 1;
+      } while (size > minimum);
+      return minimum;
+    }
+
+    function drawArtwork(target, targetWidth, targetHeight) {
+      const mobile = targetWidth < 620;
+      const centerX = targetWidth / 2;
+      const centerY = targetHeight / 2;
+      const span = Math.min(targetWidth * 0.86, 980);
+      const titleSize = mobile ? 34 : 52;
+      target.clearRect(0, 0, targetWidth, targetHeight);
+      target.save();
+      target.translate(centerX, centerY);
+      target.lineWidth = mobile ? 1.6 : 2;
+      target.strokeStyle = "rgba(137, 214, 192, 0.78)";
+      target.rotate(Math.PI / 10);
+      target.strokeRect(
+        mobile ? -62 : -88,
+        mobile ? -62 : -88,
+        mobile ? 124 : 176,
+        mobile ? 124 : 176
+      );
+      target.rotate(-Math.PI / 4.2);
+      target.strokeStyle = "rgba(218, 170, 68, 0.68)";
+      target.strokeRect(
+        mobile ? -40 : -56,
+        mobile ? -40 : -56,
+        mobile ? 80 : 112,
+        mobile ? 80 : 112
+      );
+      target.restore();
+
+      target.lineWidth = mobile ? 2.4 : 3;
+      target.strokeStyle = "rgba(132, 210, 188, 0.9)";
+      target.beginPath();
+      target.moveTo(centerX - span / 2, centerY + (mobile ? 112 : 126));
+      target.bezierCurveTo(
+        centerX - span * 0.28,
+        centerY - (mobile ? 170 : 210),
+        centerX + span * 0.22,
+        centerY + (mobile ? 190 : 220),
+        centerX + span / 2,
+        centerY - (mobile ? 105 : 128)
+      );
+      target.stroke();
+      target.strokeStyle = "rgba(218, 170, 68, 0.78)";
+      target.beginPath();
+      target.moveTo(centerX - span * 0.45, centerY - (mobile ? 125 : 142));
+      target.bezierCurveTo(
+        centerX - span * 0.16,
+        centerY + (mobile ? 170 : 196),
+        centerX + span * 0.18,
+        centerY - (mobile ? 165 : 184),
+        centerX + span * 0.44,
+        centerY + (mobile ? 120 : 142)
+      );
+      target.stroke();
+
+      target.textAlign = "center";
+      target.textBaseline = "middle";
+      target.fillStyle = "#8bd3bd";
+      target.font =
+        `700 ${mobile ? 9 : 11}px "SFMono-Regular", Consolas, monospace`;
+      target.fillText(
+        "OPEN KNOWLEDGE GRAPH / CLIENT SYSTEMS",
+        centerX,
+        centerY - (mobile ? 104 : 120)
+      );
+      const titleText = "Game Client Knowledge";
+      fitFont(
+        target,
+        titleText,
+        targetWidth - (mobile ? 28 : 80),
+        titleSize,
+        27,
+        760
+      );
+      target.fillStyle = "#edf7f3";
+      target.fillText(titleText, centerX, centerY - 36);
+      target.fillStyle = "#bdcbc6";
+      target.font =
+        `500 ${mobile ? 13 : 15}px Inter, system-ui, sans-serif`;
+      target.fillText(
+        "游戏客户端开发与面试知识库",
+        centerX,
+        centerY + 22
+      );
+      const contributorText = contributors.join("  /  ");
+      if (contributorText) {
+        fitFont(
+          target,
+          contributorText,
+          targetWidth - (mobile ? 26 : 120),
+          mobile ? 9 : 11,
+          7,
+          650
+        );
+        target.fillStyle = "#d5ad50";
+        target.fillText(contributorText, centerX, centerY + 68);
+      }
+      target.fillStyle = "#8bd3bd";
+      [
+        [-span * 0.44, -86],
+        [-span * 0.32, 102],
+        [span * 0.34, -98],
+        [span * 0.43, 88]
+      ].forEach(([offsetX, offsetY], index) => {
+        const size = index % 2 ? 4 : 3;
+        target.fillRect(
+          centerX + offsetX - size / 2,
+          centerY + offsetY - size / 2,
+          size,
+          size
+        );
+      });
+    }
+
+    function createParticleTargets() {
+      artwork = document.createElement("canvas");
+      artwork.width = Math.max(1, Math.round(width));
+      artwork.height = Math.max(1, Math.round(height));
+      const target = artwork.getContext("2d", {
+        willReadFrequently: true
+      });
+      drawArtwork(target, width, height);
+      const pixels = target.getImageData(0, 0, width, height).data;
+      const mobile = width < 620;
+      const step = mobile ? 3 : 4;
+      const maximum = mobile ? 2600 : 4400;
+      const candidates = [];
+      for (let y = 0; y < height; y += step) {
+        for (let x = 0; x < width; x += step) {
+          const offset = (y * width + x) * 4;
+          if (pixels[offset + 3] < 42) continue;
+          candidates.push({
+            x,
+            y,
+            color:
+              `rgba(${pixels[offset]},${pixels[offset + 1]},` +
+              `${pixels[offset + 2]},${pixels[offset + 3] / 255})`
+          });
+        }
+      }
+      const random = seededRandom(0x1a2b3c4d);
+      for (let index = candidates.length - 1; index > 0; index -= 1) {
+        const swap = Math.floor(random() * (index + 1));
+        [candidates[index], candidates[swap]] = [
+          candidates[swap],
+          candidates[index]
+        ];
+      }
+      particles = candidates.slice(0, maximum).map((targetPoint, index) => {
+        const edge = index % 4;
+        const margin = 30 + random() * Math.min(width, height) * 0.3;
+        let startX = random() * width;
+        let startY = random() * height;
+        if (edge === 0) startX = -margin;
+        if (edge === 1) startX = width + margin;
+        if (edge === 2) startY = -margin;
+        if (edge === 3) startY = height + margin;
+        return {
+          ...targetPoint,
+          startX,
+          startY,
+          delay: random() * 210,
+          orbit: (random() - 0.5) * (mobile ? 46 : 76),
+          phase: random() * Math.PI * 2,
+          size: index % 17 === 0 ? 2.2 : 1.1 + random() * 0.9
+        };
+      });
+      stage.dataset.particleCount = String(particles.length);
+    }
 
     function resize() {
-      width = window.innerWidth;
-      height = window.innerHeight;
+      const bounds = stage.getBoundingClientRect();
+      width = Math.max(1, Math.round(bounds.width));
+      height = Math.max(1, Math.round(bounds.height));
       ratio = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.round(width * ratio);
       canvas.height = Math.round(height * ratio);
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      createParticleTargets();
     }
 
-    function finish(delay) {
-      if (finished) return;
-      finished = true;
-      if (frame) {
-        window.cancelAnimationFrame(frame);
-        frame = 0;
-      }
-      window.removeEventListener("resize", resize);
-      window.removeEventListener("keydown", skip);
-      overlay.classList.add("is-leaving");
-      document.body.dataset.homeIntro = "complete";
-      window.setTimeout(() => {
-        overlay.remove();
-        document.body.classList.remove("has-entry-sequence");
-      }, delay);
-    }
-
-    function skip(event) {
-      if (event.type === "keydown" && event.key !== "Escape") return;
-      finish(event.type === "click" ? 180 : 120);
-    }
-
-    function render(now) {
-      const elapsed = now - started;
-      const phase = Math.min(1, elapsed / duration);
-      context.clearRect(0, 0, width, height);
+    function drawGrid(progressValue) {
       context.fillStyle = "#0b1512";
       context.fillRect(0, 0, width, height);
       const centerX = width / 2;
       const centerY = height / 2;
-
-      context.strokeStyle = `rgba(95, 180, 153, ${0.08 + phase * 0.08})`;
+      const opacity = 0.055 + progressValue * 0.055;
+      context.strokeStyle = `rgba(95, 180, 153, ${opacity})`;
       context.lineWidth = 0.7;
-      const grid = 54;
+      const grid = width < 620 ? 42 : 54;
       for (let x = centerX % grid; x < width; x += grid) {
         context.beginPath();
         context.moveTo(x, 0);
@@ -473,87 +644,114 @@
         context.lineTo(width, y);
         context.stroke();
       }
+    }
 
-      context.strokeStyle = "rgba(150, 221, 200, 0.22)";
-      context.beginPath();
-      context.moveTo(width * 0.08, height * 0.68);
-      context.bezierCurveTo(
-        width * 0.28,
-        height * 0.18,
-        width * 0.7,
-        height * 0.86,
-        width * 0.92,
-        height * 0.3
-      );
-      context.stroke();
-      context.strokeStyle = "rgba(219, 169, 65, 0.18)";
-      context.beginPath();
-      context.moveTo(width * 0.12, height * 0.28);
-      context.bezierCurveTo(
-        width * 0.36,
-        height * 0.78,
-        width * 0.62,
-        height * 0.16,
-        width * 0.88,
-        height * 0.7
-      );
-      context.stroke();
-
-      particles.forEach((particle, index) => {
-        const angle =
-          particle.angle +
-          elapsed * 0.00035 * particle.speed +
-          phase * 0.22;
-        const radius = particle.radius * (1.12 - phase * 0.28);
-        const x = centerX + Math.cos(angle) * radius;
+    function drawAssembly(elapsed) {
+      const progressValue = clamp(elapsed / assembleDuration);
+      drawGrid(progressValue);
+      particles.forEach((particle) => {
+        const local = clamp(
+          (elapsed - particle.delay) /
+            Math.max(1, assembleDuration - particle.delay)
+        );
+        const eased = easeOutQuart(local);
+        const orbit = particle.orbit * (1 - eased);
+        const x =
+          particle.startX +
+          (particle.x - particle.startX) * eased +
+          Math.cos(particle.phase + local * Math.PI * 2.4) * orbit;
         const y =
-          centerY +
-          Math.sin(angle * 1.17 + particle.phase) * radius * 0.52;
-        context.save();
-        context.translate(x, y);
-        context.rotate(angle + phase * Math.PI);
-        context.fillStyle =
-          index % 6 === 0
-            ? "rgba(222, 173, 72, 0.72)"
-            : "rgba(143, 219, 197, 0.7)";
-        if (particle.square) {
-          context.fillRect(
-            -particle.size,
-            -particle.size,
-            particle.size * 2,
-            particle.size * 2
-          );
-        } else {
-          context.beginPath();
-          context.arc(0, 0, particle.size, 0, Math.PI * 2);
-          context.fill();
-        }
-        context.restore();
+          particle.startY +
+          (particle.y - particle.startY) * eased +
+          Math.sin(particle.phase + local * Math.PI * 2.4) * orbit;
+        context.fillStyle = particle.color;
+        const size = particle.size * (0.58 + eased * 0.42);
+        context.fillRect(x - size / 2, y - size / 2, size, size);
       });
-
-      context.save();
-      context.translate(centerX, centerY);
-      context.rotate(elapsed * 0.00045);
-      context.strokeStyle = "rgba(143, 219, 197, 0.42)";
-      context.strokeRect(-74, -74, 148, 148);
-      context.rotate(-elapsed * 0.00085);
-      context.strokeStyle = "rgba(222, 173, 72, 0.34)";
-      context.strokeRect(-48, -48, 96, 96);
-      context.restore();
-      progress.style.transform = `scaleX(${phase})`;
-
-      if (elapsed < duration) {
-        frame = window.requestAnimationFrame(render);
-      } else {
-        finish(260);
+      const imageOpacity = clamp((progressValue - 0.84) / 0.16);
+      if (artwork && imageOpacity > 0) {
+        context.save();
+        context.globalAlpha = imageOpacity * 0.92;
+        context.drawImage(artwork, 0, 0);
+        context.restore();
       }
+      progress.style.transform =
+        `scaleX(${Math.min(1, elapsed / (assembleDuration + holdDuration))})`;
+      stage.dataset.entryPhase =
+        progressValue < 1 ? "assembling" : "holding";
+      stage.classList.toggle("is-holding", progressValue >= 1);
+    }
+
+    function beginScroll(now, accelerated) {
+      if (scrollStarted || finished) return;
+      scrollStarted = now;
+      scrollDuration = accelerated ? 360 : 620;
+      scrollFrom = window.scrollY;
+      previousScrollBehavior = document.documentElement.style.scrollBehavior;
+      document.documentElement.style.scrollBehavior = "auto";
+      stage.dataset.entryPhase = "scrolling";
+      stage.classList.remove("is-holding");
+    }
+
+    function finish() {
+      if (finished) return;
+      finished = true;
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+        frame = 0;
+      }
+      window.removeEventListener("resize", resize);
+      window.removeEventListener("keydown", skip);
+      stage.removeEventListener("click", skip);
+      document.documentElement.style.scrollBehavior = previousScrollBehavior;
+      stage.classList.add("is-complete");
+      stage.dataset.entryPhase = "complete";
+      document.body.classList.remove("has-entry-sequence");
+      markHomeIntroReady("complete");
+    }
+
+    function skip(event) {
+      if (event.type === "keydown" && event.key !== "Escape") return;
+      beginScroll(performance.now(), true);
+    }
+
+    function render(now) {
+      const elapsed = now - started;
+      context.clearRect(0, 0, width, height);
+      drawAssembly(Math.min(elapsed, assembleDuration));
+      if (
+        !scrollStarted &&
+        elapsed >= assembleDuration + holdDuration
+      ) {
+        beginScroll(now, false);
+      }
+      if (scrollStarted) {
+        const scrollProgress = clamp(
+          (now - scrollStarted) / scrollDuration
+        );
+        const target = stage.offsetTop + stage.offsetHeight;
+        window.scrollTo(
+          0,
+          scrollFrom +
+            (target - scrollFrom) * easeInOutCubic(scrollProgress)
+        );
+        progress.style.transform =
+          `scaleX(${0.75 + scrollProgress * 0.25})`;
+        if (scrollProgress >= 1) {
+          finish();
+          return;
+        }
+      }
+      frame = window.requestAnimationFrame(render);
     }
 
     window.addEventListener("resize", resize);
     window.addEventListener("keydown", skip);
     resize();
+    window.scrollTo(0, 0);
+    started = performance.now();
     frame = window.requestAnimationFrame(render);
-    overlay.addEventListener("click", skip);
+    stage.addEventListener("click", skip);
   }
 
   async function initialize() {
@@ -604,6 +802,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     initialize().catch(() => {
       document.body.dataset.visualType = "fallback";
+      markHomeIntroReady("fallback");
     });
   });
 })();

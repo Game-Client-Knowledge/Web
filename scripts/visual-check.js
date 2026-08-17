@@ -183,14 +183,14 @@ async function inspectPage(browser, scenario) {
     });
     await page.waitForTimeout(260);
     const intro = await page.evaluate(() => {
+      const stage = document.querySelector("[data-entry-sequence]");
       return {
-        title: document
-          .querySelector(".site-entry-copy")
-          ?.textContent.replace(/\s+/g, " ")
-          .trim(),
-        contributors: document.querySelectorAll(".site-entry-copy b").length,
+        contributors: Number(stage?.dataset.contributorCount || 0),
+        particles: Number(stage?.dataset.particleCount || 0),
+        phase: stage?.dataset.entryPhase,
         progress: document.querySelector(".site-entry-progress")?.style
-          .transform
+          .transform,
+        scrollY: Math.round(window.scrollY)
       };
     });
     const introCanvas = await canvasMetrics(
@@ -198,19 +198,23 @@ async function inspectPage(browser, scenario) {
       "[data-entry-sequence] canvas"
     );
     assert(
-      intro.title?.includes("Game Client Knowledge"),
-      `${scenario.name}: entry title is missing`
+      intro.phase === "assembling" && intro.scrollY === 0,
+      `${scenario.name}: entry did not start in the document first screen`
     );
     assert(
       intro.contributors >= 2,
       `${scenario.name}: entry contributors ${intro.contributors}`
     );
     assert(
+      intro.particles >= 1000,
+      `${scenario.name}: entry particle count ${intro.particles}`
+    );
+    assert(
       intro.progress?.startsWith("scaleX("),
       `${scenario.name}: entry progress is not running`
     );
     assert(
-      introCanvas.painted > 1000,
+      introCanvas.painted > 100,
       `${scenario.name}: entry canvas is blank`
     );
     await page.screenshot({
@@ -218,20 +222,41 @@ async function inspectPage(browser, scenario) {
       fullPage: false
     });
     await page.waitForFunction(() => {
+      return document.querySelector("[data-entry-sequence]")
+        ?.dataset.entryPhase === "holding";
+    });
+    await page.screenshot({
+      path: path.join(
+        outputDirectory,
+        `${scenario.name}-assembled.png`
+      ),
+      fullPage: false
+    });
+    await page.waitForFunction(() => {
       return document.body.dataset.homeIntro === "complete";
     });
     const completedAfter = Date.now() - navigationStarted;
-    await page.locator("[data-entry-sequence]").waitFor({
-      state: "detached"
+    const completed = await page.evaluate(() => {
+      const stage = document.querySelector("[data-entry-sequence]");
+      const header = document.querySelector(".site-header");
+      return {
+        phase: stage?.dataset.entryPhase,
+        stageHeight: Math.round(stage?.offsetHeight || 0),
+        scrollY: Math.round(window.scrollY),
+        headerTop: Math.round(header?.getBoundingClientRect().top || 0),
+        stageConnected: Boolean(stage)
+      };
     });
-    const detachedAfter = Date.now() - navigationStarted;
     assert(
-      completedAfter >= 1200 && completedAfter <= 2300,
+      completedAfter >= 1700 && completedAfter <= 2800,
       `${scenario.name}: entry completed after ${completedAfter}ms`
     );
     assert(
-      detachedAfter >= 1450 && detachedAfter <= 2600,
-      `${scenario.name}: entry detached after ${detachedAfter}ms`
+      completed.stageConnected &&
+        completed.phase === "complete" &&
+        completed.headerTop === 0 &&
+        Math.abs(completed.scrollY - completed.stageHeight) <= 2,
+      `${scenario.name}: entry did not scroll to the main page`
     );
 
     await page.reload({ waitUntil: "networkidle" });
@@ -239,11 +264,11 @@ async function inspectPage(browser, scenario) {
     const replay = await page.evaluate(() => {
       return {
         status: document.body.dataset.homeIntro,
-        overlay: Boolean(document.querySelector("[data-entry-sequence]"))
+        stage: Boolean(document.querySelector("[data-entry-sequence]"))
       };
     });
     assert(
-      replay.status === "seen" && !replay.overlay,
+      replay.status === "seen" && !replay.stage,
       `${scenario.name}: entry replayed in the same session`
     );
   } else {
@@ -255,13 +280,26 @@ async function inspectPage(browser, scenario) {
       await page.locator("[data-entry-sequence]").click({
         position: { x: 8, y: 8 }
       });
-      await page.locator("[data-entry-sequence]").waitFor({
-        state: "detached"
+      await page.waitForFunction(() => {
+        return document.body.dataset.homeIntro === "complete";
       });
       const skippedAfter = Date.now() - skipStarted;
       assert(
-        skippedAfter < 600,
+        skippedAfter < 800,
         `${scenario.name}: entry skip took ${skippedAfter}ms`
+      );
+      const skipped = await page.evaluate(() => {
+        const stage = document.querySelector("[data-entry-sequence]");
+        return {
+          phase: stage?.dataset.entryPhase,
+          stageHeight: Math.round(stage?.offsetHeight || 0),
+          scrollY: Math.round(window.scrollY)
+        };
+      });
+      assert(
+        skipped.phase === "complete" &&
+          Math.abs(skipped.scrollY - skipped.stageHeight) <= 2,
+        `${scenario.name}: skipped entry did not reach the main page`
       );
     }
     if (scenario.homeIntro === "disabled") {
@@ -269,11 +307,11 @@ async function inspectPage(browser, scenario) {
       const intro = await page.evaluate(() => {
         return {
           status: document.body.dataset.homeIntro,
-          overlay: Boolean(document.querySelector("[data-entry-sequence]"))
+          stage: Boolean(document.querySelector("[data-entry-sequence]"))
         };
       });
       assert(
-        intro.status === "skipped" && !intro.overlay,
+        intro.status === "skipped" && !intro.stage,
         `${scenario.name}: disabled entry is still visible`
       );
     }

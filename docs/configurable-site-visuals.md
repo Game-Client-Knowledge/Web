@@ -54,24 +54,42 @@ when the administrator disables it.
 
 ## Homepage entry sequence
 
-The homepage entry sequence runs for approximately `1.45` seconds followed by
-a short opacity transition. It includes:
+The entry sequence is the first full-height section in the homepage document.
+It is not a fixed overlay. The normal site header and homepage follow it in the
+same scroll flow.
 
-- a technical grid;
-- particle dots and squares;
-- two counter-rotating frames;
+An offscreen Canvas first renders the complete target artwork:
+
+- two rotated frames;
 - two Bezier paths;
 - the product name and description;
 - up to eight contributor names;
-- a progress line.
+- technical markers.
+
+The client samples the target pixels into approximately 1,200–2,000 particles,
+depending on viewport size. Particles begin outside all four viewport edges,
+follow decaying curved offsets, and converge on their sampled target pixels.
+The vector target fades in only during the final assembly interval so the
+finished image remains sharp.
+
+The assembled image holds briefly. The client then animates the real document
+scroll position until the following sticky site header reaches the top of the
+viewport. Total duration is approximately `2.1` seconds. The entry section
+remains above the homepage, so the transition never swaps pages or removes an
+overlay.
 
 Contributor names are extracted at build time from recent Git author names.
 Email addresses are never included. Snapshot-only builds use safe fallback
 labels when Git history is unavailable.
 
 The sequence plays once per browser tab session and asset version. Reloading
-the homepage in the same session does not replay it. Clicking the overlay skips
-the remaining sequence.
+the homepage in the same session removes the entry section before it can paint.
+Clicking the entry section or pressing Escape skips directly to the shorter
+scroll transition.
+
+The normal homepage knowledge field waits for the entry promise to resolve.
+Only one animated Canvas loop runs during assembly, avoiding contention between
+the entry field and the homepage hero.
 
 ## Accessibility and fallback
 
@@ -99,7 +117,9 @@ configuration deterministically. The suite covers:
 - desktop and mobile horizontal overflow;
 - nonblank Canvas pixel output;
 - pointer creation, disabling, and movement;
-- entry duration, contributor labels, session replay prevention, and skip;
+- particle count, assembly phase, contributor labels, and nonblank pixels;
+- document-flow placement, scroll destination, sticky-header alignment;
+- entry duration, session replay prevention, and skip;
 - disabled entry behavior;
 - static reduced-motion rendering;
 - search, mobile navigation, Mermaid, source pages, and the code workspace;

@@ -29,8 +29,25 @@ animation while the hero or browser tab is not visible.
 When `prefers-reduced-motion: reduce` is active, the Canvas renders one static
 frame and does not schedule an animation loop.
 
+## Document-flow entry sequence
+
+When enabled, the homepage begins with a full-viewport Canvas section before
+the sticky site header. Scattered particles reconstruct the product title,
+technical curves, rotated frames, description, and contributor names from an
+offscreen pixel target. After a short hold, the document scrolls to the normal
+homepage instead of fading or replacing an overlay.
+
+The section is server-rendered to reserve its height in the first layout. The
+normal homepage particle field starts only after the scroll transition
+finishes, so two animation loops never compete during entry.
+
+The sequence is scoped to one tab session and asset version. Reduced-motion,
+disabled, and already-seen states remove the section before starting the
+homepage field.
+
 ## Verification
 
 The visual check covers desktop and mobile homepage widths, horizontal overflow,
 search interaction, and browser runtime errors. Homepage-specific checks should
-also verify that the Canvas contains non-transparent pixels after rendering.
+also verify particle assembly pixels, the final document scroll offset, sticky
+header alignment, and delayed homepage-field startup.

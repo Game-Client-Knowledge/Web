@@ -58,6 +58,29 @@
     </script>
   </head>
   <body class="page-{{ pageKind or 'default' }}" data-editor-state="loading">
+    {% if pageKind == "home" %}
+      <script>
+        (function () {
+          try {
+            var key = "gck-home-intro:" + {{ site.assetVersion | json | safe }};
+            if (window.sessionStorage.getItem(key) === "1") {
+              document.documentElement.classList.add("home-intro-seen");
+            }
+          } catch (error) {
+            // Storage may be unavailable; the client animation can still run.
+          }
+        })();
+      </script>
+      <section
+        class="site-entry-sequence"
+        data-entry-sequence
+        aria-hidden="true"
+      >
+        <canvas data-entry-canvas></canvas>
+        <span class="site-entry-progress" data-entry-progress></span>
+        <span class="site-entry-scroll-cue"></span>
+      </section>
+    {% endif %}
     <a class="skip-link" href="#main-content">跳到正文</a>
 
     <header class="site-header">
