@@ -47,6 +47,10 @@
         rel="modulepreload"
         href="{{ '/assets/vendor/mermaid/mermaid-client.js' | assetUrl }}"
       >
+      <link
+        rel="modulepreload"
+        href="{{ '/assets/vendor/mermaid/mermaid-common.js' | assetUrl }}"
+      >
     {% endif %}
     <link rel="stylesheet" href="{{ '/assets/css/site.css' | assetUrl }}">
     {% if pageKind == "code-workspace" or activeModule == "code" %}

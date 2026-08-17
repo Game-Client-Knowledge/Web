@@ -1,10 +1,6 @@
 import mermaid from "mermaid";
 
-const nodes = Array.from(document.querySelectorAll(".mermaid"));
-
-if (nodes.length) {
-  const started = performance.now();
-  document.body.dataset.mermaidState = "rendering";
+export async function renderMermaid(nodes) {
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
@@ -19,18 +15,5 @@ if (nodes.length) {
       fontFamily: "Inter, system-ui, sans-serif"
     }
   });
-  mermaid
-    .run({ nodes })
-    .then(function () {
-      document.body.dataset.mermaidState = "ready";
-    })
-    .catch(function () {
-      document.body.dataset.mermaidState = "error";
-    })
-    .finally(function () {
-      document.body.dataset.mermaidRenderMs = String(
-        Math.round(performance.now() - started)
-      );
-      document.documentElement.classList.remove("mermaid-loading");
-    });
+  await mermaid.run({ nodes });
 }

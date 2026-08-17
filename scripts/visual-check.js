@@ -944,15 +944,23 @@ async function inspectPage(browser, scenario) {
         .filter((entry) => {
           return entry.name.includes("/assets/vendor/mermaid/");
         });
-      const entry = resources.find((resource) => {
+      const bootstrap = resources.find((resource) => {
         return resource.name.includes("/mermaid-client.js");
+      });
+      const common = resources.find((resource) => {
+        return resource.name.includes("/mermaid-common.js");
       });
       return {
         diagrams: document.querySelectorAll(".mermaid svg").length,
         renderMs: Number(document.body.dataset.mermaidRenderMs || 0),
-        readyMs: Math.round(performance.now()),
-        entryBytes: entry?.decodedBodySize || 0,
+        readyMs: Number(document.body.dataset.mermaidReadyMs || 0),
+        runtime: document.body.dataset.mermaidRuntime || "",
+        bootstrapBytes: bootstrap?.decodedBodySize || 0,
+        commonBytes: common?.decodedBodySize || 0,
         resourceCount: resources.length,
+        fallbackLoaded: resources.some((resource) => {
+          return resource.name.includes("/mermaid/fallback/");
+        }),
         legacyLoaded: performance
           .getEntriesByType("resource")
           .some((resource) => resource.name.includes("/mermaid.min.js"))
@@ -964,10 +972,14 @@ async function inspectPage(browser, scenario) {
       `${scenario.name}: Mermaid render took ${mermaid.renderMs}ms`
     );
     assert(
-      mermaid.entryBytes < 100000 &&
-        mermaid.resourceCount > 1 &&
+      mermaid.runtime === "common" &&
+        mermaid.bootstrapBytes < 10000 &&
+        mermaid.commonBytes > 500000 &&
+        mermaid.commonBytes < 1500000 &&
+        mermaid.resourceCount === 2 &&
+        !mermaid.fallbackLoaded &&
         !mermaid.legacyLoaded,
-      `${scenario.name}: Mermaid did not use split ESM assets`
+      `${scenario.name}: Mermaid did not use the common single-file runtime`
     );
   }
 

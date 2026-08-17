@@ -42,16 +42,67 @@ esbuild.buildSync({
   legalComments: "none"
 });
 
-esbuild.buildSync({
-  entryPoints: [path.join(__dirname, "mermaid-entry.mjs")],
-  outdir: mermaidOutput,
-  bundle: true,
-  splitting: true,
-  minify: true,
-  format: "esm",
-  platform: "browser",
-  target: ["es2020"],
-  entryNames: "mermaid-client",
-  chunkNames: "chunks/[name]-[hash]",
-  legalComments: "none"
+const commonMermaidModulePattern =
+  /(?:flowDiagram|classDiagram|sequenceDiagram|stateDiagram|erDiagram|dagre-).*\.mjs$/;
+
+async function buildMermaid() {
+  await esbuild.build({
+    entryPoints: [path.join(__dirname, "mermaid-entry.mjs")],
+    outdir: path.join(mermaidOutput, "fallback"),
+    bundle: true,
+    splitting: true,
+    minify: true,
+    format: "esm",
+    platform: "browser",
+    target: ["es2020"],
+    entryNames: "mermaid-full",
+    chunkNames: "chunks/[name]-[hash]",
+    legalComments: "none"
+  });
+
+  await esbuild.build({
+    entryPoints: [path.join(__dirname, "mermaid-entry.mjs")],
+    outfile: path.join(mermaidOutput, "mermaid-common.js"),
+    bundle: true,
+    minify: true,
+    format: "esm",
+    platform: "browser",
+    target: ["es2020"],
+    legalComments: "none",
+    plugins: [
+      {
+        name: "limit-common-mermaid-runtime",
+        setup(build) {
+          build.onResolve({ filter: /\.mjs$/ }, (args) => {
+            if (
+              args.kind !== "dynamic-import" ||
+              commonMermaidModulePattern.test(args.path)
+            ) {
+              return;
+            }
+            return {
+              path: `./fallback/unsupported/${path.basename(args.path)}`,
+              external: true
+            };
+          });
+        }
+      }
+    ]
+  });
+
+  esbuild.buildSync({
+    entryPoints: [path.join(__dirname, "mermaid-bootstrap.mjs")],
+    outfile: path.join(mermaidOutput, "mermaid-client.js"),
+    bundle: false,
+    minify: true,
+    format: "esm",
+    platform: "browser",
+    target: ["es2020"],
+    legalComments: "none"
+  });
+}
+
+buildMermaid().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });
