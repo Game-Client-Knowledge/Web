@@ -9,6 +9,7 @@
   };
   let releaseHomeIntro;
   let homeIntroReleased = false;
+  let cancelHomeIntro = null;
   window.GCK_HOME_INTRO_READY = new Promise((resolve) => {
     releaseHomeIntro = resolve;
   });
@@ -707,7 +708,25 @@
       stage.classList.add("is-complete");
       stage.dataset.entryPhase = "complete";
       document.body.classList.remove("has-entry-sequence");
+      cancelHomeIntro = null;
       markHomeIntroReady("complete");
+    }
+
+    function cancel() {
+      if (finished) return;
+      finished = true;
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+        frame = 0;
+      }
+      window.removeEventListener("resize", resize);
+      window.removeEventListener("keydown", skip);
+      stage.removeEventListener("click", skip);
+      document.documentElement.style.scrollBehavior = previousScrollBehavior;
+      stage.remove();
+      document.body.classList.remove("has-entry-sequence");
+      cancelHomeIntro = null;
+      markHomeIntroReady("skipped");
     }
 
     function skip(event) {
@@ -750,22 +769,62 @@
     resize();
     window.scrollTo(0, 0);
     started = performance.now();
+    cancelHomeIntro = cancel;
     frame = window.requestAnimationFrame(render);
     stage.addEventListener("click", skip);
   }
 
   async function initialize() {
-    const resolved = await (
-      window.GCK_VISUAL_SETTINGS || Promise.resolve({})
-    );
-    const settings = { ...defaults, ...resolved };
     const reducedMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)"
     ).matches;
     const type = pageVisualType();
     document.body.dataset.visualType = type || "none";
+    let introStarted = false;
+    if (type === "home") {
+      let cachedIntro = null;
+      try {
+        cachedIntro = window.localStorage.getItem(
+          "gck-home-intro-enabled"
+        );
+      } catch {
+        // The default remains enabled when storage is unavailable.
+      }
+      if (cachedIntro !== "0") {
+        createEntrySequence(defaults, reducedMotion);
+        introStarted = true;
+      }
+    } else {
+      markHomeIntroReady("skipped");
+    }
+
+    const resolved = await (
+      window.GCK_VISUAL_SETTINGS || Promise.resolve({})
+    );
+    const settings = { ...defaults, ...resolved };
+    try {
+      window.localStorage.setItem(
+        "gck-home-intro-enabled",
+        settings.home_intro_enabled ? "1" : "0"
+      );
+    } catch {
+      // Visual settings still apply to the current page.
+    }
     document.body.dataset.pointerEffect =
       settings.pointer_effect_enabled ? "on" : "off";
+
+    if (type === "home") {
+      if (!settings.home_intro_enabled) {
+        if (cancelHomeIntro) {
+          cancelHomeIntro();
+        } else {
+          document.querySelector("[data-entry-sequence]")?.remove();
+          markHomeIntroReady("skipped");
+        }
+      } else if (!introStarted && !homeIntroReleased) {
+        createEntrySequence(settings, reducedMotion);
+      }
+    }
 
     if (type === "catalog") {
       document.body.dataset.catalogBackground =
@@ -796,7 +855,6 @@
     ) {
       createPointerReticle(reducedMotion);
     }
-    createEntrySequence(settings, reducedMotion);
   }
 
   document.addEventListener("DOMContentLoaded", () => {

@@ -80,6 +80,29 @@ async function inspectPage(browser, scenario) {
     ...defaultVisualSettings,
     ...(scenario.visualSettings || {})
   };
+  const session = scenario.readerEditor
+    ? {
+        authenticated: true,
+        csrf_token: "visual-check-csrf",
+        auth_provider: "local",
+        can_edit: true,
+        edit_policy: "local_authenticated",
+        user: {
+          id: 100,
+          email: "visual@example.test",
+          username: "visual-reader",
+          github_login: null,
+          github_email: null,
+          github_verified: false,
+          email_verified: true,
+          role: "user",
+          status: "active",
+          must_change_password: false,
+          email_notifications_enabled: true,
+          needs_onboarding: false
+        }
+      }
+    : { authenticated: false };
   const context = await browser.newContext({
     viewport: scenario.viewport,
     deviceScaleFactor: 1,
@@ -87,48 +110,33 @@ async function inspectPage(browser, scenario) {
     reducedMotion: scenario.reducedMotion ? "reduce" : "no-preference"
   });
   await context.route("**/editor/api/bootstrap**", (route) => {
-    const session = scenario.readerEditor
-      ? {
-          authenticated: true,
-          csrf_token: "visual-check-csrf",
-          auth_provider: "local",
-          can_edit: true,
-          edit_policy: "local_authenticated",
-          user: {
-            id: 100,
-            email: "visual@example.test",
-            username: "visual-reader",
-            github_login: null,
-            github_email: null,
-            github_verified: false,
-            email_verified: true,
-            role: "user",
-            status: "active",
-            must_change_password: false,
-            email_notifications_enabled: true,
-            needs_onboarding: false
-          }
-        }
-      : { authenticated: false };
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        config: {
-          edit_policy: "local_authenticated",
-          registration_enabled: true,
-          pr_auto_close_days: 7,
-          reader_edit_mode: "new",
-          reader_diff_enabled: true,
-          smtp_enabled: false,
-          github_oauth_enabled: true,
-          github_submission_enabled: true,
-          ...visualSettings
-        },
-        session,
-        drafts: [],
-        active_draft_html: null
-      })
-    });
+    const fulfill = () => {
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          config: {
+            edit_policy: "local_authenticated",
+            registration_enabled: true,
+            pr_auto_close_days: 7,
+            reader_edit_mode: "new",
+            reader_diff_enabled: true,
+            smtp_enabled: false,
+            github_oauth_enabled: true,
+            github_submission_enabled: true,
+            ...visualSettings
+          },
+          session,
+          drafts: [],
+          active_draft_html: null
+        })
+      });
+    };
+    if (scenario.bootstrapDelay) {
+      return new Promise((resolve) => {
+        setTimeout(resolve, scenario.bootstrapDelay);
+      }).then(fulfill);
+    }
+    return fulfill();
   });
   await context.route("**/editor/api/comments**", (route) => {
     return route.fulfill({
@@ -174,7 +182,9 @@ async function inspectPage(browser, scenario) {
   page.on("pageerror", (error) => runtimeErrors.push(error.message));
 
   const navigationStarted = Date.now();
-  await page.goto(`${baseUrl}${scenario.route}`, { waitUntil: "networkidle" });
+  await page.goto(`${baseUrl}${scenario.route}`, {
+    waitUntil: scenario.bootstrapDelay ? "domcontentloaded" : "networkidle"
+  });
   await page.waitForFunction(() => document.body.dataset.visualType);
 
   if (scenario.homeIntro === "play") {
@@ -730,6 +740,7 @@ async function inspectPage(browser, scenario) {
       search: true,
       knowledgeField: true,
       homeIntro: "play",
+      bootstrapDelay: 3000,
       pointerEffect: true,
       visualSettings: { home_intro_enabled: true }
     },

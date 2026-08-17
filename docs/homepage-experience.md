@@ -43,7 +43,8 @@ finishes, so two animation loops never compete during entry.
 
 The sequence is scoped to one tab session and asset version. Reduced-motion,
 disabled, and already-seen states remove the section before starting the
-homepage field.
+homepage field. Assembly uses the cached enable flag, or the enabled default on
+a first visit, and never waits for the editor bootstrap network request.
 
 ## Verification
 

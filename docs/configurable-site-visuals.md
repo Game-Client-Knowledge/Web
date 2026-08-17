@@ -91,6 +91,11 @@ The normal homepage knowledge field waits for the entry promise to resolve.
 Only one animated Canvas loop runs during assembly, avoiding contention between
 the entry field and the homepage hero.
 
+Assembly starts from the cached enable flag, or the enabled default on a first
+visit. It does not wait for the editor bootstrap request. The eventual server
+setting is cached and can cancel the optimistic sequence, so network latency
+does not create a blank first screen.
+
 ## Accessibility and fallback
 
 When `prefers-reduced-motion: reduce` is active:
