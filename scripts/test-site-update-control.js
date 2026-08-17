@@ -42,6 +42,7 @@ assert.match(updater, /-m app\.site_update_notifications/);
 assert.match(updater, /FAILURE_NOTIFICATION_STATE_FILE/);
 assert.match(updater, /SNAPSHOT_CACHE_ROOT/);
 assert.match(updater, /falling back to git/);
+assert.match(updater, /Authorization: Bearer \$\{EDITOR_GITHUB_BOT_TOKEN\}/);
 assert.equal(manifest.dependencies["playwright-core"], "1.62.1");
 assert.equal(manifest.devDependencies?.["playwright-core"], undefined);
 assert.doesNotMatch(

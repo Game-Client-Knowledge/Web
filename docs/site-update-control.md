@@ -69,6 +69,10 @@ The fallback prevents GitHub API or Codeload rate limits from turning a valid
 content commit into a permanent deployment failure. Every extracted snapshot
 is still pinned to the resolved commit SHA.
 
+Commit metadata requests use `EDITOR_GITHUB_BOT_TOKEN` when it is configured,
+avoiding the low anonymous GitHub API rate limit. The token is passed only as
+an HTTP authorization header and is never written to status or build logs.
+
 ## Scheduling
 
 `game-client-knowledge-update.timer` wakes the oneshot service every minute. The

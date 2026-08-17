@@ -247,6 +247,14 @@ github_commit_metadata_from_git() {
 github_commit_metadata() {
   local repository="$1"
   local payload
+  local headers=(
+    --header "Accept: application/vnd.github+json"
+    --header "X-GitHub-Api-Version: 2022-11-28"
+  )
+
+  if [[ -n "${EDITOR_GITHUB_BOT_TOKEN:-}" ]]; then
+    headers+=(--header "Authorization: Bearer ${EDITOR_GITHUB_BOT_TOKEN}")
+  fi
 
   if payload="$(
     curl \
@@ -257,7 +265,7 @@ github_commit_metadata() {
     --connect-timeout 10 \
     --max-time 30 \
     --retry 2 \
-    --header "Accept: application/vnd.github+json" \
+    "${headers[@]}" \
       "https://api.github.com/repos/${repository}/commits/main"
   )"; then
     printf '%s' "$payload" |
