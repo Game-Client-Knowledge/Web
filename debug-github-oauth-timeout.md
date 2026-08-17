@@ -80,5 +80,12 @@ certificate-verified GitHub web frontends concurrently, then reuses the first
 successful keep-alive connection for the one-time OAuth code. The code is
 still submitted exactly once.
 
+Parallel-probe verification after deployment:
+
+- A certificate-verified fallback was selected in `1766 ms`.
+- The OAuth endpoint returned HTTP `200` in `1785 ms`.
+- The synthetic invalid code produced the expected `bad_verification_code`
+  response instead of a transport timeout.
+
 The debug session remains open until a real browser binding attempt is
 confirmed by the user.
