@@ -71,6 +71,11 @@ from .smtp_config import (
     save_smtp_configuration,
     smtp_public_payload,
 )
+from .site_updates import (
+    UpdateAlreadyRunningError,
+    queue_update,
+    update_status,
+)
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
@@ -153,6 +158,15 @@ class SettingsRequest(BaseModel):
         ge=15,
         le=3600,
     )
+    site_auto_update_interval_minutes: int = Field(
+        default=10,
+        ge=0,
+        le=1440,
+    )
+
+
+class SiteUpdateRequest(BaseModel):
+    mode: str
 
 
 class VisualSettingsRequest(BaseModel):
@@ -720,6 +734,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "workspace_sync_interval_seconds": int(
                 db.setting("workspace_sync_interval_seconds", "60")
+            ),
+            "site_auto_update_interval_minutes": int(
+                db.setting("site_auto_update_interval_minutes", "10")
             ),
             "catalog_background_style": db.setting(
                 "catalog_background_style", "circuit"
@@ -2537,6 +2554,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "workspace_sync_interval_seconds": int(
                     db.setting("workspace_sync_interval_seconds", "60")
                 ),
+                "site_auto_update_interval_minutes": int(
+                    db.setting("site_auto_update_interval_minutes", "10")
+                ),
                 "catalog_background_style": db.setting(
                     "catalog_background_style", "circuit"
                 ),
@@ -2567,6 +2587,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "github_oauth_enabled": settings.github_oauth_enabled,
                 "github_submission_enabled": settings.github_submission_enabled,
             },
+            "site_update": update_status(
+                settings.site_update_status_path,
+                settings.site_release_source_path,
+                settings.site_update_request_path,
+            ),
             "smtp": smtp_public_payload(smtp),
             "smtp_templates": SMTP_TEMPLATES,
         }
@@ -2676,6 +2701,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "workspace_sync_interval_seconds": str(
                     payload.workspace_sync_interval_seconds
                 ),
+                "site_auto_update_interval_minutes": str(
+                    payload.site_auto_update_interval_minutes
+                ),
             }.items():
                 connection.execute(
                     """
@@ -2702,6 +2730,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "reader_diff_enabled": payload.reader_diff_enabled,
             "workspace_sync_interval_seconds": (
                 payload.workspace_sync_interval_seconds
+            ),
+            "site_auto_update_interval_minutes": (
+                payload.site_auto_update_interval_minutes
             ),
         }
 
@@ -2820,6 +2851,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             detail=json.dumps(result, ensure_ascii=False),
         )
         return result
+
+    @app.get("/api/admin/site-update")
+    async def site_update_state(
+        admin: dict[str, Any] = Depends(require_admin),
+    ) -> dict[str, Any]:
+        del admin
+        return update_status(
+            settings.site_update_status_path,
+            settings.site_release_source_path,
+            settings.site_update_request_path,
+        )
+
+    @app.post("/api/admin/site-update")
+    async def request_site_update(
+        payload: SiteUpdateRequest,
+        request: Request,
+        x_csrf_token: str | None = Header(default=None),
+        admin: dict[str, Any] = Depends(require_admin),
+    ) -> dict[str, Any]:
+        verify_csrf(admin, x_csrf_token)
+        try:
+            queued = queue_update(
+                settings.site_update_request_path,
+                settings.site_update_status_path,
+                mode=payload.mode,
+                requested_by=admin["id"],
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except UpdateAlreadyRunningError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        db.audit(
+            "site_update.requested",
+            request_ip(request),
+            user_id=admin["id"],
+            target=payload.mode,
+            detail=json.dumps(queued, ensure_ascii=False),
+        )
+        return {
+            "queued": True,
+            **queued,
+        }
 
     @app.put("/api/admin/smtp")
     async def update_smtp_settings(

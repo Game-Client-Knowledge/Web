@@ -3,10 +3,20 @@ const state = {
   csrf: "",
   smtp: null,
   smtpTemplates: [],
-  autoCloseDays: 7
+  autoCloseDays: 7,
+  siteUpdateTimer: 0
 };
 
 const byId = (id) => document.getElementById(id);
+
+function refreshIcons(root = document) {
+  if (window.lucide) {
+    window.lucide.createIcons({
+      attrs: { "stroke-width": 1.8 },
+      root
+    });
+  }
+}
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
@@ -24,7 +34,9 @@ async function api(path, options = {}) {
     const detail = payload?.detail;
     const message = Array.isArray(detail)
       ? detail.map((item) => item.msg || String(item)).join("；")
-      : detail;
+      : typeof detail === "object"
+        ? detail.message
+        : detail;
     throw new Error(message || `请求失败（HTTP ${response.status}）`);
   }
   return payload;
@@ -76,6 +88,112 @@ function renderIntegrations(settings) {
     chip.className = `integration-chip${ready ? " ready" : ""}`;
     chip.textContent = `${label}：${ready ? "已配置" : "未配置"}`;
     target.append(chip);
+  }
+}
+
+function shortCommit(value) {
+  return value ? value.slice(0, 12) : "未知";
+}
+
+function formatUpdateTime(value) {
+  if (!value) return "无";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString("zh-CN");
+}
+
+function renderSiteUpdate(update) {
+  const labels = {
+    idle: "空闲",
+    queued: "已排队",
+    checking: "检查中",
+    building: "构建中",
+    success: "已完成",
+    failed: "失败"
+  };
+  const badge = byId("siteUpdateState");
+  badge.textContent = labels[update.state] || update.state;
+  badge.dataset.status =
+    update.state === "success"
+      ? "ready"
+      : update.state === "failed"
+        ? "error"
+        : "idle";
+
+  const values = [
+    [
+      "当前部署",
+      `Web ${shortCommit(update.deployed_web_commit)} / ` +
+        `Content ${shortCommit(update.deployed_content_commit)}`
+    ],
+    [
+      "最近运行",
+      `${update.message || "无记录"} · ` +
+        formatUpdateTime(update.finished_at || update.started_at)
+    ],
+    [
+      "目标版本",
+      `Web ${shortCommit(update.web_commit)} / ` +
+        `Content ${shortCommit(update.content_commit)}`
+    ]
+  ];
+  const summary = byId("siteUpdateSummary");
+  summary.replaceChildren();
+  for (const [term, description] of values) {
+    const item = document.createElement("div");
+    const dt = document.createElement("dt");
+    const dd = document.createElement("dd");
+    dt.textContent = term;
+    dd.textContent = description;
+    item.append(dt, dd);
+    summary.append(item);
+  }
+
+  const running = ["queued", "checking", "building"].includes(update.state);
+  byId("updateContentButton").disabled = running;
+  byId("updateSiteButton").disabled = running;
+  window.clearTimeout(state.siteUpdateTimer);
+  if (running) {
+    state.siteUpdateTimer = window.setTimeout(() => {
+      refreshSiteUpdate().catch((error) => siteUpdateFeedback(error.message));
+    }, 2500);
+  }
+}
+
+function siteUpdateFeedback(message, kind = "error") {
+  const target = byId("siteUpdateFeedback");
+  target.textContent = message || "";
+  target.className =
+    `feedback${message ? " is-visible" : ""} ${kind}`;
+}
+
+async function refreshSiteUpdate() {
+  const update = await api("/admin/site-update");
+  renderSiteUpdate(update);
+  return update;
+}
+
+async function requestSiteUpdate(mode) {
+  siteUpdateFeedback("");
+  byId("updateContentButton").disabled = true;
+  byId("updateSiteButton").disabled = true;
+  try {
+    await api("/admin/site-update", {
+      method: "POST",
+      body: JSON.stringify({ mode })
+    });
+    siteUpdateFeedback(
+      mode === "content"
+        ? "内容更新已排队。"
+        : "服务器版本更新已排队。",
+      "success"
+    );
+    await refreshSiteUpdate();
+  } catch (error) {
+    siteUpdateFeedback(error.message);
+    byId("updateContentButton").disabled = false;
+    byId("updateSiteButton").disabled = false;
   }
 }
 
@@ -357,6 +475,8 @@ async function loadOverview() {
     data.settings.reader_diff_enabled;
   byId("settingsForm").workspace_sync_interval_seconds.value =
     String(data.settings.workspace_sync_interval_seconds);
+  byId("settingsForm").site_auto_update_interval_minutes.value =
+    String(data.settings.site_auto_update_interval_minutes);
   byId("visualSettingsForm").catalog_background_style.value =
     data.settings.catalog_background_style;
   byId("visualSettingsForm").reader_background_style.value =
@@ -375,6 +495,7 @@ async function loadOverview() {
     String(data.settings.home_intro_contributor_limit);
   state.autoCloseDays = data.settings.pr_auto_close_days;
   renderIntegrations(data.settings);
+  renderSiteUpdate(data.site_update);
   renderPendingSubmissions(
     data.submissions,
     data.external_pull_requests,
@@ -386,6 +507,7 @@ async function loadOverview() {
   renderExternalPullRequests(data.external_pull_requests);
   renderNotifications(data.notifications);
   renderUsers(data.users);
+  refreshIcons();
 }
 
 byId("settingsForm").addEventListener("submit", async (event) => {
@@ -404,6 +526,9 @@ byId("settingsForm").addEventListener("submit", async (event) => {
           event.currentTarget.reader_diff_enabled.checked,
         workspace_sync_interval_seconds: Number(
           event.currentTarget.workspace_sync_interval_seconds.value
+        ),
+        site_auto_update_interval_minutes: Number(
+          event.currentTarget.site_auto_update_interval_minutes.value
         )
       })
     });
@@ -485,6 +610,16 @@ byId("syncPrButton").addEventListener("click", async () => {
   } finally {
     button.disabled = false;
   }
+});
+
+byId("updateContentButton").addEventListener("click", () => {
+  requestSiteUpdate("content");
+});
+byId("updateSiteButton").addEventListener("click", () => {
+  requestSiteUpdate("site");
+});
+byId("refreshSiteUpdateButton").addEventListener("click", () => {
+  refreshSiteUpdate().catch((error) => siteUpdateFeedback(error.message));
 });
 
 byId("smtpProvider").addEventListener("change", applySmtpTemplate);

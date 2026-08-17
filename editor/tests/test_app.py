@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -46,6 +47,9 @@ def make_settings(tmp_path: Path, *, oauth: bool = False) -> Settings:
         smtp_password="",
         smtp_from="",
         smtp_starttls=True,
+        site_update_request_path=tmp_path / "site-update.request",
+        site_update_status_path=tmp_path / "site-update-status.json",
+        site_release_source_path=tmp_path / ".release-source",
     )
 
 
@@ -264,6 +268,7 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert payload["config"]["reader_edit_mode"] == "new"
     assert payload["config"]["reader_diff_enabled"] is True
     assert payload["config"]["workspace_sync_interval_seconds"] == 60
+    assert payload["config"]["site_auto_update_interval_minutes"] == 10
     assert payload["config"]["catalog_background_style"] == "circuit"
     assert payload["config"]["reader_background_style"] == "blueprint"
     assert payload["config"]["pointer_effect_enabled"] is True
@@ -709,6 +714,7 @@ def test_admin_can_switch_to_github_required_policy(client: TestClient) -> None:
             "reader_edit_mode": "old",
             "reader_diff_enabled": False,
             "workspace_sync_interval_seconds": 120,
+            "site_auto_update_interval_minutes": 30,
         },
     )
     assert response.status_code == 200, response.text
@@ -717,10 +723,12 @@ def test_admin_can_switch_to_github_required_policy(client: TestClient) -> None:
     assert response.json()["reader_edit_mode"] == "old"
     assert response.json()["reader_diff_enabled"] is False
     assert response.json()["workspace_sync_interval_seconds"] == 120
+    assert response.json()["site_auto_update_interval_minutes"] == 30
     config = client.get("/api/config").json()
     assert config["reader_edit_mode"] == "old"
     assert config["reader_diff_enabled"] is False
     assert config["workspace_sync_interval_seconds"] == 120
+    assert config["site_auto_update_interval_minutes"] == 30
 
     invalid = client.put(
         "/api/admin/settings",
@@ -732,6 +740,73 @@ def test_admin_can_switch_to_github_required_policy(client: TestClient) -> None:
             "reader_edit_mode": "unsupported",
             "reader_diff_enabled": True,
         },
+    )
+    assert invalid.status_code == 422
+
+
+def test_admin_can_queue_and_observe_site_updates(
+    client: TestClient,
+) -> None:
+    payload = login(client, "sourcecode", TEST_BOOTSTRAP_PASSWORD)
+    changed = client.post(
+        "/api/auth/change-password",
+        headers={"X-CSRF-Token": payload["csrf_token"]},
+        json={
+            "current_password": TEST_BOOTSTRAP_PASSWORD,
+            "new_password": "a-new-strong-password",
+        },
+    ).json()
+    csrf = changed["csrf_token"]
+    settings = client.app.state.settings
+    settings.site_release_source_path.write_text(
+        "web=" + "a" * 40 + "\ncontent=" + "b" * 40 + "\n",
+        encoding="utf-8",
+    )
+
+    initial = client.get("/api/admin/site-update")
+    assert initial.status_code == 200
+    assert initial.json()["deployed_web_commit"] == "a" * 40
+    assert initial.json()["deployed_content_commit"] == "b" * 40
+    assert initial.json()["queued"] is False
+
+    queued = client.post(
+        "/api/admin/site-update",
+        headers={"X-CSRF-Token": csrf},
+        json={"mode": "content"},
+    )
+    assert queued.status_code == 200, queued.text
+    assert queued.json()["queued"] is True
+    assert queued.json()["mode"] == "content"
+    request = json.loads(
+        settings.site_update_request_path.read_text(encoding="utf-8")
+    )
+    assert request["mode"] == "content"
+    status = client.get("/api/admin/site-update").json()
+    assert status["state"] == "queued"
+    assert status["queued"] is True
+    assert status["queued_mode"] == "content"
+
+    duplicate = client.post(
+        "/api/admin/site-update",
+        headers={"X-CSRF-Token": csrf},
+        json={"mode": "site"},
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"] == "已有站点更新正在排队或执行"
+    request = json.loads(
+        settings.site_update_request_path.read_text(encoding="utf-8")
+    )
+    assert request["mode"] == "content"
+
+    settings.site_update_request_path.unlink()
+    settings.site_update_status_path.write_text(
+        json.dumps({"state": "failed"}),
+        encoding="utf-8",
+    )
+    invalid = client.post(
+        "/api/admin/site-update",
+        headers={"X-CSRF-Token": csrf},
+        json={"mode": "database"},
     )
     assert invalid.status_code == 422
 

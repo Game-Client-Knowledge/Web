@@ -1,0 +1,9 @@
+[Unit]
+Description=Trigger Game Client Knowledge manual updates
+
+[Path]
+PathExists=/var/lib/game-client-knowledge-editor/site-update.request
+Unit=game-client-knowledge-update.service
+
+[Install]
+WantedBy=multi-user.target

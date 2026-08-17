@@ -473,6 +473,14 @@ class Database:
                 """,
                 (now,),
             )
+            connection.execute(
+                """
+                INSERT INTO settings(key, value, updated_at)
+                VALUES('site_auto_update_interval_minutes', '10', ?)
+                ON CONFLICT(key) DO NOTHING
+                """,
+                (now,),
+            )
             intro_duration_row = connection.execute(
                 """
                 SELECT value FROM settings

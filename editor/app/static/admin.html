@@ -86,9 +86,45 @@
             required
           >
         </label>
+        <label>
+          站点自动更新周期（分钟）
+          <input
+            name="site_auto_update_interval_minutes"
+            type="number"
+            min="0"
+            max="1440"
+            step="1"
+            required
+          >
+        </label>
         <button class="primary-button" type="submit">保存策略</button>
       </form>
       <div id="integrationStatus" class="integration-status"></div>
+    </section>
+
+    <section class="admin-section">
+      <div class="section-title">
+        <div>
+          <h2>站点更新</h2>
+          <p>发布已推送的不可变 Web 与内容提交。</p>
+        </div>
+        <span id="siteUpdateState" class="count-badge"></span>
+      </div>
+      <dl id="siteUpdateSummary" class="site-update-summary"></dl>
+      <div class="section-actions">
+        <button id="updateContentButton" class="secondary-button" type="button">
+          <i data-lucide="file-down" aria-hidden="true"></i>
+          手动更新内容
+        </button>
+        <button id="updateSiteButton" class="primary-button" type="button">
+          <i data-lucide="server-cog" aria-hidden="true"></i>
+          更新服务器版本
+        </button>
+        <button id="refreshSiteUpdateButton" class="icon-button" type="button" aria-label="刷新更新状态" title="刷新更新状态">
+          <i data-lucide="refresh-cw" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div id="siteUpdateFeedback" class="feedback" role="status" aria-live="polite"></div>
     </section>
 
     <section class="admin-section">
@@ -273,6 +309,7 @@
     </section>
   </main>
 
+  <script src="../assets/vendor/lucide.js"></script>
   <script src="assets/admin.js"></script>
 </body>
 </html>

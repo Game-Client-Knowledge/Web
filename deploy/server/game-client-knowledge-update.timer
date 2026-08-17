@@ -1,10 +1,10 @@
 [Unit]
-Description=Check Game Client Knowledge content updates every 10 minutes
+Description=Schedule Game Client Knowledge update checks
 
 [Timer]
-OnBootSec=5min
-OnUnitActiveSec=10min
-RandomizedDelaySec=60s
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=15s
 Persistent=true
 Unit=game-client-knowledge-update.service
 

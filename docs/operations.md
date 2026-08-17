@@ -76,9 +76,12 @@ The deploy fails before uploading when either repository is dirty, ahead of, or
 behind `origin/main`. Override the defaults with `CONTENT_REPO_PATH`, `DEPLOY_HOST`,
 `DEPLOY_KEY`, or `RELEASE_ROOT` when required.
 
-The server also runs `game-client-knowledge-update.timer` every 10 minutes. It
-checks both repositories through the GitHub API, with a `git ls-remote` and
-shallow-fetch fallback when the REST API is rate-limited:
+The server runs `game-client-knowledge-update.timer` once per minute. The
+oneshot updater reads the configured `site_auto_update_interval_minutes` value
+and only performs a network check when that interval is due. The default is 10
+minutes; `0` disables automatic checks. It checks both repositories through the
+GitHub API, with a `git ls-remote` and shallow-fetch fallback when the REST API
+is rate-limited:
 
 ```text
 Game-Client-Knowledge/Web:main
@@ -99,6 +102,7 @@ Inspect the updater with:
 
 ```bash
 systemctl status game-client-knowledge-update.timer
+systemctl status game-client-knowledge-update.path
 journalctl -u game-client-knowledge-update.service
 ```
 
@@ -121,9 +125,10 @@ GitHub Actions and GitHub Pages are not used for production deployment. The Web
 repository intentionally contains no automatic Actions build workflow.
 
 Production updates are handled by `game-client-knowledge-update.timer` on the
-self-hosted server. It checks the pushed `main` commits of both repositories every
-10 minutes and publishes only when their recorded SHAs change. Use
-`npm run deploy:server` for an immediate release after both commits are pushed.
+self-hosted server. It checks the pushed `main` commits at the configured
+interval and publishes only when their recorded SHAs change. Administrators can
+queue a content-only or full site update from the administration page. See
+[`site-update-control.md`](./site-update-control.md).
 
 ## Quality gates
 

@@ -46,9 +46,10 @@ if [[ "$status" != "active" && "$allow_inactive" != "1" ]]; then
 fi
 REMOTE
 
-git archive "$WEB_COMMIT" editor | tar -x -C "$PACKAGE_DIR"
+git archive "$WEB_COMMIT" editor deploy/server | tar -x -C "$PACKAGE_DIR"
 
-"${SSH[@]}" "$DEPLOY_HOST" "mkdir -p '$REMOTE_RELEASE'"
+"${SSH[@]}" "$DEPLOY_HOST" \
+  "mkdir -p '$REMOTE_RELEASE' '/home/sourcecode/gck-builder/web/deploy/server'"
 rsync \
   --archive \
   --compress \
@@ -57,6 +58,14 @@ rsync \
   -e "$RSYNC_SSH" \
   "$PACKAGE_DIR/editor/" \
   "${DEPLOY_HOST}:${REMOTE_RELEASE}/editor/"
+rsync \
+  --archive \
+  --compress \
+  --delete \
+  --human-readable \
+  -e "$RSYNC_SSH" \
+  "$PACKAGE_DIR/deploy/server/" \
+  "${DEPLOY_HOST}:/home/sourcecode/gck-builder/web/deploy/server/"
 
 "${SSH[@]}" "$DEPLOY_HOST" bash -s -- \
   "$RELEASE_ROOT" "$REMOTE_RELEASE" "$PIP_INDEX_URL" <<'REMOTE'

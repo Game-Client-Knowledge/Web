@@ -10,12 +10,134 @@ WEB_STATE_FILE="${WEB_STATE_FILE:-${BUILDER_ROOT}/last-web-commit}"
 ATTRIBUTION_STATE_FILE="${ATTRIBUTION_STATE_FILE:-${BUILDER_ROOT}/last-attribution-commit}"
 CONTENT_GIT_MIRROR="${CONTENT_GIT_MIRROR:-${BUILDER_ROOT}/content.git}"
 LOCK_FILE="${LOCK_FILE:-${BUILDER_ROOT}/update.lock}"
+AUTO_CHECK_STATE_FILE="${AUTO_CHECK_STATE_FILE:-${BUILDER_ROOT}/last-auto-check}"
+UPDATE_REQUEST_FILE="${UPDATE_REQUEST_FILE:-/var/lib/game-client-knowledge-editor/site-update.request}"
+UPDATE_STATUS_FILE="${UPDATE_STATUS_FILE:-/var/lib/game-client-knowledge-editor/site-update-status.json}"
+EDITOR_DB_PATH="${EDITOR_DB_PATH:-/var/lib/game-client-knowledge-editor/editor.db}"
 CONTENT_REPOSITORY="${CONTENT_REPOSITORY:-Game-Client-Knowledge/Game-Client-Knowledge}"
 WEB_REPOSITORY="${WEB_REPOSITORY:-Game-Client-Knowledge/Web}"
 
 mkdir -p "$BUILDER_ROOT"
 exec 9>"$LOCK_FILE"
 flock -n 9 || exit 0
+
+update_mode="auto"
+run_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+content_commit=""
+web_commit=""
+
+write_status() {
+  local state="$1"
+  local message="$2"
+  local finished="${3:-0}"
+  mkdir -p "$(dirname "$UPDATE_STATUS_FILE")"
+  python3 - \
+    "$UPDATE_STATUS_FILE" \
+    "$state" \
+    "$update_mode" \
+    "$message" \
+    "$run_started_at" \
+    "$finished" \
+    "$web_commit" \
+    "$content_commit" <<'PY'
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+path = Path(sys.argv[1])
+state, mode, message, started_at = sys.argv[2:6]
+finished = sys.argv[6] == "1"
+payload = {
+    "state": state,
+    "mode": mode,
+    "message": message,
+    "started_at": started_at,
+    "finished_at": (
+        datetime.now(timezone.utc).isoformat()
+        if finished
+        else None
+    ),
+    "web_commit": sys.argv[7] or None,
+    "content_commit": sys.argv[8] or None,
+}
+temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+os.replace(temporary, path)
+PY
+}
+
+on_error() {
+  local exit_code=$?
+  trap - ERR
+  write_status \
+    "failed" \
+    "更新失败（退出码 ${exit_code}），请检查 game-client-knowledge-update.service 日志" \
+    1 || true
+  exit "$exit_code"
+}
+trap on_error ERR
+
+read_auto_interval_minutes() {
+  python3 - "$EDITOR_DB_PATH" <<'PY'
+import sqlite3
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    print(10)
+    raise SystemExit
+try:
+    with sqlite3.connect(path) as connection:
+        row = connection.execute(
+            "SELECT value FROM settings "
+            "WHERE key = 'site_auto_update_interval_minutes'"
+        ).fetchone()
+    value = int(row[0]) if row else 10
+except (OSError, sqlite3.Error, TypeError, ValueError):
+    value = 10
+print(max(0, min(1440, value)))
+PY
+}
+
+if [[ -f "$UPDATE_REQUEST_FILE" ]]; then
+  update_mode="$(
+    python3 - "$UPDATE_REQUEST_FILE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+try:
+    payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    payload = {}
+print(payload.get("mode") or "site")
+PY
+  )"
+  rm -f "$UPDATE_REQUEST_FILE"
+  if [[ "$update_mode" != "content" && "$update_mode" != "site" ]]; then
+    echo "Invalid update mode: $update_mode" >&2
+    exit 1
+  fi
+else
+  interval_minutes="$(read_auto_interval_minutes)"
+  if (( interval_minutes == 0 )); then
+    exit 0
+  fi
+  now_epoch="$(date +%s)"
+  last_epoch=0
+  if [[ -f "$AUTO_CHECK_STATE_FILE" ]]; then
+    last_epoch="$(cat "$AUTO_CHECK_STATE_FILE" 2>/dev/null || printf '0')"
+  fi
+  if (( now_epoch - last_epoch < interval_minutes * 60 )); then
+    exit 0
+  fi
+  printf '%s\n' "$now_epoch" >"$AUTO_CHECK_STATE_FILE"
+fi
+
+write_status "checking" "正在检查远端提交" 0
 
 encode_base64() {
   base64 | tr -d '\n'
@@ -183,9 +305,20 @@ IFS=$'\t' read -r \
   content_author_email_b64 < <(
   github_commit_metadata "$CONTENT_REPOSITORY"
 )
-IFS=$'\t' read -r web_commit _web_updated_at _web_name _web_email < <(
-  github_commit_metadata "$WEB_REPOSITORY"
-)
+if [[
+  "$update_mode" == "content"
+  && -f "${RELEASE_ROOT}/current/.release-source"
+]]; then
+  web_commit="$(
+    awk -F= '$1 == "web" { print $2 }' \
+      "${RELEASE_ROOT}/current/.release-source"
+  )"
+fi
+if [[ -z "$web_commit" ]]; then
+  IFS=$'\t' read -r web_commit _web_updated_at _web_name _web_email < <(
+    github_commit_metadata "$WEB_REPOSITORY"
+  )
+fi
 content_author_name="$(
   printf '%s' "$content_author_name_b64" | base64 --decode
 )"
@@ -211,10 +344,15 @@ if [[
   printf '%s\n' "$content_commit" >"$CONTENT_STATE_FILE"
   printf '%s\n' "$web_commit" >"$WEB_STATE_FILE"
   rm -f "$expected_source"
+  write_status \
+    "success" \
+    "服务器已是目标版本" \
+    1
   echo "Production is current at web=${web_commit:0:12} content=${content_commit:0:12}"
   exit 0
 fi
 
+write_status "building" "正在下载快照并执行完整构建检查" 0
 workspace="$(mktemp -d)"
 trap 'rm -rf "$workspace"; rm -f "$expected_source"' EXIT
 web_snapshot="${workspace}/web"
@@ -236,7 +374,7 @@ mirror_revision="$(
 
 cd "$web_snapshot"
 npm ci \
-  --omit=dev \
+  --include=dev \
   --no-audit \
   --no-fund \
   --cache "${BUILDER_ROOT}/npm-cache"
@@ -306,4 +444,5 @@ find "${RELEASE_ROOT}/releases" \
   cut -d' ' -f2- |
   xargs -r rm -rf
 
+write_status "success" "更新已发布" 1
 echo "Published ${release_id}"

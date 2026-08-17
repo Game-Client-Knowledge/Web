@@ -46,6 +46,9 @@ def make_settings(tmp_path: Path) -> Settings:
         smtp_password="",
         smtp_from="",
         smtp_starttls=True,
+        site_update_request_path=tmp_path / "site-update.request",
+        site_update_status_path=tmp_path / "site-update-status.json",
+        site_release_source_path=tmp_path / ".release-source",
     )
 
 

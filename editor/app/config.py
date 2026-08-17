@@ -39,6 +39,9 @@ class Settings:
     smtp_password: str
     smtp_from: str
     smtp_starttls: bool
+    site_update_request_path: Path
+    site_update_status_path: Path
+    site_release_source_path: Path
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -102,6 +105,27 @@ class Settings:
             smtp_password=os.getenv("EDITOR_SMTP_PASSWORD", ""),
             smtp_from=os.getenv("EDITOR_SMTP_FROM", "").strip(),
             smtp_starttls=env_bool("EDITOR_SMTP_STARTTLS", True),
+            site_update_request_path=Path(
+                os.getenv(
+                    "EDITOR_SITE_UPDATE_REQUEST_PATH",
+                    "/var/lib/game-client-knowledge-editor/"
+                    "site-update.request",
+                )
+            ),
+            site_update_status_path=Path(
+                os.getenv(
+                    "EDITOR_SITE_UPDATE_STATUS_PATH",
+                    "/var/lib/game-client-knowledge-editor/"
+                    "site-update-status.json",
+                )
+            ),
+            site_release_source_path=Path(
+                os.getenv(
+                    "EDITOR_SITE_RELEASE_SOURCE_PATH",
+                    "/var/www/game-client-knowledge/current/"
+                    ".release-source",
+                )
+            ),
         )
 
     @property

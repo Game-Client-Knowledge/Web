@@ -1491,6 +1491,47 @@ dialog::backdrop {
   flex-wrap: wrap;
 }
 
+.site-update-summary {
+  display: grid;
+  margin: 0 0 18px;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.site-update-summary > div {
+  min-width: 0;
+  padding: 14px 16px 14px 0;
+}
+
+.site-update-summary > div + div {
+  padding-left: 16px;
+  border-left: 1px solid var(--line);
+}
+
+.site-update-summary dt {
+  margin-bottom: 5px;
+  color: var(--ink-faint);
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.site-update-summary dd {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.site-update-summary code {
+  color: var(--teal-dark);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+}
+
 .smtp-form {
   display: grid;
   gap: 16px;
@@ -1622,6 +1663,16 @@ dialog::backdrop {
 
   .visual-settings-form > .primary-button {
     grid-column: 1 / -1;
+  }
+
+  .site-update-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .site-update-summary > div + div {
+    padding-left: 0;
+    border-top: 1px solid var(--line);
+    border-left: 0;
   }
 }
 
