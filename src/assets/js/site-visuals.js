@@ -857,10 +857,8 @@
     }
   }
 
-  document.addEventListener("DOMContentLoaded", () => {
-    initialize().catch(() => {
-      document.body.dataset.visualType = "fallback";
-      markHomeIntroReady("fallback");
-    });
+  initialize().catch(() => {
+    document.body.dataset.visualType = "fallback";
+    markHomeIntroReady("fallback");
   });
 })();
