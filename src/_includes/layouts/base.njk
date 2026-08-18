@@ -626,6 +626,9 @@
     {% endif %}
     <script src="{{ '/assets/js/site.js' | assetUrl }}"></script>
     <script src="{{ '/assets/js/search.js' | assetUrl }}"></script>
+    {% if pageKind == "home" %}
+      <script src="{{ '/assets/js/home-statistics.js' | assetUrl }}"></script>
+    {% endif %}
     <script src="{{ '/assets/js/editor-integration.js' | assetUrl }}"></script>
   </body>
 </html>

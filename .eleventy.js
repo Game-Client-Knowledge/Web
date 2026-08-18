@@ -255,6 +255,19 @@ module.exports = function configureEleventy(eleventyConfig) {
       day: "numeric"
     }).format(new Date(value));
   });
+  eleventyConfig.addFilter("formatDateTime", (value) => {
+    return new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).format(new Date(value));
+  });
+  eleventyConfig.addFilter("formatNumber", (value) => {
+    return new Intl.NumberFormat("zh-CN").format(Number(value) || 0);
+  });
   eleventyConfig.addFilter("moduleByKey", (modules, key) => {
     return modules.find((module) => module.key === key);
   });

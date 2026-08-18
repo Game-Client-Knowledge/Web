@@ -4,6 +4,8 @@ pageKind: home
 permalink: index.html
 ---
 
+{% set overallStats = catalog.contentStatistics.scopes[0] %}
+
 <section class="library-intro">
   <canvas class="knowledge-field" data-knowledge-field aria-hidden="true"></canvas>
   <div class="library-intro-overlay">
@@ -28,24 +30,145 @@ permalink: index.html
     </div>
     <dl class="intro-stats" aria-label="知识库内容统计">
       <div>
-        <dt>岗位赛道</dt>
-        <dd>{{ catalog.tracks.length or 1 }}</dd>
+        <dt>最新内容更新</dt>
+        <dd class="is-date">
+          <time datetime="{{ overallStats.latestUpdatedAt }}">
+            {{ overallStats.latestUpdatedAt | formatDateTime }}
+          </time>
+        </dd>
       </div>
       <div>
-        <dt>内容模块</dt>
-        <dd>{{ catalog.modules | length }}</dd>
+        <dt>当前总字数</dt>
+        <dd>{{ overallStats.characterCount | formatNumber }}</dd>
       </div>
       <div>
-        <dt>可读内容</dt>
-        <dd>{{ catalog.documents | length }}</dd>
+        <dt>当前总行数</dt>
+        <dd>{{ overallStats.lineCount | formatNumber }}</dd>
       </div>
       <div>
-        <dt>当前版本</dt>
-        <dd>{{ catalog.repository.commit }}</dd>
+        <dt>贡献者</dt>
+        <dd>{{ overallStats.contributorCount | formatNumber }}</dd>
       </div>
     </dl>
   </div>
 </section>
+
+<section class="contribution-ledger" aria-labelledby="contribution-ledger-title">
+  <div class="contribution-ledger-inner">
+    <header class="contribution-ledger-heading">
+      <div>
+        <p class="eyebrow">Contribution ledger</p>
+        <h2 id="contribution-ledger-title">内容贡献统计</h2>
+      </div>
+      <div class="contribution-ledger-controls">
+        <div class="segmented-control" role="group" aria-label="贡献赛道">
+          {% for scope in catalog.contentStatistics.scopes %}
+            <button
+              type="button"
+              data-contribution-scope="{{ scope.key }}"
+              aria-pressed="{{ 'true' if loop.first else 'false' }}"
+            >
+              {{ scope.title }}
+            </button>
+          {% endfor %}
+        </div>
+        <div class="segmented-control" role="group" aria-label="统计周期">
+          <button type="button" data-contribution-period="all" aria-pressed="true">
+            累计
+          </button>
+          <button type="button" data-contribution-period="week" aria-pressed="false">
+            最近 7 天
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="contribution-scope-summary">
+      <strong data-contribution-scope-title>{{ overallStats.title }}</strong>
+      <span data-contribution-scope-summary>
+        {{ overallStats.contributorCount }} 位贡献者 ·
+        {{ overallStats.fileCount | formatNumber }} 个文本资源
+      </span>
+    </div>
+
+    <div class="contribution-table-wrap" tabindex="0">
+      <table class="contribution-table">
+        <thead>
+          <tr>
+            <th scope="col">贡献者</th>
+            <th scope="col">新增</th>
+            <th scope="col">
+              <abbr title="同一文件中成对出现的新增与删除行">更改</abbr>
+            </th>
+            <th scope="col">删除</th>
+            <th scope="col">变更合计</th>
+          </tr>
+        </thead>
+        <tbody data-contribution-rows>
+          {% for contributor in overallStats.contributors %}
+            <tr>
+              <th scope="row">
+                <span class="contributor-avatar" aria-hidden="true">
+                  {{ contributor.name | first | upper }}
+                </span>
+                <span>{{ contributor.name }}</span>
+              </th>
+              <td class="line-added">
+                {% if contributor.added %}+{{ contributor.added | formatNumber }}{% else %}0{% endif %}
+              </td>
+              <td class="line-modified">
+                {% if contributor.modified %}~{{ contributor.modified | formatNumber }}{% else %}0{% endif %}
+              </td>
+              <td class="line-deleted">
+                {% if contributor.deleted %}-{{ contributor.deleted | formatNumber }}{% else %}0{% endif %}
+              </td>
+              <td>
+                {{
+                  (
+                    contributor.added +
+                    contributor.modified +
+                    contributor.deleted
+                  ) | formatNumber
+                }}
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="5" class="contribution-empty">暂无贡献记录</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <th scope="row">合计</th>
+            <td class="line-added" data-contribution-total="added">
+              {% if overallStats.lineTotals.added %}+{{ overallStats.lineTotals.added | formatNumber }}{% else %}0{% endif %}
+            </td>
+            <td class="line-modified" data-contribution-total="modified">
+              {% if overallStats.lineTotals.modified %}~{{ overallStats.lineTotals.modified | formatNumber }}{% else %}0{% endif %}
+            </td>
+            <td class="line-deleted" data-contribution-total="deleted">
+              {% if overallStats.lineTotals.deleted %}-{{ overallStats.lineTotals.deleted | formatNumber }}{% else %}0{% endif %}
+            </td>
+            <td data-contribution-total="all">
+              {{
+                (
+                  overallStats.lineTotals.added +
+                  overallStats.lineTotals.modified +
+                  overallStats.lineTotals.deleted
+                ) | formatNumber
+              }}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</section>
+
+<script>
+  window.GCK_CONTRIBUTION_STATS = {{ catalog.contentStatistics | json | safe }};
+</script>
 
 <section class="catalog-overview" aria-labelledby="catalog-title">
   <div class="section-heading">
@@ -70,7 +193,14 @@ permalink: index.html
             {{ track.modules.length }} 个模块 · {{ track.documentCount }} 篇内容{% if track.codeCount %} · {{ track.codeCount }} 个源码文件{% endif %}
           </span>
           <strong>{{ track.title }}</strong>
-          <span>{{ track.description }}</span>
+          <span class="track-overview-description">{{ track.description }}</span>
+          {% if track.statistics %}
+            <span class="track-statline">
+              {{ track.statistics.characterCount | formatNumber }} 字 ·
+              {{ track.statistics.lineCount | formatNumber }} 行 ·
+              {{ track.statistics.contributorCount }} 位贡献者
+            </span>
+          {% endif %}
           <i data-lucide="arrow-up-right" aria-hidden="true"></i>
         </a>
       {% endfor %}

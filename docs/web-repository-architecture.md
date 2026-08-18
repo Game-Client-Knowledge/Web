@@ -39,6 +39,7 @@ Most templates read from this object instead of scanning the file system.
 | --- | --- |
 | `.eleventy.js` | Eleventy configuration, global data, Markdown rendering, filters, raw asset passthrough. |
 | `lib/content-loader.js` | Scans the content repository and builds tracks, modules, topics, documents, redirects, workspace metadata, and search source data. |
+| `lib/content-statistics.js` | Computes current text size and cached Git contribution statistics by track and contributor. |
 | `lib/code-project-loader.js` | Scans `program/code` projects with `code-project.json` and builds project-level source metadata. |
 | `lib/mermaid-cache.js` | Creates and reads build-time Mermaid SVG cache keys. |
 | `scripts/build-mermaid-cache.js` | Pre-renders Mermaid diagrams during the static build. |
@@ -165,6 +166,8 @@ Navigation has two modes:
 `src/index.njk` renders:
 
 - The animated hero and repository statistics.
+- Current content update time, character count, line count, and contributor count.
+- A track/period contribution ledger with added, modified, and deleted lines.
 - Track cards from `catalog.tracks`.
 - No module bands and no topic cards in track mode.
 - Contribution call-to-action.
@@ -285,6 +288,7 @@ and published code files.
 | `src/assets/js/site.js` | Header/mobile nav, copy buttons, page TOC, reader sidebar state, comments loader. |
 | `src/assets/js/site-visuals.js` | Background visual effects, pointer effects, ambient visuals. |
 | `src/assets/js/home-intro-policy.js` | Home intro animation policy and device/session behavior. |
+| `src/assets/js/home-statistics.js` | Client-side track and rolling seven-day contribution filters over static build data. |
 | `src/assets/js/search.js` | Search dialog and weighted client-side search. |
 | `src/assets/js/source-cache.js` | Browser-side raw source cache. |
 | `src/assets/js/editor-integration.js` | Reader edit mode, local tree updates, create/delete controls, identity caching, and remote base synchronization. |
@@ -362,12 +366,20 @@ The standalone workspace exposes two explicit operations:
 | `npm run build:vendor` | Bundle static browser vendors into `.cache/vendor`. |
 | `npm run build:mermaid` | Pre-render Mermaid diagrams into the cache. |
 | `npm run build` | Build vendor assets, Mermaid cache, clean `_site`, then run Eleventy. |
+| `npm run test:content-statistics` | Verify Git line accounting, contributor aliases, track splits, and cache reuse. |
 | `npm run audit` | Run content audit before publishing. |
 | `npm run audit:site` | Audit generated site HTML after build. |
 | `npm run check` | Run tests, audits, build, and generated-site audit. |
 
 The production updater expects pushed immutable commits. It should not publish a
 local unpushed worktree.
+
+Content contribution history is computed during the immutable build, never on a
+reader request. The cache is keyed by the full content commit. Production keeps
+it at `/home/sourcecode/gck-builder/content-statistics-v2.json`; an unchanged
+commit is a direct cache hit, while a descendant commit scans only the new Git
+range. The browser receives compact static events and calculates the rolling
+seven-day window locally.
 
 ## Deployment and Operations Files
 
@@ -386,6 +398,7 @@ local unpushed worktree.
 | Task | Usually edit |
 | --- | --- |
 | Change homepage layout | `src/index.njk`, `src/assets/css/site.css`, visual checks. |
+| Change contribution metrics | `lib/content-statistics.js`, `src/assets/js/home-statistics.js`, `src/index.njk`. |
 | Change track/module navigation | `src/_includes/layouts/base.njk`, `src/track-pages.njk`, `src/index.njk`. |
 | Change content hierarchy rules | `lib/content-loader.js`, `src/module-pages.njk`, `src/content-pages.njk`, `src/assets/js/workspace-tree.js`, `src/assets/js/editor-integration.js`. |
 | Change search behavior | `src/search-index.11ty.js`, `src/assets/js/search.js`. |

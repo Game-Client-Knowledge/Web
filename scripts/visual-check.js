@@ -658,6 +658,93 @@ async function inspectPage(browser, scenario) {
     );
   }
 
+  if (scenario.homeStatistics) {
+    const initial = await page.evaluate(() => {
+      const stats = Array.from(
+        document.querySelectorAll(".intro-stats dd")
+      ).map((item) => item.textContent.trim());
+      const rows = Array.from(
+        document.querySelectorAll("[data-contribution-rows] tr")
+      ).map((row) => row.textContent.replace(/\s+/g, " ").trim());
+      return {
+        stats,
+        rows,
+        scope: document.querySelector("[data-contribution-scope-title]")
+          ?.textContent.trim(),
+        horizontalOverflow:
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth
+      };
+    });
+    assert(
+      initial.stats.length === 4 &&
+        initial.stats.every(Boolean) &&
+        initial.rows.length > 0 &&
+        initial.scope === "全部赛道" &&
+        initial.horizontalOverflow === 0,
+      `${scenario.name}: initial contribution statistics are invalid ` +
+        JSON.stringify(initial)
+    );
+    await page.locator('[data-contribution-scope="planning"]').click();
+    await page.waitForFunction(() => {
+      return document
+        .querySelector("[data-contribution-scope-title]")
+        ?.textContent.includes("策划赛道");
+    });
+    const planning = await page.evaluate(() => {
+      return {
+        rows: document.querySelectorAll(
+          "[data-contribution-rows] tr"
+        ).length,
+        added: document.querySelector(
+          '[data-contribution-total="added"]'
+        )?.textContent.trim(),
+        pressed: document.querySelector(
+          '[data-contribution-scope="planning"]'
+        )?.getAttribute("aria-pressed")
+      };
+    });
+    assert(
+      planning.rows > 0 &&
+        planning.added?.startsWith("+") &&
+        planning.pressed === "true",
+      `${scenario.name}: planning contribution filter failed ` +
+        JSON.stringify(planning)
+    );
+    await page.locator('[data-contribution-period="week"]').click();
+    await page.waitForFunction(() => {
+      return document
+        .querySelector("[data-contribution-scope-summary]")
+        ?.textContent.includes("最近 7 天");
+    });
+    const recent = await page.evaluate(() => {
+      return {
+        summary: document
+          .querySelector("[data-contribution-scope-summary]")
+          ?.textContent.trim(),
+        pressed: document.querySelector(
+          '[data-contribution-period="week"]'
+        )?.getAttribute("aria-pressed"),
+        overflow:
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth
+      };
+    });
+    assert(
+      recent.summary?.includes("最近 7 天") &&
+        recent.pressed === "true" &&
+        recent.overflow === 0,
+      `${scenario.name}: recent contribution filter failed ` +
+        JSON.stringify(recent)
+    );
+    await page.locator(".contribution-ledger").screenshot({
+      path: path.join(
+        outputDirectory,
+        `${scenario.name}-contributions.png`
+      )
+    });
+  }
+
   if (scenario.topicOrdering) {
     const ordering = await page.evaluate(() => {
       const heading = Array.from(
@@ -1172,10 +1259,10 @@ async function inspectPage(browser, scenario) {
         for (let index = 3; index < pixels.length; index += 16) {
           if (pixels[index] > 0) painted += 1;
         }
-        const catalogTop = document
-          .querySelector(".catalog-overview")
+        const nextSectionTop = document
+          .querySelector(".contribution-ledger, .catalog-overview")
           .getBoundingClientRect().top;
-        return { painted, catalogTop, viewportHeight: innerHeight };
+        return { painted, nextSectionTop, viewportHeight: innerHeight };
       }
     );
     assert(
@@ -1183,8 +1270,8 @@ async function inspectPage(browser, scenario) {
       `${scenario.name}: knowledge field is blank`
     );
     assert(
-      field.catalogTop < field.viewportHeight,
-      `${scenario.name}: catalog is not visible below the hero`
+      field.nextSectionTop < field.viewportHeight,
+      `${scenario.name}: next homepage section is not visible below the hero`
     );
   }
 
@@ -1327,6 +1414,7 @@ async function inspectPage(browser, scenario) {
       search: true,
       knowledgeField: true,
       homeHierarchy: true,
+      homeStatistics: true,
       homeIntro: "play",
       bootstrapDelay: 3000,
       pointerEffect: true,
@@ -1341,6 +1429,7 @@ async function inspectPage(browser, scenario) {
       route: "/",
       viewport: { width: 390, height: 844 },
       knowledgeField: true,
+      homeStatistics: true,
       homeIntro: "disabled",
       pointerEffect: false,
       visualSettings: { pointer_effect_enabled: false }

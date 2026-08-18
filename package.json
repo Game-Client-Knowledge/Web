@@ -18,6 +18,7 @@
     "test:site-update": "node scripts/test-site-update-control.js && bash scripts/test-site-update-failure.sh",
     "test:home-intro-policy": "node scripts/test-home-intro-policy.js",
     "test:content-loader": "node scripts/test-content-loader.js",
+    "test:content-statistics": "node scripts/test-content-statistics.js",
     "test:code-projects": "node scripts/test-code-project-loader.js",
     "test:code-intelligence": "node scripts/test-code-intelligence.js",
     "test:reader-diff": "node scripts/test-reader-diff.js",
@@ -26,7 +27,7 @@
     "deploy:editor": "bash scripts/deploy-editor.sh",
     "deploy:update-control": "bash scripts/install-update-control.sh",
     "deploy:server": "bash scripts/deploy-server.sh",
-    "check": "npm run test:markdown-preserve && npm run test:source-cache && npm run test:editor-buffer && npm run test:workspace-tree && npm run test:workspace-store && npm run test:site-update && npm run test:home-intro-policy && npm run test:content-loader && npm run test:code-projects && npm run test:code-intelligence && npm run test:reader-diff && npm run audit && npm run build && npm run audit:site"
+    "check": "npm run test:markdown-preserve && npm run test:source-cache && npm run test:editor-buffer && npm run test:workspace-tree && npm run test:workspace-store && npm run test:site-update && npm run test:home-intro-policy && npm run test:content-loader && npm run test:content-statistics && npm run test:code-projects && npm run test:code-intelligence && npm run test:reader-diff && npm run audit && npm run build && npm run audit:site"
   },
   "engines": {
     "node": ">=20.19"

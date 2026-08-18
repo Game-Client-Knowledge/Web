@@ -87,6 +87,19 @@ explicit `CHROME_PATH` or system browser and otherwise uses the executable
 resolved by `playwright-core` through `PLAYWRIGHT_BROWSERS_PATH`. Browser
 installation failures are reported as the `install-build-browser` stage.
 
+## Content Statistics Cache
+
+Contribution history is cached across immutable releases at:
+
+```text
+/home/sourcecode/gck-builder/content-statistics-v2.json
+```
+
+The cache is keyed by the full content commit. Rebuilding the same revision is a
+direct hit; a linear descendant scans only the new Git range. The generated
+statistics are embedded in the static homepage, so reader requests add no
+runtime load to the editor service.
+
 ## Scheduling
 
 `game-client-knowledge-update.timer` wakes the oneshot service every minute. The
