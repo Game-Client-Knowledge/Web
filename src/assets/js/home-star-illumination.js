@@ -119,20 +119,21 @@
     const luminous = Math.pow(normalized, 1.55);
     const radius =
       kind === "contributor"
-        ? 1.1 + Math.pow(normalized, 0.72) * 4.6
-        : 0.45 + Math.pow(normalized, 0.78) * 2.8;
+        ? 1.3 + Math.pow(normalized, 0.72) * 4.4
+        : 0.7 + Math.pow(normalized, 0.78) * 2.55;
     return {
       brightness,
       luminous,
       radius: radius + (selected ? 0.8 : 0),
-      alpha: Math.min(1, 0.12 + luminous * 0.88 + (selected ? 0.1 : 0)),
+      alpha: Math.min(1, 0.3 + luminous * 0.7 + (selected ? 0.1 : 0)),
       shadowBlur:
         1.5 + luminous * 17 + (selected ? 9 : 0),
-      haloRadius: radius * (2.2 + luminous * 1.8),
+      haloRadius: radius * (2.4 + luminous * 2.1),
       haloAlpha: Math.min(
-        0.46,
-        0.025 + luminous * 0.3 + (selected ? 0.12 : 0)
-      )
+        0.5,
+        0.05 + luminous * 0.38 + (selected ? 0.14 : 0)
+      ),
+      coreAlpha: Math.max(0, Math.min(0.95, (luminous - 0.28) * 1.35))
     };
   }
 
