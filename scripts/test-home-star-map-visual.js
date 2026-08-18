@@ -115,6 +115,7 @@ async function runScenario(browser, scenario) {
       stars: Number(canvas.dataset.starCount),
       contributors: Number(canvas.dataset.contributorCount),
       documents: Number(canvas.dataset.documentCount),
+      codeSystems: Number(canvas.dataset.codeSystemCount),
       edges: Number(canvas.dataset.edgeCount),
       illuminationRule: canvas.dataset.illuminationRule,
       illuminationDepth: Number(canvas.dataset.illuminationDepth),
@@ -136,6 +137,7 @@ async function runScenario(browser, scenario) {
       metrics.documents > metrics.contributors,
     `${scenario.name}: star kinds are invalid`
   );
+  assert.ok(metrics.codeSystems > 0, `${scenario.name}: no code systems`);
   assert.ok(metrics.edges > metrics.stars, `${scenario.name}: too few edges`);
   assert.equal(metrics.illuminationRule, "depth_contributor_terminal");
   assert.equal(metrics.illuminationDepth, 2);
@@ -287,11 +289,22 @@ async function runScenario(browser, scenario) {
                   last_contributed_at: "2026-08-18T00:00:00Z"
                 },
                 {
-                  path: "program/examples/cpp/polymorphism/main.cpp",
+                  path:
+                    "program/code/ecs/csharp-extensible-combat-ecs/" +
+                    "src/ExtensibleCombatEcs/Game/Components.cs",
                   contributor_id: "external:2",
                   contributor_name: "external",
                   commit_count: 1,
                   last_contributed_at: "2026-08-17T00:00:00Z"
+                },
+                {
+                  path:
+                    "program/code/ecs/csharp-extensible-combat-ecs/" +
+                    "src/ExtensibleCombatEcs/Systems/CombatSystems.cs",
+                  contributor_id: "external:2",
+                  contributor_name: "external",
+                  commit_count: 2,
+                  last_contributed_at: "2026-08-18T00:00:00Z"
                 }
               ]
             }
@@ -304,13 +317,19 @@ async function runScenario(browser, scenario) {
           resolve({
             contributors: Number(canvas.dataset.contributorCount),
             documents: Number(canvas.dataset.documentCount),
+            codeSystems: Number(canvas.dataset.codeSystemCount),
+            contributionEdges: Number(
+              canvas.dataset.contributionEdgeCount
+            ),
             edges: Number(canvas.dataset.edgeCount)
           });
         });
       });
     });
     assert.equal(canonical.contributors, 2);
-    assert.equal(canonical.documents, 148);
+    assert.equal(canonical.documents, metrics.documents);
+    assert.equal(canonical.codeSystems, 1);
+    assert.equal(canonical.contributionEdges, 3);
     assert.ok(canonical.edges >= 3);
   }
 

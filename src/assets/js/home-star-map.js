@@ -78,6 +78,12 @@
     return String(value || "").trim().toLocaleLowerCase("en").replace(/\s+/g, " ");
   }
 
+  function isGeneratedPath(value) {
+    return String(value || "")
+      .split("/")
+      .some((part) => part === "bin" || part === "obj");
+  }
+
   function pickStarColor(random) {
     const roll = random();
     if (roll < 0.14) return "#ffffff";
@@ -191,18 +197,33 @@
         })),
       edges: source.edges.filter((edge) => edge.type !== "contribution")
     };
-    const documents = new Map(
-      result.stars
-        .filter((star) => star.kind === "document")
-        .map((star) => [star.sourcePath, star])
-    );
+    const documents = new Map();
+    const documentByPath = new Map();
+    const codeSystems = [];
+    for (const star of result.stars) {
+      if (star.kind !== "document") continue;
+      documents.set(star.id, star);
+      for (const sourcePath of star.sourcePaths || [star.sourcePath]) {
+        documentByPath.set(sourcePath, star);
+      }
+      if (star.systemPath) codeSystems.push(star);
+    }
+    const documentForPath = (sourcePath) => {
+      if (isGeneratedPath(sourcePath)) return null;
+      const exact = documentByPath.get(sourcePath);
+      if (exact) return exact;
+      return codeSystems.find((star) => {
+        return sourcePath.startsWith(`${star.systemPath}/`);
+      }) || null;
+    };
     const contributors = new Map(
       []
     );
     const contributorSets = new Map();
+    const contributionEdges = new Map();
 
     for (const link of cached.links) {
-      const documentStar = documents.get(link.path);
+      const documentStar = documentForPath(link.path);
       if (!documentStar) continue;
       const name = String(link.contributor_name || "Unknown");
       const contributorId = String(
@@ -244,17 +265,29 @@
         contributorStar.metrics.lastActiveAt =
           link.last_contributed_at;
       }
-      result.edges.push({
-        type: "contribution",
-        source: contributorStar.id,
-        target: documentStar.id,
-        commitCount: Number(link.commit_count || 0),
-        lastContributedAt: link.last_contributed_at || ""
-      });
-      if (!contributorSets.has(link.path)) {
-        contributorSets.set(link.path, new Set());
+      const edgeKey = `${contributorStar.id}\u0000${documentStar.id}`;
+      const existingEdge = contributionEdges.get(edgeKey);
+      if (existingEdge) {
+        existingEdge.commitCount += Number(link.commit_count || 0);
+        if (
+          link.last_contributed_at &&
+          link.last_contributed_at > existingEdge.lastContributedAt
+        ) {
+          existingEdge.lastContributedAt = link.last_contributed_at;
+        }
+      } else {
+        contributionEdges.set(edgeKey, {
+          type: "contribution",
+          source: contributorStar.id,
+          target: documentStar.id,
+          commitCount: Number(link.commit_count || 0),
+          lastContributedAt: link.last_contributed_at || ""
+        });
       }
-      contributorSets.get(link.path).add(contributorStar.id);
+      if (!contributorSets.has(documentStar.id)) {
+        contributorSets.set(documentStar.id, new Set());
+      }
+      contributorSets.get(documentStar.id).add(contributorStar.id);
       if (
         link.last_contributed_at &&
         link.last_contributed_at >
@@ -263,9 +296,10 @@
         documentStar.metrics.lastContributedAt = link.last_contributed_at;
       }
     }
+    result.edges.push(...contributionEdges.values());
     for (const documentStar of documents.values()) {
       documentStar.metrics.contributorCount =
-        contributorSets.get(documentStar.sourcePath)?.size || 0;
+        contributorSets.get(documentStar.id)?.size || 0;
     }
     return result;
   }
@@ -1066,6 +1100,12 @@
     );
     canvas.dataset.documentCount = String(
       stars.filter((star) => star.kind === "document").length
+    );
+    canvas.dataset.codeSystemCount = String(
+      stars.filter((star) => star.resourceKind === "code_system").length
+    );
+    canvas.dataset.contributionEdgeCount = String(
+      edges.filter((edge) => edge.type === "contribution").length
     );
     if (!reducedMotion) frame = window.requestAnimationFrame(animate);
 

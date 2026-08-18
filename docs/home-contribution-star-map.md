@@ -22,10 +22,18 @@ tree at runtime.
 | Kind | Motion | Source | Default brightness |
 | --- | --- | --- | --- |
 | Contributor | Static | Contributors across all tracks | `10` |
-| Document | Moving | Every readable Markdown or source-code route, excluding generated `bin/obj` files | `10` |
+| Document | Moving | Readable Markdown and source-code routes outside the `code` module | `10` |
+| Code system | Moving | One immediate child directory below each `code` module | `10` |
 
 Contributor records expose names and aggregate activity only. Email addresses
 are never included in the browser payload.
+
+Code-system stars use the first directory level below `code` as their stable
+boundary. For example, every readable member below `program/code/ecs/` belongs
+to one `ECS` system star, regardless of deeper project or source directories.
+The immediate system `README.md` supplies its title and route. Files directly
+under `code/`, such as project conventions, remain independent documents.
+Generated `bin` and `obj` paths remain excluded.
 
 ### Edges
 
@@ -35,10 +43,19 @@ are never included in the browser payload.
 | Reference | One Markdown document links to another readable document | Dashed |
 | Contribution | A contributor changed the document at least once | Solid |
 
+All member references and contributor links are folded into their code-system
+star. Multiple files changed by the same contributor produce one contributor
+edge whose commit counts are accumulated and whose activity time is the newest
+member contribution. Internal links between members of the same system do not
+create self-edges. Versioned server links remain file-granular; the browser
+applies the same system-path folding after loading them.
+
 The smallest-directory rule deliberately separates a parent topic from its
 child topics. Direct files under a parent are connected to each other; files
 inside one child topic are connected to each other; the two groups do not gain
-a strong edge merely because they share a larger module.
+a strong edge merely because they share a larger module. Code-system stars use
+the `code` module as their cluster, so sibling systems can be related without
+restoring their internal file-level graph.
 
 The browser stores adjacency with `Map<starId, Set<starId>>`. Drawing keeps the
 edge type so each relation can use an independent visual style.
@@ -207,7 +224,7 @@ from its first rendered frame.
 ## Verification
 
 - `npm run test:home-star-graph` validates smallest-directory grouping,
-  Markdown references, and contributor edges.
+  code-system folding, Markdown references, and contributor edges.
 - `npm run test:home-star-illumination` validates all propagation boundaries
   and the perceptual brightness mapping.
 - `editor/tests/test_app.py` validates persistence, public propagation,

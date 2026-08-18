@@ -17,7 +17,19 @@ function fixtureCatalog() {
       "program/knowledge/root/child/README.md":
         "/program/knowledge/root/child/",
       "program/knowledge/root/child/01-c.md":
-        "/program/knowledge/root/child/01-c/"
+        "/program/knowledge/root/child/01-c/",
+      "program/code/README.md": "/program/code/",
+      "program/code/project-convention.md":
+        "/program/code/project-convention/",
+      "program/code/ecs/README.md": "/program/code/ecs/",
+      "program/code/ecs/combat/README.md":
+        "/program/code/ecs/combat/",
+      "program/code/ecs/combat/Main.cs":
+        "/program/code/ecs/combat/files/Main.cs/",
+      "program/code/rendering/README.md":
+        "/program/code/rendering/",
+      "program/code/rendering/Renderer.cpp":
+        "/program/code/rendering/files/Renderer.cpp/"
     },
     tracks: [
       {
@@ -35,6 +47,14 @@ function fixtureCatalog() {
         sourceRelative: "program/knowledge/README.md",
         title: "Knowledge",
         route: "/program/knowledge/",
+        body: ""
+      },
+      {
+        key: "program/code",
+        trackKey: "program",
+        sourceRelative: "program/code/README.md",
+        title: "Code",
+        route: "/program/code/",
         body: ""
       }
     ],
@@ -108,6 +128,78 @@ function fixtureCatalog() {
         title: "generated.cpp",
         route: "/program/knowledge/root/obj/files/generated.cpp/",
         source: "generated"
+      },
+      {
+        kind: "markdown",
+        trackKey: "program",
+        moduleKey: "program/code",
+        sourceRelative: "program/code/project-convention.md",
+        sourceDirectory: "program/code",
+        title: "Project convention",
+        route: "/program/code/project-convention/",
+        body: ""
+      },
+      {
+        kind: "markdown",
+        trackKey: "program",
+        moduleKey: "program/code",
+        sourceRelative: "program/code/ecs/README.md",
+        sourceDirectory: "program/code/ecs",
+        title: "ECS system",
+        route: "/program/code/ecs/",
+        body: "[Knowledge](../../knowledge/root/01-a.md)"
+      },
+      {
+        kind: "markdown",
+        trackKey: "program",
+        moduleKey: "program/code",
+        sourceRelative: "program/code/ecs/combat/README.md",
+        sourceDirectory: "program/code/ecs/combat",
+        title: "Combat implementation",
+        route: "/program/code/ecs/combat/",
+        body:
+          "[System](../README.md) and " +
+          "[Knowledge](../../../knowledge/root/01-a.md)"
+      },
+      {
+        kind: "code",
+        trackKey: "program",
+        moduleKey: "program/code",
+        sourceRelative: "program/code/ecs/combat/Main.cs",
+        sourceDirectory: "program/code/ecs/combat",
+        title: "Main.cs",
+        route: "/program/code/ecs/combat/files/Main.cs/",
+        source: "public class Main {}"
+      },
+      {
+        kind: "code",
+        trackKey: "program",
+        moduleKey: "program/code",
+        sourceRelative: "program/code/ecs/combat/obj/generated.cs",
+        sourceDirectory: "program/code/ecs/combat/obj",
+        title: "generated.cs",
+        route: "/program/code/ecs/combat/obj/files/generated.cs/",
+        source: "generated"
+      },
+      {
+        kind: "markdown",
+        trackKey: "program",
+        moduleKey: "program/code",
+        sourceRelative: "program/code/rendering/README.md",
+        sourceDirectory: "program/code/rendering",
+        title: "Rendering system",
+        route: "/program/code/rendering/",
+        body: ""
+      },
+      {
+        kind: "code",
+        trackKey: "program",
+        moduleKey: "program/code",
+        sourceRelative: "program/code/rendering/Renderer.cpp",
+        sourceDirectory: "program/code/rendering",
+        title: "Renderer.cpp",
+        route: "/program/code/rendering/files/Renderer.cpp/",
+        source: "void render() {}"
       }
     ],
     contentStatistics: {
@@ -135,6 +227,34 @@ function fixtureCatalog() {
           contributorName: "Alice",
           commitCount: 2,
           lastContributedAt: "2026-08-18T00:00:00Z"
+        },
+        {
+          path: "program/code/ecs/combat/Main.cs",
+          contributorId: "alice",
+          contributorName: "Alice",
+          commitCount: 2,
+          lastContributedAt: "2026-08-17T00:00:00Z"
+        },
+        {
+          path: "program/code/ecs/combat/project.csproj",
+          contributorId: "alice",
+          contributorName: "Alice",
+          commitCount: 3,
+          lastContributedAt: "2026-08-18T01:00:00Z"
+        },
+        {
+          path: "program/code/ecs/combat/obj/generated.cs",
+          contributorId: "alice",
+          contributorName: "Alice",
+          commitCount: 9,
+          lastContributedAt: "2026-08-18T02:00:00Z"
+        },
+        {
+          path: "program/code/rendering/Renderer.cpp",
+          contributorId: "alice",
+          contributorName: "Alice",
+          commitCount: 1,
+          lastContributedAt: "2026-08-16T00:00:00Z"
         }
       ]
     }
@@ -171,6 +291,7 @@ const contributionEdges = graph.edges.filter(
   (edge) => edge.type === "contribution"
 );
 
+assert.equal(graph.version, 2);
 assert.equal(graph.revision, "abc1234");
 assert.equal(
   graph.stars.filter((star) => star.kind === "contributor").length,
@@ -178,7 +299,7 @@ assert.equal(
 );
 assert.equal(
   graph.stars.filter((star) => star.kind === "document").length,
-  8
+  12
 );
 assert.ok(
   graph.stars.some((star) => {
@@ -187,7 +308,31 @@ assert.ok(
       star.sourcePath === "program/knowledge/root/example.cpp"
     );
   }),
-  "readable source files must receive document stars"
+  "source files outside the code module must remain document stars"
+);
+const codeSystemStars = graph.stars.filter(
+  (star) => star.resourceKind === "code_system"
+);
+assert.deepEqual(
+  codeSystemStars.map((star) => star.systemPath).sort(),
+  ["program/code/ecs", "program/code/rendering"]
+);
+const ecsStar = codeSystemStars.find(
+  (star) => star.systemPath === "program/code/ecs"
+);
+assert.equal(ecsStar.title, "ECS system");
+assert.equal(ecsStar.route, "/program/code/ecs/");
+assert.ok(
+  ecsStar.sourcePaths.includes("program/code/ecs/combat/Main.cs")
+);
+assert.ok(
+  !ecsStar.sourcePaths.some((sourcePath) => sourcePath.includes("/obj/"))
+);
+assert.ok(
+  !graph.stars.some((star) => {
+    return star.sourcePath === "program/code/ecs/combat/Main.cs";
+  }),
+  "code-system members must not receive separate stars"
 );
 assert.ok(
   !graph.stars.some((star) => {
@@ -213,7 +358,31 @@ assert.ok(
   }),
   "parent and child topic documents must not share a strong edge"
 );
-assert.equal(referenceEdges.length, 2);
+assert.ok(
+  strongEdges.some((edge) => {
+    return (
+      edge.source === "document:program/code/ecs/README.md" &&
+      edge.target === "document:program/code/rendering/README.md"
+    ) || (
+      edge.target === "document:program/code/ecs/README.md" &&
+      edge.source === "document:program/code/rendering/README.md"
+    );
+  }),
+  "systems under the code module must share their parent cluster"
+);
+assert.equal(referenceEdges.length, 3);
+assert.ok(
+  referenceEdges.some((edge) => {
+    return (
+      edge.source === "document:program/code/ecs/README.md" &&
+      edge.target === "document:program/knowledge/root/01-a.md"
+    ) || (
+      edge.target === "document:program/code/ecs/README.md" &&
+      edge.source === "document:program/knowledge/root/01-a.md"
+    );
+  }),
+  "references from system members must belong to the system star"
+);
 assert.deepEqual(contributionEdges, [
   {
     type: "contribution",
@@ -221,7 +390,26 @@ assert.deepEqual(contributionEdges, [
     target: "document:program/knowledge/root/01-a.md",
     commitCount: 2,
     lastContributedAt: "2026-08-18T00:00:00Z"
+  },
+  {
+    type: "contribution",
+    source: "contributor:alice",
+    target: "document:program/code/ecs/README.md",
+    commitCount: 5,
+    lastContributedAt: "2026-08-18T01:00:00Z"
+  },
+  {
+    type: "contribution",
+    source: "contributor:alice",
+    target: "document:program/code/rendering/README.md",
+    commitCount: 1,
+    lastContributedAt: "2026-08-16T00:00:00Z"
   }
 ]);
+assert.equal(ecsStar.metrics.contributorCount, 1);
+assert.equal(
+  ecsStar.metrics.lastContributedAt,
+  "2026-08-18T01:00:00Z"
+);
 
 console.log("Homepage star graph checks passed");
