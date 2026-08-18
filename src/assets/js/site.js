@@ -58,27 +58,102 @@
   function setupDocumentSidebar() {
     const sidebar = document.querySelector("[data-docs-sidebar]");
     const backdrop = document.querySelector("[data-sidebar-backdrop]");
-    if (!sidebar || !backdrop) {
+    if (!sidebar) {
       return;
     }
+    const navigation = sidebar.querySelector(".docs-navigation");
+    const config = window.GCK_CONFIG || {};
+    const moduleRoot =
+      config.editorContext && config.editorContext.root
+        ? config.editorContext.root
+        : window.location.pathname.split("/").slice(1, 3).join("/") || "site";
+    const storageKey =
+      "gck-docs-sidebar-scroll:v1:" + encodeURIComponent(moduleRoot);
+    let restoring = true;
 
     function close() {
       sidebar.classList.remove("is-open");
-      backdrop.classList.remove("is-visible");
+      if (backdrop) backdrop.classList.remove("is-visible");
       document.body.classList.remove("has-sidebar-open");
     }
+
+    function saveScroll() {
+      try {
+        window.sessionStorage.setItem(
+          storageKey,
+          JSON.stringify({
+            top: sidebar.scrollTop,
+            path: window.location.pathname,
+            time: Date.now()
+          })
+        );
+      } catch {
+        // Sidebar restoration is a convenience; navigation must never depend on it.
+      }
+    }
+
+    function activeLink() {
+      return (
+        sidebar.querySelector('.docs-nav-unit li a[aria-current="page"]') ||
+        sidebar.querySelector('.docs-nav-unit-title[aria-current="true"]')
+      );
+    }
+
+    function linkIsVisible(link) {
+      const linkBox = link.getBoundingClientRect();
+      const sidebarBox = sidebar.getBoundingClientRect();
+      return (
+        linkBox.top >= sidebarBox.top + 24 &&
+        linkBox.bottom <= sidebarBox.bottom - 24
+      );
+    }
+
+    function restoreScroll() {
+      let restored = false;
+      try {
+        const saved = JSON.parse(
+          window.sessionStorage.getItem(storageKey) || "null"
+        );
+        if (saved && Date.now() - Number(saved.time || 0) < 30 * 60 * 1000) {
+          sidebar.scrollTop = Math.max(0, Number(saved.top) || 0);
+          restored = true;
+        }
+      } catch {
+        // Fall back to active-link positioning below.
+      }
+      const current = activeLink();
+      if (current && (!restored || !linkIsVisible(current))) {
+        current.scrollIntoView({ block: "center" });
+      }
+      window.setTimeout(function () {
+        restoring = false;
+      }, 80);
+    }
+
+    sidebar.addEventListener("scroll", function () {
+      if (!restoring) saveScroll();
+    }, { passive: true });
+    if (navigation) {
+      navigation.addEventListener("click", function (event) {
+        if (event.target.closest("a, summary")) {
+          saveScroll();
+        }
+      });
+    }
+    window.addEventListener("pagehide", saveScroll);
 
     document.querySelectorAll("[data-open-docs]").forEach(function (button) {
       button.addEventListener("click", function () {
         sidebar.classList.add("is-open");
-        backdrop.classList.add("is-visible");
+        if (backdrop) backdrop.classList.add("is-visible");
         document.body.classList.add("has-sidebar-open");
       });
     });
     document.querySelectorAll("[data-close-docs]").forEach(function (button) {
       button.addEventListener("click", close);
     });
-    backdrop.addEventListener("click", close);
+    if (backdrop) backdrop.addEventListener("click", close);
+    window.requestAnimationFrame(restoreScroll);
   }
 
   function setupCopyActions() {
