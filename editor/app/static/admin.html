@@ -160,6 +160,17 @@
           保留主页内容半透明蒙版
         </label>
         <label>
+          主页空闲隐藏（秒，0 为关闭）
+          <input
+            name="home_content_idle_timeout_seconds"
+            type="number"
+            min="0"
+            max="3600"
+            step="1"
+            required
+          >
+        </label>
+        <label>
           贡献星图范围
           <select name="home_star_scope">
             <option value="hero">仅上半部分</option>

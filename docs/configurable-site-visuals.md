@@ -9,6 +9,7 @@ The site exposes visual controls in the editor administration page:
 | Catalog background | `clean`, `circuit`, `constellation` | `circuit` |
 | Reader background | `clean`, `blueprint`, `constellation` | `blueprint` |
 | Homepage content mask | enabled or disabled | disabled |
+| Homepage idle hide | `0` to `3600` seconds | `30` seconds |
 | Pointer effect | enabled or disabled | enabled |
 | Homepage entry policy | `off`, `always`, `revisit`, `first` | `revisit` |
 | Particle assembly duration | `0.5` to `10` seconds | `1.68` seconds |
@@ -33,6 +34,13 @@ statistics, catalog, contribution callout, and footer so the active background
 scene can be inspected by itself. The eye button remains available to restore
 the content. This visibility choice is device-local and does not change the
 administrator setting or other visitors' pages.
+
+After the configured idle interval, the same content is hidden automatically.
+Pointer movement, pointer or touch input, keyboard input, and scrolling restore
+idle-hidden content immediately and restart the timer. Manual hiding remains
+sticky and is not cancelled by incidental movement. A value of `0` disables
+the idle behavior. The timer pauses while the tab is hidden and does not hide
+content during the homepage entry sequence.
 
 ## Client visual engine
 

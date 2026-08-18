@@ -41,7 +41,8 @@ async function runScenario(browser, scenario) {
     home_intro_mode: "off",
     home_background_style: "contribution_star_map",
     home_star_scope: "full",
-    home_content_mask_enabled: false
+    home_content_mask_enabled: false,
+    home_content_idle_timeout_seconds: 1
   };
   await context.addInitScript((settings) => {
     localStorage.setItem(
@@ -103,8 +104,27 @@ async function runScenario(browser, scenario) {
   );
   assert.equal(unmasked.overflow, 0);
 
+  await page.waitForSelector("body.home-content-idle-hidden", {
+    timeout: 3000
+  });
+  const idleState = await page.evaluate(() => ({
+    reason: document.body.dataset.homeContentReason,
+    persisted: localStorage.getItem("gck-home-content-hidden:v1")
+  }));
+  assert.equal(idleState.reason, "idle");
+  assert.notEqual(idleState.persisted, "1");
+  await page.mouse.move(80, 80);
+  await page.waitForSelector("body:not(.home-content-hidden)");
+
   await toggle.click();
   await page.waitForSelector("body.home-content-hidden");
+  await page.mouse.move(120, 120);
+  await page.waitForTimeout(100);
+  assert.equal(
+    await page.locator("body.home-content-hidden").count(),
+    1,
+    "pointer movement must not override a manual hide"
+  );
   const hidden = await page.evaluate(() => ({
     label: document
       .querySelector("[data-home-content-toggle]")
@@ -153,7 +173,8 @@ async function runScenario(browser, scenario) {
       new CustomEvent("gck:visual-settings", {
         detail: {
           ...settings,
-          home_content_mask_enabled: true
+          home_content_mask_enabled: true,
+          home_content_idle_timeout_seconds: 0
         }
       })
     );

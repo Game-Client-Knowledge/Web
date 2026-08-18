@@ -533,6 +533,7 @@ class Database:
                 "home_intro_contributor_limit": "8",
                 "home_background_style": "old_star_map",
                 "home_content_mask_enabled": "0",
+                "home_content_idle_timeout_seconds": "30",
                 "home_star_scope": "hero",
                 "home_star_relation_visibility": "near",
                 "home_star_strong_relation_style": "solid",

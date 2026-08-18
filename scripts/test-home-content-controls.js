@@ -58,8 +58,61 @@ function button() {
   };
 }
 
-function homeDocument(toggle) {
+function eventTarget() {
+  const listeners = new Map();
   return {
+    addEventListener(type, listener) {
+      const handlers = listeners.get(type) || new Set();
+      handlers.add(listener);
+      listeners.set(type, handlers);
+    },
+    removeEventListener(type, listener) {
+      listeners.get(type)?.delete(listener);
+    },
+    dispatch(type, event = {}) {
+      listeners.get(type)?.forEach((listener) => listener(event));
+    },
+    dispatchEvent(event) {
+      this.dispatch(event.type, event);
+    }
+  };
+}
+
+function fakeTimers() {
+  let nextId = 1;
+  const timers = new Map();
+  return {
+    setTimeout(callback, delay) {
+      const id = nextId;
+      nextId += 1;
+      timers.set(id, { callback, delay });
+      return id;
+    },
+    clearTimeout(id) {
+      timers.delete(id);
+    },
+    delay() {
+      return timers.values().next().value?.delay;
+    },
+    count() {
+      return timers.size;
+    },
+    runNext() {
+      const [id, timer] = timers.entries().next().value || [];
+      if (!timer) return false;
+      timers.delete(id);
+      timer.callback();
+      return true;
+    }
+  };
+}
+
+function homeDocument(toggle, view) {
+  const events = eventTarget();
+  return {
+    ...events,
+    defaultView: view,
+    hidden: false,
     body: {
       classList: classList(["page-home"]),
       dataset: {}
@@ -72,11 +125,26 @@ function homeDocument(toggle) {
 
 const storage = memoryStorage();
 const toggle = button();
-const documentRef = homeDocument(toggle);
+const view = {
+  ...eventTarget(),
+  CustomEvent: class {
+    constructor(type, options) {
+      this.type = type;
+      this.detail = options.detail;
+    }
+  }
+};
+const timers = fakeTimers();
+let clock = 1000;
+const documentRef = homeDocument(toggle, view);
 const scrollCalls = [];
 const controller = controls.initialize({
   document: documentRef,
   storage,
+  view,
+  setTimeout: timers.setTimeout,
+  clearTimeout: timers.clearTimeout,
+  now: () => clock,
   scrollTo(options) {
     scrollCalls.push(options);
   }
@@ -87,29 +155,81 @@ assert.equal(controller.isHidden(), false);
 assert.equal(documentRef.body.dataset.homeContent, "visible");
 assert.equal(toggle.attribute("aria-pressed"), "false");
 assert.equal(toggle.attribute("aria-label"), "隐藏主页内容");
+assert.equal(controller.idleTimeout(), 30);
+assert.equal(timers.delay(), 30000);
+
+timers.runNext();
+assert.equal(controller.isHidden(), true);
+assert.equal(controller.hiddenReason(), "idle");
+assert.equal(storage.getItem(controls.CACHE_KEY), null);
+assert.equal(documentRef.body.dataset.homeContentReason, "idle");
+
+view.dispatch("scroll");
+assert.equal(
+  controller.isHidden(),
+  true,
+  "the internal scroll-to-top event must not wake idle content"
+);
+clock += 300;
+view.dispatch("pointermove");
+assert.equal(controller.isHidden(), false);
+assert.equal(controller.hiddenReason(), "");
+assert.equal(timers.delay(), 30000);
 
 toggle.click();
 assert.equal(controller.isHidden(), true);
+assert.equal(controller.hiddenReason(), "manual");
 assert(documentRef.body.classList.contains("home-content-hidden"));
 assert.equal(storage.getItem(controls.CACHE_KEY), "1");
 assert.equal(toggle.attribute("aria-pressed"), "true");
 assert.equal(toggle.attribute("aria-label"), "显示主页内容");
-assert.deepEqual(scrollCalls, [{ top: 0, left: 0, behavior: "auto" }]);
+view.dispatch("pointermove");
+assert.equal(
+  controller.isHidden(),
+  true,
+  "activity must not override a manual hide"
+);
+assert.deepEqual(scrollCalls, [
+  { top: 0, left: 0, behavior: "auto" },
+  { top: 0, left: 0, behavior: "auto" }
+]);
 
 controller.destroy();
 const restoredToggle = button();
-const restoredDocument = homeDocument(restoredToggle);
+const restoredView = {
+  ...eventTarget(),
+  CustomEvent: view.CustomEvent
+};
+const restoredTimers = fakeTimers();
+const restoredDocument = homeDocument(restoredToggle, restoredView);
 const restored = controls.initialize({
   document: restoredDocument,
-  storage
+  storage,
+  view: restoredView,
+  setTimeout: restoredTimers.setTimeout,
+  clearTimeout: restoredTimers.clearTimeout
 });
 assert.equal(restored.isHidden(), true);
 restoredToggle.click();
 assert.equal(restored.isHidden(), false);
 assert.equal(storage.getItem(controls.CACHE_KEY), "0");
 assert(!restoredDocument.body.classList.contains("home-content-hidden"));
+restored.updateIdleTimeout(1);
+assert.equal(restoredTimers.delay(), 1000);
+restoredTimers.runNext();
+assert.equal(restored.hiddenReason(), "idle");
+restored.updateIdleTimeout(0);
+assert.equal(restored.isHidden(), false);
+assert.equal(restored.idleTimeout(), 0);
+restored.updateIdleTimeout(2);
+restoredDocument.hidden = true;
+restoredDocument.dispatch("visibilitychange");
+assert.equal(restoredTimers.count(), 0);
+restoredDocument.hidden = false;
+restoredDocument.dispatch("visibilitychange");
+assert.equal(restoredTimers.delay(), 2000);
 
-const nonHome = homeDocument(button());
+const nonHome = homeDocument(button(), restoredView);
 nonHome.body.classList = classList(["page-document"]);
 assert.equal(
   controls.initialize({

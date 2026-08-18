@@ -12,7 +12,8 @@
     home_intro_hold_duration_ms: 630,
     home_intro_lock_scroll: true,
     home_intro_contributor_limit: 8,
-    home_content_mask_enabled: false
+    home_content_mask_enabled: false,
+    home_content_idle_timeout_seconds: 30
   };
   const HOME_INTRO_SETTINGS_CACHE = "gck-home-intro-settings";
   let releaseHomeIntro;
@@ -142,6 +143,8 @@
             settings.home_intro_contributor_limit,
           home_content_mask_enabled:
             settings.home_content_mask_enabled,
+          home_content_idle_timeout_seconds:
+            settings.home_content_idle_timeout_seconds,
           home_background_style: settings.home_background_style,
           home_star_scope: settings.home_star_scope,
           home_star_relation_visibility:

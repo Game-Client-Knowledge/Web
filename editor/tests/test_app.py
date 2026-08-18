@@ -282,6 +282,7 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert payload["config"]["home_intro_lock_scroll"] is True
     assert payload["config"]["home_intro_contributor_limit"] == 8
     assert payload["config"]["home_content_mask_enabled"] is False
+    assert payload["config"]["home_content_idle_timeout_seconds"] == 30
     assert payload["config"]["home_star_illumination_rule"] == "bfs"
     assert payload["config"]["home_star_illumination_depth"] == 3
     assert payload["config"]["home_star_selection_duration_ms"] == 3000
@@ -1019,6 +1020,7 @@ def test_admin_can_configure_client_visual_effects(
             "home_intro_contributor_limit": 10,
             "home_background_style": "contribution_star_map",
             "home_content_mask_enabled": True,
+            "home_content_idle_timeout_seconds": 45,
             "home_star_scope": "full",
             "home_star_relation_visibility": "hidden",
             "home_star_strong_relation_style": "glow",
@@ -1059,6 +1061,7 @@ def test_admin_can_configure_client_visual_effects(
         "home_intro_contributor_limit": 10,
         "home_background_style": "contribution_star_map",
         "home_content_mask_enabled": True,
+        "home_content_idle_timeout_seconds": 45,
         "home_star_scope": "full",
         "home_star_relation_visibility": "hidden",
         "home_star_strong_relation_style": "glow",
@@ -1097,6 +1100,7 @@ def test_admin_can_configure_client_visual_effects(
     assert config["home_intro_contributor_limit"] == 10
     assert config["home_background_style"] == "contribution_star_map"
     assert config["home_content_mask_enabled"] is True
+    assert config["home_content_idle_timeout_seconds"] == 45
     assert config["home_star_scope"] == "full"
     assert config["home_star_relation_visibility"] == "hidden"
     assert config["home_star_strong_relation_style"] == "glow"
@@ -1134,6 +1138,9 @@ def test_admin_can_configure_client_visual_effects(
         legacy_timing.json()["home_intro_assembly_duration_ms"] == 2800
     )
     assert legacy_timing.json()["home_intro_hold_duration_ms"] == 1050
+    assert client.get("/api/config").json()[
+        "home_content_idle_timeout_seconds"
+    ] == 45
 
     invalid_catalog = client.put(
         "/api/admin/visual-settings",
@@ -1175,6 +1182,15 @@ def test_admin_can_configure_client_visual_effects(
         },
     )
     assert invalid_timing.status_code == 422
+
+    invalid_idle_timeout = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "home_content_idle_timeout_seconds": 3601,
+        },
+    )
+    assert invalid_idle_timeout.status_code == 422
 
     invalid_mode = client.put(
         "/api/admin/visual-settings",

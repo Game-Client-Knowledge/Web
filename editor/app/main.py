@@ -254,6 +254,11 @@ class VisualSettingsRequest(BaseModel):
     home_intro_contributor_limit: int = Field(default=8, ge=1, le=10)
     home_background_style: str = "old_star_map"
     home_content_mask_enabled: bool = False
+    home_content_idle_timeout_seconds: int = Field(
+        default=30,
+        ge=0,
+        le=3600,
+    )
     home_star_scope: str = "hero"
     home_star_relation_visibility: str = "near"
     home_star_strong_relation_style: str = "solid"
@@ -877,6 +882,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_content_mask_enabled": (
                 db.setting("home_content_mask_enabled", "0") == "1"
+            ),
+            "home_content_idle_timeout_seconds": max(
+                0,
+                min(
+                    3600,
+                    setting_int(
+                        "home_content_idle_timeout_seconds", 30
+                    ),
+                ),
             ),
             "home_star_scope": db.setting("home_star_scope", "hero"),
             "home_star_relation_visibility": db.setting(
@@ -3422,6 +3436,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             values[mask_field] = (
                 "1" if payload.home_content_mask_enabled else "0"
             )
+        idle_field = "home_content_idle_timeout_seconds"
+        if idle_field in payload.model_fields_set:
+            values[idle_field] = str(
+                payload.home_content_idle_timeout_seconds
+            )
         with db.connect() as connection:
             for key, value in values.items():
                 connection.execute(
@@ -3445,6 +3464,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
         if mask_field not in payload.model_fields_set:
             response_payload.pop(mask_field, None)
+        if idle_field not in payload.model_fields_set:
+            response_payload.pop(idle_field, None)
         db.audit(
             "visual_settings.updated",
             request_ip(request),
