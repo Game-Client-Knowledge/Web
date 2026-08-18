@@ -20,9 +20,18 @@
       <span><strong>Game Client Knowledge</strong><small>Admin</small></span>
     </a>
     <nav class="header-nav">
-      <a href="./">返回编辑器</a>
-      <a href="https://knowledge.chenyurui.top/">知识库</a>
-      <button id="logoutButton" class="quiet-button" type="button">退出</button>
+      <a href="./">
+        <i data-lucide="pen-line" aria-hidden="true"></i>
+        <span>返回编辑器</span>
+      </a>
+      <a href="https://knowledge.chenyurui.top/">
+        <i data-lucide="book-open" aria-hidden="true"></i>
+        <span>知识库</span>
+      </a>
+      <button id="logoutButton" class="quiet-button" type="button">
+        <i data-lucide="log-out" aria-hidden="true"></i>
+        <span>退出</span>
+      </button>
     </nav>
   </header>
 
@@ -33,12 +42,55 @@
         <h1>编辑系统管理后台</h1>
         <p id="adminSummary">加载中</p>
       </div>
-      <button id="refreshButton" class="secondary-button" type="button">刷新数据</button>
+      <button id="refreshButton" class="secondary-button" type="button">
+        <i data-lucide="refresh-cw" aria-hidden="true"></i>
+        刷新数据
+      </button>
     </header>
 
     <div id="adminFeedback" class="feedback" role="status" aria-live="polite"></div>
 
-    <section class="admin-section" aria-labelledby="analyticsTitle">
+    <div class="admin-layout">
+      <aside class="admin-sidebar">
+        <p class="admin-sidebar-label">Workspace</p>
+        <nav class="admin-nav" aria-label="后台模块">
+          <a href="#overview">
+            <i data-lucide="chart-no-axes-combined" aria-hidden="true"></i>
+            <span>访问概览</span>
+          </a>
+          <a href="#editing">
+            <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
+            <span>编辑策略</span>
+          </a>
+          <a href="#publishing">
+            <i data-lucide="server-cog" aria-hidden="true"></i>
+            <span>站点发布</span>
+          </a>
+          <a href="#visuals">
+            <i data-lucide="palette" aria-hidden="true"></i>
+            <span>网站视觉</span>
+          </a>
+          <a href="#contributions">
+            <i data-lucide="git-pull-request" aria-hidden="true"></i>
+            <span>贡献审核</span>
+          </a>
+          <a href="#email">
+            <i data-lucide="mail" aria-hidden="true"></i>
+            <span>邮件服务</span>
+          </a>
+          <a href="#access">
+            <i data-lucide="shield-check" aria-hidden="true"></i>
+            <span>权限申请</span>
+          </a>
+          <a href="#users">
+            <i data-lucide="users" aria-hidden="true"></i>
+            <span>人员管理</span>
+          </a>
+        </nav>
+      </aside>
+
+      <div class="admin-content">
+    <section id="overview" class="admin-section" aria-labelledby="analyticsTitle">
       <div class="section-title">
         <div>
           <h2 id="analyticsTitle">访问统计</h2>
@@ -51,14 +103,18 @@
         class="analytics-period-grid"
         aria-label="访问周期汇总"
       ></div>
-      <div class="analytics-trend-heading">
-        <strong>近 14 日趋势</strong>
-        <span>独立设备 / 页面访问</span>
-      </div>
-      <div id="analyticsTrend" class="analytics-trend"></div>
+      <details class="analytics-details">
+        <summary>
+          <span>近 14 日趋势</span>
+          <small>独立设备 / 页面访问</small>
+          <i data-lucide="chevron-down" aria-hidden="true"></i>
+        </summary>
+        <div id="analyticsTrend" class="analytics-trend"></div>
+      </details>
     </section>
 
-    <section class="admin-section">
+    <div class="admin-section-grid admin-section-grid--operations">
+    <section id="editing" class="admin-section">
       <div class="section-title">
         <div><h2>编辑策略</h2><p>控制编辑准入、阅读器模式和客户端 Diff。</p></div>
       </div>
@@ -117,12 +173,15 @@
             required
           >
         </label>
-        <button class="primary-button" type="submit">保存策略</button>
+        <button class="primary-button" type="submit">
+          <i data-lucide="save" aria-hidden="true"></i>
+          保存策略
+        </button>
       </form>
       <div id="integrationStatus" class="integration-status"></div>
     </section>
 
-    <section class="admin-section">
+    <section id="publishing" class="admin-section">
       <div class="section-title">
         <div>
           <h2>站点更新</h2>
@@ -146,12 +205,16 @@
       </div>
       <div id="siteUpdateFeedback" class="feedback" role="status" aria-live="polite"></div>
     </section>
+    </div>
 
-    <section class="admin-section">
+    <section id="visuals" class="admin-section admin-section--visuals">
       <div class="section-title">
         <div><h2>网站视觉</h2><p>目录、阅读与主页动态效果。</p></div>
       </div>
       <form id="visualSettingsForm" class="visual-settings-form">
+        <fieldset class="visual-group">
+          <legend>基础外观</legend>
+          <div class="visual-group-grid">
         <label>
           目录背景
           <select name="catalog_background_style">
@@ -197,6 +260,16 @@
             <option value="full">全屏背景</option>
           </select>
         </label>
+        <label class="check-label">
+          <input name="pointer_effect_enabled" type="checkbox">
+          鼠标跟随效果
+        </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="visual-group">
+          <legend>关系与点亮</legend>
+          <div class="visual-group-grid">
         <label>
           联系显示
           <select name="home_star_relation_visibility">
@@ -292,6 +365,12 @@
             required
           >
         </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="visual-group">
+          <legend>星体亮度</legend>
+          <div class="visual-group-grid">
         <label class="check-label">
           <input name="home_star_brightness_variation_enabled" type="checkbox">
           随机浮动星星亮度
@@ -355,6 +434,7 @@
             required
           >
         </label>
+          </div>
         <fieldset class="star-rule-editor">
           <legend>星星亮度规则</legend>
           <div id="starBrightnessRuleList" class="star-rule-list"></div>
@@ -366,6 +446,11 @@
             </button>
           </div>
         </fieldset>
+        </fieldset>
+
+        <fieldset class="visual-group">
+          <legend>入场动画</legend>
+          <div class="visual-group-grid">
         <label>
           粒子重组时长（秒）
           <input
@@ -409,17 +494,21 @@
           </select>
         </label>
         <label class="check-label">
-          <input name="pointer_effect_enabled" type="checkbox">
-          鼠标跟随效果
-        </label>
-        <label class="check-label">
           <input name="home_intro_lock_scroll" type="checkbox">
           结束后禁止上滑返回
         </label>
-        <button class="primary-button" type="submit">保存视觉设置</button>
+          </div>
+        </fieldset>
+        <div class="visual-form-actions">
+          <button class="primary-button" type="submit">
+            <i data-lucide="save" aria-hidden="true"></i>
+            保存视觉设置
+          </button>
+        </div>
       </form>
     </section>
 
+    <div id="contributions" class="admin-section-grid">
     <section class="admin-section">
       <div class="section-title">
         <div><h2>待处理 PR</h2><p>网页提交与 GitHub 仓库外部贡献。</p></div>
@@ -438,8 +527,9 @@
       </div>
       <div id="externalPullList" class="data-list"></div>
     </section>
+    </div>
 
-    <section class="admin-section">
+    <section id="email" class="admin-section">
       <div class="section-title">
         <div><h2>SMTP 邮件</h2><p>管理员通知发件设置。</p></div>
         <span id="smtpConfigStatus" class="count-badge">未配置</span>
@@ -489,13 +579,20 @@
           </label>
         </div>
         <div class="smtp-actions">
-          <button id="saveSmtpButton" class="primary-button" type="submit">保存 SMTP</button>
-          <button id="testSmtpButton" class="secondary-button" type="button">发送测试邮件</button>
+          <button id="saveSmtpButton" class="primary-button" type="submit">
+            <i data-lucide="save" aria-hidden="true"></i>
+            保存 SMTP
+          </button>
+          <button id="testSmtpButton" class="secondary-button" type="button">
+            <i data-lucide="send" aria-hidden="true"></i>
+            发送测试邮件
+          </button>
         </div>
         <div id="smtpFeedback" class="feedback" role="status" aria-live="polite"></div>
       </form>
     </section>
 
+    <div id="access" class="admin-section-grid">
     <section class="admin-section">
       <div class="section-title">
         <div><h2>管理员申请</h2><p>审批后用户立即获得管理后台权限。</p></div>
@@ -510,7 +607,9 @@
       </div>
       <div id="adminSubmissionList" class="data-list"></div>
     </section>
+    </div>
 
+    <div id="users" class="admin-section-grid">
     <section class="admin-section">
       <div class="section-title">
         <div><h2>邮件通知记录</h2><p>管理员与贡献者邮件的发送状态。</p></div>
@@ -525,6 +624,9 @@
       </div>
       <div id="userList" class="data-list"></div>
     </section>
+    </div>
+      </div>
+    </div>
   </main>
 
   <script src="../assets/vendor/lucide.js"></script>

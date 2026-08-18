@@ -133,6 +133,7 @@ button {
 
 .header-nav a,
 .quiet-button {
+  display: inline-flex;
   min-height: 34px;
   padding: 6px 10px;
   color: #c8d4d0;
@@ -141,6 +142,15 @@ button {
   border-radius: 4px;
   font-size: 12px;
   text-decoration: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.header-nav svg,
+.quiet-button svg {
+  width: 14px;
+  height: 14px;
 }
 
 .header-nav a:hover,
@@ -1457,14 +1467,99 @@ dialog::backdrop {
 }
 
 .admin-shell {
-  width: min(100% - 32px, 1180px);
+  width: min(100% - 32px, 1440px);
   margin: 0 auto;
   padding: 34px 0 70px;
+}
+
+.admin-layout {
+  display: grid;
+  align-items: start;
+  gap: 24px;
+  grid-template-columns: 210px minmax(0, 1fr);
+}
+
+.admin-sidebar {
+  position: sticky;
+  top: calc(var(--header-height) + 20px);
+  min-width: 0;
+  padding: 10px 12px 12px 0;
+  border-right: 1px solid var(--line);
+}
+
+.admin-sidebar-label {
+  margin: 0 0 9px 10px;
+  color: var(--ink-faint);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.admin-nav {
+  display: grid;
+  gap: 3px;
+}
+
+.admin-nav a {
+  display: grid;
+  min-height: 38px;
+  padding: 7px 9px;
+  color: var(--ink-soft);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  align-items: center;
+  gap: 9px;
+  grid-template-columns: 17px minmax(0, 1fr);
+  font-size: 12px;
+  font-weight: 680;
+  text-decoration: none;
+}
+
+.admin-nav a:hover,
+.admin-nav a:focus-visible,
+.admin-nav a.is-active {
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+  border-color: #c7e1da;
+}
+
+.admin-nav svg {
+  width: 16px;
+  height: 16px;
+}
+
+.admin-content {
+  min-width: 0;
+}
+
+.admin-content > :first-child {
+  margin-top: 0;
+}
+
+.admin-content [id] {
+  scroll-margin-top: calc(var(--header-height) + 18px);
 }
 
 .admin-section {
   margin-top: 18px;
   box-shadow: none;
+}
+
+.admin-section-grid {
+  display: grid;
+  margin-top: 18px;
+  align-items: start;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-section-grid > .admin-section {
+  height: 100%;
+  margin-top: 0;
+}
+
+.admin-section-grid--operations {
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
 }
 
 .analytics-period-grid {
@@ -1518,6 +1613,52 @@ dialog::backdrop {
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
   font-weight: 700;
+}
+
+.analytics-details {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.analytics-details summary {
+  display: grid;
+  min-height: 46px;
+  color: var(--ink);
+  align-items: center;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto 18px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.analytics-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.analytics-details summary span {
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.analytics-details summary small {
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+
+.analytics-details summary svg {
+  width: 16px;
+  height: 16px;
+  color: var(--ink-faint);
+  transition: transform 160ms ease;
+}
+
+.analytics-details[open] summary svg {
+  transform: rotate(180deg);
+}
+
+.analytics-details .analytics-trend {
+  margin-top: 0;
+  padding: 2px 0 10px;
 }
 
 .analytics-trend-heading {
@@ -1616,8 +1757,26 @@ dialog::backdrop {
   grid-template-columns: repeat(3, minmax(190px, 1fr));
 }
 
+.admin-section-grid .settings-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .settings-form > .primary-button {
   justify-self: start;
+}
+
+.admin-section-grid .settings-form > .primary-button {
+  grid-column: 1 / -1;
+}
+
+#publishing .site-update-summary {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#publishing .site-update-summary > div + div {
+  padding-left: 0;
+  border-top: 1px solid var(--line);
+  border-left: 0;
 }
 
 .external-urge-shell {
@@ -1649,24 +1808,61 @@ dialog::backdrop {
 }
 
 .visual-settings-form {
-  display: grid;
-  align-items: end;
-  gap: 16px;
-  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  display: block;
 }
 
-.visual-settings-form > .primary-button {
-  grid-column: 1 / -1;
-  justify-self: start;
+.visual-group {
+  min-width: 0;
+  margin: 0;
+  padding: 22px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.visual-group:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.visual-group > legend {
+  padding: 0 18px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 780;
+}
+
+.visual-group-grid {
+  display: grid;
+  min-width: 0;
+  margin-top: 12px;
+  align-items: end;
+  gap: 15px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.visual-form-actions {
+  position: sticky;
+  z-index: 3;
+  bottom: 12px;
+  display: flex;
+  margin: 4px -10px -10px;
+  padding: 12px 10px 10px;
+  background: rgba(255, 255, 255, 0.94);
+  border-top: 1px solid var(--line);
+  justify-content: flex-end;
+  backdrop-filter: blur(8px);
+}
+
+.visual-form-actions .primary-button {
+  min-width: 150px;
 }
 
 .star-rule-editor {
   min-width: 0;
   margin: 0;
-  padding: 16px 0 4px;
+  padding: 18px 0 0;
   border: 0;
   border-top: 1px solid var(--line);
-  grid-column: 1 / -1;
 }
 
 .star-rule-editor legend {
@@ -1898,19 +2094,52 @@ dialog::backdrop {
     border-top: 1px solid var(--line);
     border-left: 0;
   }
+
+  .admin-layout {
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+
+  .admin-section-grid,
+  .admin-section-grid--operations {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .visual-group-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 900px) {
+  .admin-layout {
+    display: block;
+  }
+
+  .admin-sidebar {
+    position: static;
+    margin-bottom: 18px;
+    padding: 0 0 14px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .admin-sidebar-label {
+    margin-left: 0;
+  }
+
+  .admin-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .admin-nav a {
+    min-height: 36px;
+  }
+
   .analytics-period-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .visual-settings-form {
+  .visual-group-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .visual-settings-form > .primary-button {
-    grid-column: 1 / -1;
   }
 
   .site-update-summary {
@@ -2015,6 +2244,19 @@ dialog::backdrop {
     gap: 10px;
   }
 
+  .admin-shell {
+    width: calc(100% - 20px);
+    padding-top: 22px;
+  }
+
+  .admin-section {
+    padding: 20px;
+  }
+
+  .admin-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .workspace-status {
     width: 100%;
     flex-wrap: wrap;
@@ -2072,8 +2314,22 @@ dialog::backdrop {
     gap: 7px;
   }
 
-  .visual-settings-form {
+  .visual-group-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .visual-form-actions {
+    position: static;
+    margin-right: 0;
+    margin-left: 0;
+    padding-right: 0;
+    padding-left: 0;
+    background: transparent;
+    backdrop-filter: none;
+  }
+
+  .visual-form-actions .primary-button {
+    width: 100%;
   }
 
   .star-rule-row {

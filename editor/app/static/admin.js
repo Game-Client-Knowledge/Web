@@ -39,6 +39,53 @@ const STAR_BRIGHTNESS_RULES = [
 const byId = (id) => document.getElementById(id);
 const numberFormatter = new Intl.NumberFormat("zh-CN");
 
+function setupAdminNavigation() {
+  const links = Array.from(document.querySelectorAll(".admin-nav a"));
+  const targets = links
+    .map((link) => {
+      const id = link.getAttribute("href")?.slice(1);
+      return { link, target: id ? document.getElementById(id) : null };
+    })
+    .filter((item) => item.target);
+  let scheduled = false;
+
+  function update() {
+    scheduled = false;
+    const threshold =
+      Number.parseFloat(
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--header-height")
+      ) + 90;
+    let active = targets[0];
+    for (const item of targets) {
+      if (item.target.getBoundingClientRect().top <= threshold) {
+        active = item;
+      }
+    }
+    for (const item of targets) {
+      const selected = item === active;
+      item.link.classList.toggle("is-active", selected);
+      if (selected) item.link.setAttribute("aria-current", "location");
+      else item.link.removeAttribute("aria-current");
+    }
+  }
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(update);
+    },
+    { passive: true }
+  );
+  links.forEach((link) => link.addEventListener("click", () => {
+    links.forEach((item) => item.classList.remove("is-active"));
+    link.classList.add("is-active");
+  }));
+  update();
+}
+
 function formatNumber(value) {
   return numberFormatter.format(Number(value) || 0);
 }
@@ -983,6 +1030,7 @@ byId("logoutButton").addEventListener("click", async () => {
 });
 
 (async () => {
+  setupAdminNavigation();
   const session = await api("/session");
   if (!session.authenticated || session.user.role !== "admin") {
     location.href = "./";
