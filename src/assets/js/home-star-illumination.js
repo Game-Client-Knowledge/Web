@@ -27,6 +27,109 @@
     return Math.max(1, Math.min(20, Number.isFinite(depth) ? depth : 3));
   }
 
+  function normalizedBrightnessRange(initialValue, maxValue) {
+    const maximum = Math.max(
+      1,
+      Math.min(100, Number(maxValue) || 100)
+    );
+    const parsedInitial = Number(initialValue);
+    const initial = Math.max(
+      0,
+      Math.min(
+        maximum,
+        Number.isFinite(parsedInitial) ? parsedInitial : 10
+      )
+    );
+    return {
+      initial,
+      maximum,
+      span: Math.max(0, maximum - initial)
+    };
+  }
+
+  function normalizedMetric(value, saturation, curve) {
+    const metric = Math.max(0, Number(value) || 0);
+    if (!metric) return 0;
+    if (curve === "sqrt") {
+      return Math.min(1, Math.sqrt(metric / saturation));
+    }
+    return Math.min(
+      1,
+      Math.log1p(metric) / Math.log1p(saturation)
+    );
+  }
+
+  function activityRecency(value, decayDays, now) {
+    const timestamp = new Date(value || "").getTime();
+    if (!Number.isFinite(timestamp)) return 0;
+    const days = Math.max(0, (now - timestamp) / 86400000);
+    return Math.exp(-days / decayDays);
+  }
+
+  function calculateBrightness(
+    star,
+    rules,
+    initialValue,
+    maxValue,
+    now = Date.now()
+  ) {
+    const range = normalizedBrightnessRange(initialValue, maxValue);
+    const metrics = star?.metrics || {};
+    let brightness = range.initial;
+    for (const rule of rules || []) {
+      if (
+        rule.id === "contributor_contribution_count" &&
+        star?.kind === "contributor"
+      ) {
+        brightness +=
+          range.span *
+          0.65 *
+          normalizedMetric(
+            metrics.contributionCount,
+            50000,
+            "log"
+          );
+      } else if (
+        rule.id === "contributor_recent_activity" &&
+        star?.kind === "contributor"
+      ) {
+        const recency = activityRecency(
+          metrics.lastActiveAt,
+          120,
+          now
+        );
+        brightness *= 0.72 + recency * 0.5;
+      } else if (
+        rule.id === "document_reference_degree" &&
+        star?.kind === "document"
+      ) {
+        brightness +=
+          range.span *
+          0.45 *
+          normalizedMetric(metrics.referenceDegree, 12, "sqrt");
+      } else if (
+        rule.id === "document_contributor_count" &&
+        star?.kind === "document"
+      ) {
+        brightness +=
+          range.span *
+          0.35 *
+          normalizedMetric(metrics.contributorCount, 8, "log");
+      } else if (
+        rule.id === "document_recent_activity" &&
+        star?.kind === "document"
+      ) {
+        const recency = activityRecency(
+          metrics.lastContributedAt,
+          180,
+          now
+        );
+        brightness *= 0.76 + recency * 0.44;
+      }
+    }
+    return Math.max(0, Math.min(range.maximum, brightness));
+  }
+
   function normalizedDirectionMode(value) {
     return DIRECTION_MODES.has(value) ? value : "directed";
   }
@@ -350,10 +453,7 @@
   }
 
   function brightnessPresentation(value, kind, selected, maxValue = 100) {
-    const maximum = Math.max(
-      1,
-      Math.min(100, Number(maxValue) || 100)
-    );
+    const { maximum } = normalizedBrightnessRange(0, maxValue);
     const brightness = Math.max(
       0,
       Math.min(maximum, Number(value) || 0)
@@ -386,11 +486,13 @@
     RULES,
     brightnessPresentation,
     buildGraph,
+    calculateBrightness,
     coveredRelations,
     edgeId,
     illuminate,
     longestTreePath,
     minimumRelationTree,
+    normalizedBrightnessRange,
     normalizedDepth,
     normalizedDirectionMode,
     relationPlan,

@@ -403,59 +403,6 @@
     };
   }
 
-  function daysSince(value) {
-    const timestamp = new Date(value || "").getTime();
-    if (!Number.isFinite(timestamp)) return 3650;
-    return Math.max(0, (Date.now() - timestamp) / 86400000);
-  }
-
-  function starBrightness(star, rules, initialBrightness, maxBrightness) {
-    let brightness = initialBrightness;
-    for (const rule of rules) {
-      const metrics = star.metrics || {};
-      if (
-        rule.id === "contributor_contribution_count" &&
-        star.kind === "contributor"
-      ) {
-        brightness += Math.min(
-          12,
-          Math.log2(1 + Number(metrics.contributionCount || 0)) * 1.35
-        );
-      } else if (
-        rule.id === "contributor_recent_activity" &&
-        star.kind === "contributor"
-      ) {
-        const recency = Math.exp(-daysSince(metrics.lastActiveAt) / 120);
-        brightness *= Math.max(0.55, 0.72 + recency * 0.5);
-      } else if (
-        rule.id === "document_reference_degree" &&
-        star.kind === "document"
-      ) {
-        brightness += Math.min(
-          8,
-          Math.sqrt(Number(metrics.referenceDegree || 0)) * 2.1
-        );
-      } else if (
-        rule.id === "document_contributor_count" &&
-        star.kind === "document"
-      ) {
-        brightness += Math.min(
-          7,
-          Math.log2(1 + Number(metrics.contributorCount || 0)) * 2
-        );
-      } else if (
-        rule.id === "document_recent_activity" &&
-        star.kind === "document"
-      ) {
-        const recency = Math.exp(
-          -daysSince(metrics.lastContributedAt) / 180
-        );
-        brightness *= Math.max(0.62, 0.76 + recency * 0.44);
-      }
-    }
-    return Math.max(0, Math.min(maxBrightness, brightness));
-  }
-
   function createLegacyMap(runtimeSettings) {
     document.body.classList.remove("home-stars-full", "home-stars-hero");
     document.body.classList.add("home-stars-old");
@@ -622,7 +569,7 @@
       y: 0,
       vx: source.kind === "document" ? (random() - 0.5) * 0.18 : 0,
       vy: source.kind === "document" ? (random() - 0.5) * 0.18 : 0,
-      baseBrightness: starBrightness(
+      baseBrightness: illumination.calculateBrightness(
         source,
         runtimeSettings.home_star_brightness_rules,
         runtimeSettings.home_star_brightness_initial,

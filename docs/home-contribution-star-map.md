@@ -207,17 +207,23 @@ Rules execute from the highest numeric priority to the lowest. The initial
 brightness and maximum brightness are administrator-configurable. Defaults are
 `10` and `100`; the initial value cannot exceed the maximum.
 
+Let `span = maximum - initial`. Additive rules use fractions of `span`, so
+changing either configured endpoint stretches the complete curve instead of
+leaving legacy fixed increments behind.
+
 | Rule | Formula |
 | --- | --- |
-| Contributor contribution count | Add `min(12, log2(1 + changedLines) * 1.35)` |
-| Contributor recent activity | Multiply by `max(0.55, 0.72 + exp(-days / 120) * 0.5)` |
-| Document reference degree | Add `min(8, sqrt(referenceDegree) * 2.1)` |
-| Document contributor count | Add `min(7, log2(1 + contributors) * 2)` |
-| Document recent activity | Multiply by `max(0.62, 0.76 + exp(-days / 180) * 0.44)` |
+| Contributor contribution count | Add `span * 0.65 * min(1, ln(1 + changedLines) / ln(50001))` |
+| Contributor recent activity | Multiply by `0.72 + exp(-days / 120) * 0.5` |
+| Document reference degree | Add `span * 0.45 * min(1, sqrt(referenceDegree / 12))` |
+| Document contributor count | Add `span * 0.35 * min(1, ln(1 + contributors) / ln(9))` |
+| Document recent activity | Multiply by `0.76 + exp(-days / 180) * 0.44` |
 
 Administrators can enable, remove, and prioritize these rules. Because
 addition and multiplication are both used, priority can intentionally change
-the result.
+the result. Contribution lines saturate at `50,000`, reference degree at `12`,
+and contributor count at `8`; values continue to be counted but do not exceed
+the corresponding fraction of the configured span.
 
 Optional random variation interpolates between bounded offsets. The
 administrator controls the offset magnitude, interpolation duration, and

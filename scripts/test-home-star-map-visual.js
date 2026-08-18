@@ -222,6 +222,13 @@ async function runScenario(browser, scenario) {
     selectionMetrics.brightness > 0 &&
       selectionMetrics.brightness <= metrics.brightnessMax
   );
+  if (selectionMetrics.selected > 100) {
+    assert.ok(
+      selectionMetrics.brightness >
+        metrics.brightnessInitial + 30,
+      `${scenario.name}: brightness curve did not use the configured range`
+    );
+  }
   assert.match(coverage, /\/ 100/);
   assert.equal(
     selectionMetrics.relationCoverage,

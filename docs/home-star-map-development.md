@@ -307,6 +307,19 @@ rules in descending priority, and is clamped to
 `[0, home_star_brightness_max]`. Defaults are `10` and `100`. The backend
 rejects an initial value greater than the maximum.
 
+The curve derives all additive values from:
+
+```text
+span = home_star_brightness_max - home_star_brightness_initial
+```
+
+Contribution count can consume `65%` of the span, reference degree `45%`, and
+document contributor count `35%`. Logarithmic or square-root saturation keeps
+small values distinguishable while bounding outliers. Activity rules remain
+multipliers so rule priority still has observable semantics. The shared pure
+function `calculateBrightness()` in `home-star-illumination.js` owns these
+calculations; the Canvas layer must not duplicate them.
+
 The runtime stores:
 
 ```js

@@ -12,7 +12,7 @@ const STAR_BRIGHTNESS_RULES = [
   {
     id: "contributor_contribution_count",
     label: "静星贡献数",
-    description: "贡献行数越多，基础亮度越高。"
+    description: "按可用亮度区间的 65% 对数增长，5 万行饱和。"
   },
   {
     id: "contributor_recent_activity",
@@ -22,12 +22,12 @@ const STAR_BRIGHTNESS_RULES = [
   {
     id: "document_reference_degree",
     label: "动星引用度",
-    description: "被引用或引用其他内容越多，亮度越高。"
+    description: "按可用亮度区间的 45% 平方根增长，12 条关系饱和。"
   },
   {
     id: "document_contributor_count",
     label: "动星贡献者数",
-    description: "参与该文档的贡献者越多，亮度越高。"
+    description: "按可用亮度区间的 35% 对数增长，8 人饱和。"
   },
   {
     id: "document_recent_activity",

@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const {
   brightnessPresentation,
+  calculateBrightness,
   illuminate,
   relationPlan
 } = require("../src/assets/js/home-star-illumination");
@@ -255,5 +256,89 @@ assert.equal(
   brightnessPresentation(40, "document", false, 80).luminous,
   brightnessPresentation(50, "document", false, 100).luminous
 );
+
+const saturatedContributor = {
+  kind: "contributor",
+  metrics: {
+    contributionCount: 50000,
+    lastActiveAt: "2026-08-19T00:00:00Z"
+  }
+};
+const contributionRule = [
+  { id: "contributor_contribution_count", priority: 500 }
+];
+const brightness30 = calculateBrightness(
+  saturatedContributor,
+  contributionRule,
+  10,
+  30
+);
+const brightness100 = calculateBrightness(
+  saturatedContributor,
+  contributionRule,
+  10,
+  100
+);
+assert.equal(brightness30, 23);
+assert.equal(brightness100, 68.5);
+assert.equal((brightness30 - 10) / (30 - 10), 0.65);
+assert.equal((brightness100 - 10) / (100 - 10), 0.65);
+
+const document = {
+  kind: "document",
+  metrics: {
+    referenceDegree: 12,
+    contributorCount: 8,
+    lastContributedAt: "2026-08-19T00:00:00Z"
+  }
+};
+assert.equal(
+  calculateBrightness(
+    document,
+    [{ id: "document_reference_degree", priority: 300 }],
+    10,
+    100
+  ),
+  50.5
+);
+assert.equal(
+  calculateBrightness(
+    document,
+    [{ id: "document_contributor_count", priority: 200 }],
+    10,
+    100
+  ),
+  41.5
+);
+
+const now = Date.parse("2026-08-19T00:00:00Z");
+const recentBrightness = calculateBrightness(
+  saturatedContributor,
+  [
+    { id: "contributor_contribution_count", priority: 500 },
+    { id: "contributor_recent_activity", priority: 400 }
+  ],
+  10,
+  100,
+  now
+);
+const staleBrightness = calculateBrightness(
+  {
+    ...saturatedContributor,
+    metrics: {
+      ...saturatedContributor.metrics,
+      lastActiveAt: "2024-08-19T00:00:00Z"
+    }
+  },
+  [
+    { id: "contributor_contribution_count", priority: 500 },
+    { id: "contributor_recent_activity", priority: 400 }
+  ],
+  10,
+  100,
+  now
+);
+assert.ok(recentBrightness > 80 && recentBrightness <= 100);
+assert.ok(staleBrightness < recentBrightness);
 
 console.log("Homepage star illumination checks passed");
