@@ -161,6 +161,12 @@ async function inspectPage(browser, scenario) {
       })
     });
   });
+  await context.route("**/editor/api/repository/tree**", (route) => {
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({})
+    });
+  });
   await context.route("**/editor/api/repository/delete-tree**", (route) => {
     const url = new URL(route.request().url());
     const path = url.searchParams.get("path");
@@ -241,6 +247,34 @@ async function inspectPage(browser, scenario) {
     waitUntil: scenario.bootstrapDelay ? "domcontentloaded" : "networkidle"
   });
   await page.waitForFunction(() => document.body.dataset.visualType);
+  if (scenario.ambient || scenario.pointerEffect !== undefined) {
+    await page.waitForFunction(
+      ({ ambient, pointer }) => {
+        const background = ambient
+          ? ambient.type === "catalog"
+            ? document.body.dataset.catalogBackground
+            : document.body.dataset.readerBackground
+          : null;
+        return (
+          (!ambient || background === ambient.style) &&
+          (
+            pointer === undefined ||
+            document.body.dataset.pointerEffect ===
+              (pointer ? "on" : "off")
+          )
+        );
+      },
+      {
+        ambient: scenario.ambient || null,
+        pointer: Object.hasOwn(
+          scenario.visualSettings || {},
+          "pointer_effect_enabled"
+        )
+          ? scenario.pointerEffect
+          : undefined
+      }
+    );
+  }
 
   if (scenario.homeIntro === "play") {
     await page.locator("[data-entry-sequence]").waitFor({
@@ -628,7 +662,9 @@ async function inspectPage(browser, scenario) {
     const ordering = await page.evaluate(() => {
       const heading = Array.from(
         document.querySelectorAll(".module-unit-summary h3")
-      ).find((item) => item.textContent.includes("C++ 基础知识"));
+      ).find((item) =>
+        item.textContent.includes("游戏客户端面试复习路线")
+      );
       const branch = heading?.closest(".module-unit-branch");
       const groups = Array.from(
         branch?.querySelectorAll(
@@ -658,8 +694,8 @@ async function inspectPage(browser, scenario) {
     assert(
       ordering.labels.join(",") === "子专题,文件" &&
         ordering.subtopicsOpen === false &&
-        ordering.child.includes("C++ 多态") &&
-        ordering.file.includes("C++98/03"),
+        ordering.child.includes("工程实践与项目表达") &&
+        ordering.file.includes("游戏客户端面试知识地图"),
       `${scenario.name}: topic/file ordering is ${JSON.stringify(ordering)}`
     );
   }
@@ -785,7 +821,9 @@ async function inspectPage(browser, scenario) {
         fontSize: getComputedStyle(prose).fontSize,
         lineHeight: getComputedStyle(prose).lineHeight,
         headingSize: getComputedStyle(heading).fontSize,
-        headingTop: heading.getBoundingClientRect().top
+        headingTop: heading.getBoundingClientRect().top,
+        borderLeftWidth: getComputedStyle(prose).borderLeftWidth,
+        tables: prose.querySelectorAll(".table-scroll > table").length
       };
     });
     await page.locator("[data-edit-mode-trigger]").click();
@@ -816,6 +854,8 @@ async function inspectPage(browser, scenario) {
         visibleButtons: Array.from(panel.querySelectorAll("button")).filter(
           (button) => button.offsetWidth || button.offsetHeight
         ).length,
+        borderLeftWidth: getComputedStyle(prose).borderLeftWidth,
+        tables: prose.querySelectorAll("table").length,
         overflow:
           document.documentElement.scrollWidth -
           document.documentElement.clientWidth
@@ -845,6 +885,15 @@ async function inspectPage(browser, scenario) {
       assert(
         editing.overflow === 0,
         `${scenario.name}: editor caused horizontal overflow`
+      );
+      assert(
+        preview.borderLeftWidth === "0px" &&
+          editing.borderLeftWidth === "0px",
+        `${scenario.name}: edit state added a content border`
+      );
+      assert(
+        preview.tables === 0 || preview.tables === editing.tables,
+        `${scenario.name}: table structure changed while editing`
       );
     }
     await page.screenshot({
@@ -906,18 +955,22 @@ async function inspectPage(browser, scenario) {
       await page.waitForTimeout(250);
       const local = await page.evaluate(() => {
         const item = Object.entries(localStorage).find(([key]) => {
-          return key.startsWith("gck-reader-buffer:v1:");
+          return key.startsWith("gck-workspace-current:v1:");
+        });
+        const current = item ? JSON.parse(item[1]) : null;
+        const entry = current?.entries.find((candidate) => {
+          return candidate.path ===
+            document.querySelector("[data-inline-editor]")?.dataset.path;
         });
         const tree = Object.entries(localStorage).find(([key]) => {
           return key.startsWith("gck-workspace-tree:v1:");
         });
-        const buffer = item ? JSON.parse(item[1]) : null;
         return {
           sync: document.body.dataset.editorSyncState,
-          content: buffer?.content || "",
-          version: buffer?.version || 0,
-          lineDiff: buffer?.lineDiff || [],
-          diffSummary: buffer?.diffSummary || {},
+          content: entry?.content || "",
+          version: current?.version || 0,
+          lineDiff: entry?.lineDiff || [],
+          diffSummary: entry?.diffSummary || {},
           workspaceRevision: document.body.dataset.workspaceRevision,
           cachedTree: tree ? JSON.parse(tree[1]) : null
         };
@@ -926,16 +979,17 @@ async function inspectPage(browser, scenario) {
         local.sync === "local" &&
           local.content.includes("## 1.autosave-check") &&
           !local.content.includes("## 1\\.autosave-check") &&
-          local.version === 3 &&
+          local.version === 1 &&
           local.lineDiff.length > 0 &&
           Number(local.diffSummary.modified) > 0 &&
           Boolean(local.workspaceRevision) &&
           Number(local.cachedTree?.updatedAt) > 0,
-        `${scenario.name}: edit was not cached without heading escapes`
+        `${scenario.name}: edit was not cached without heading escapes ` +
+          JSON.stringify(local)
       );
       assert(
         draftAttempts === 0,
-        `${scenario.name}: draft synced before the configured interval`
+        `${scenario.name}: editor wrote a server draft`
       );
 
       allowDraftWrites = false;
@@ -955,28 +1009,11 @@ async function inspectPage(browser, scenario) {
       assert(
         restored.heading === "1.autosave-check" &&
           restored.sync === "local",
-        `${scenario.name}: local edit was not restored after failed sync`
-      );
-
-      allowDraftWrites = true;
-      await page.waitForTimeout(61000);
-      const synchronized = await page.evaluate(() => {
-        return {
-          sync: document.body.dataset.editorSyncState,
-          buffers: Object.keys(localStorage).filter((key) => {
-            return key.startsWith("gck-reader-buffer:v1:");
-          }).length
-        };
-      });
-      assert(
-        draftWrites.length === 1 &&
-          draftWrites[0].content.includes("## 1.autosave-check") &&
-          !draftWrites[0].content.includes("## 1\\.autosave-check"),
-        `${scenario.name}: configured draft sync is invalid`
+        `${scenario.name}: Current Tree edit was not restored`
       );
       assert(
-        synchronized.sync === "synced" && synchronized.buffers === 0,
-        `${scenario.name}: synchronized local buffer was not cleared`
+        draftWrites.length === 0,
+        `${scenario.name}: local editing leaked to server drafts`
       );
     }
     assert(
@@ -1018,10 +1055,11 @@ async function inspectPage(browser, scenario) {
         workspace.targetTitle.includes(
           scenario.workspaceTitle || "腾讯 2026"
         ) &&
-        workspace.documents.length === 2 &&
+        workspace.documents.length === 1 &&
         workspace.documents.every((item) => item.status === "A") &&
         workspace.flatDraftLists === 0,
-      `${scenario.name}: draft topic was not parsed into the module tree`
+      `${scenario.name}: draft topic was not parsed into the module tree ` +
+        JSON.stringify(workspace)
     );
     await page.locator("[data-edit-mode-trigger]").click();
     await page.locator(".inline-editor.is-modern").waitFor({
@@ -1057,7 +1095,7 @@ async function inspectPage(browser, scenario) {
         bigModules: visible.filter(
           (element) =>
             element.dataset.deleteKind === "directory" &&
-            !element.dataset.deletePath.includes("/")
+            element.dataset.deletePath.split("/").filter(Boolean).length === 2
         ).length
       };
     });
@@ -1065,7 +1103,8 @@ async function inspectPage(browser, scenario) {
       deleteControls.files > 0 &&
         deleteControls.modules > 0 &&
         deleteControls.bigModules === 1,
-      `${scenario.name}: file, submodule, or big-module delete controls missing`
+      `${scenario.name}: file, submodule, or big-module delete controls missing ` +
+        JSON.stringify(deleteControls)
     );
 
     if (scenario.workspaceDeleteInteraction === false) {
@@ -1077,43 +1116,23 @@ async function inspectPage(browser, scenario) {
         ":not([data-delete-path*='visual-company'])"
     ).first();
     const deletedPath = await fileDelete.getAttribute("data-delete-path");
-    const deleteRequest = page.waitForRequest((request) => {
-      if (
-        request.method() !== "PUT" ||
-        !request.url().includes("/editor/api/drafts")
-      ) {
-        return false;
-      }
-      try {
-        const payload = request.postDataJSON();
-        return (
-          payload.path === deletedPath &&
-          payload.operation === "delete"
-        );
-      } catch {
-        return false;
-      }
-    });
     await fileDelete.click();
-    await deleteRequest;
     await page.waitForFunction(() => {
       return document.querySelector(
         "[data-delete-kind='file'][data-restore-delete='true']"
       );
     });
+    const deleted = await page.evaluate((path) => {
+      const snapshot = Object.entries(localStorage).find(([key]) => {
+        return key.startsWith("gck-workspace-current:v1:");
+      });
+      const current = snapshot ? JSON.parse(snapshot[1]) : null;
+      return current?.entries.find((entry) => entry.path === path);
+    }, deletedPath);
     assert(
-      draftWrites.some(
-        (write) =>
-          write.path === deletedPath && write.operation === "delete"
-      ),
-      `${scenario.name}: file delete was not synchronized as a D change`
+      deleted?.operation === "delete" && draftWrites.length === 0,
+      `${scenario.name}: file delete was not stored as a local D change`
     );
-    const undoRequest = page.waitForRequest((request) => {
-      return (
-        request.method() === "DELETE" &&
-        request.url().includes("/editor/api/drafts/")
-      );
-    });
     await page
       .locator(
         `[data-delete-path="${deletedPath}"]` +
@@ -1121,7 +1140,6 @@ async function inspectPage(browser, scenario) {
       )
       .first()
       .click();
-    await undoRequest;
     await page.waitForFunction(
       (path) => {
         return !document.querySelector(
@@ -1131,8 +1149,8 @@ async function inspectPage(browser, scenario) {
       deletedPath
     );
     assert(
-      draftDeletes === 1,
-      `${scenario.name}: delete undo did not discard the server draft`
+      draftWrites.length === 0,
+      `${scenario.name}: delete undo wrote a server draft`
     );
   }
 
@@ -1452,7 +1470,7 @@ async function inspectPage(browser, scenario) {
     },
     {
       name: "reader-editor-desktop",
-      route: "/program/knowledge/ecs/01-fundamentals/",
+      route: "/program/knowledge/engine/",
       viewport: { width: 1440, height: 1000 },
       readerEditor: true,
       readerAutosave: true,

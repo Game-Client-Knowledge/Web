@@ -287,9 +287,10 @@ and published code files.
 | `src/assets/js/home-intro-policy.js` | Home intro animation policy and device/session behavior. |
 | `src/assets/js/search.js` | Search dialog and weighted client-side search. |
 | `src/assets/js/source-cache.js` | Browser-side raw source cache. |
-| `src/assets/js/editor-integration.js` | Reader edit mode, draft overlays, create/delete controls, identity caching, draft sync. |
-| `src/assets/js/workspace-tree.js` | Client-side effective workspace tree from static entries + server drafts + local buffers. |
-| `src/assets/js/editor-buffer.js` | Local draft buffer storage. |
+| `src/assets/js/editor-integration.js` | Reader edit mode, local tree updates, create/delete controls, identity caching, and remote base synchronization. |
+| `src/assets/js/workspace-store.js` | Persistent per-user Base Tree and Current Tree storage, replay, release, and derived A/M/D changes. |
+| `src/assets/js/workspace-tree.js` | Builds module/topic navigation from the effective Current Tree. |
+| `src/assets/js/editor-buffer.js` | Legacy local-buffer format used only for one-time migration into the dual-tree store. |
 | `src/assets/js/markdown-preserve.js` | Markdown-preserving reader editor transformations. |
 | `src/assets/js/reader-diff.js` | Reader-side line diff rendering. |
 | `src/assets/js/reader-comments.js` | Source-anchored reader comments and author highlighting. |
@@ -301,7 +302,7 @@ The editor is a FastAPI application under `editor/app/`.
 
 | File | Responsibility |
 | --- | --- |
-| `editor/app/main.py` | API routes, authentication endpoints, draft CRUD, submit flow, admin endpoints. |
+| `editor/app/main.py` | API routes, authentication endpoints, repository synchronization, client-change submission, legacy draft migration endpoints, and admin endpoints. |
 | `editor/app/config.py` | Environment-driven settings. |
 | `editor/app/database.py` | SQLite schema, migrations, sessions, settings, drafts, submissions. |
 | `editor/app/security.py` | Path validation, password hashing, CSRF/session helpers, branch name construction. |
@@ -318,20 +319,41 @@ Static editor/admin pages live under `editor/app/static/`.
 ```mermaid
 sequenceDiagram
     participant Reader as Static reader page
-    participant Browser as Browser workspace tree
+    participant Base as Browser Base Tree
+    participant Current as Browser Current Tree
     participant Editor as FastAPI editor service
     participant GitHub as GitHub API
 
-    Reader->>Browser: Static workspaceEntries from catalog
-    Browser->>Editor: Lazy identity / draft requests
-    Editor-->>Browser: Session, drafts, config
-    Browser->>Browser: Merge static entries + drafts + local buffers
-    Browser->>Editor: Save draft / delete draft
+    Reader->>Base: Seed static workspaceEntries
+    Base->>Current: Clone when the workspace is initialized
+    Current->>Current: Apply edit/create/delete immediately
+    Current->>Current: Derive A/M/D and line diff against Base
+    Current->>Editor: Explicit remote synchronization request
+    Editor->>GitHub: Read latest main tree
+    GitHub-->>Editor: Revision and tree
+    Editor-->>Base: Replace remote Base Tree
+    Base->>Current: Replay local changes and flag conflicts
+    Current->>Editor: Submit local change set
     Editor->>GitHub: Submit branch and Draft PR
 ```
 
-Public readers do not need editor API responses. Authenticated editing overlays
-private drafts on top of the static generated page.
+The Base Tree is immutable during normal editing. Only remote synchronization may
+replace it. The Current Tree drives reader navigation, resource management, and
+the change overview. Editing, creation, and deletion update the Current Tree in
+the same animation frame, so the change count and line diff do not wait for a
+server round trip.
+
+The server does not persist new editing state. SQLite draft rows and
+`editor-buffer.js` payloads remain readable only to migrate existing users once.
+After migration, the client deletes legacy server drafts. A submission sends the
+derived local change set directly to `/api/submit`; the server reads the latest
+main tree, performs per-file three-way merges, and returns file-level conflicts.
+
+The standalone workspace exposes two explicit operations:
+
+- **Sync remote** replaces the Base Tree and replays local Current Tree changes.
+- **Release cache** resets the Current Tree to the Base Tree and removes all
+  local unsubmitted changes.
 
 ## Build Scripts
 
@@ -369,6 +391,7 @@ local unpushed worktree.
 | Change search behavior | `src/search-index.11ty.js`, `src/assets/js/search.js`. |
 | Change reader page behavior | `src/content-pages.njk`, `src/assets/js/site.js`, `src/assets/css/site.css`. |
 | Change editor/API behavior | `editor/app/main.py`, `editor/app/security.py`, `editor/app/github.py`. |
+| Change local workspace semantics | `src/assets/js/workspace-store.js`, `src/assets/js/editor-integration.js`, `editor/app/static/editor.js`. |
 | Change code workspace | `lib/code-project-loader.js`, `src/code-workspace.njk`, `src/assets/js/code-reader.js`. |
 | Change audits | `scripts/audit-content.js`, `scripts/audit-site.js`. |
 
@@ -395,6 +418,8 @@ For reader/editor client changes, at minimum run:
 ```bash
 node --check src/assets/js/site.js
 node --check src/assets/js/editor-integration.js
+npm run test:workspace-store
+npm run test:markdown-preserve
 ```
 
 Use `scripts/visual-check.js` for layout-sensitive changes.
