@@ -19,6 +19,7 @@
     home_star_illumination_depth: 3,
     home_star_selection_duration_ms: 3000,
     home_star_label_duration_ms: 3000,
+    home_star_active_edge_mode: "single_path",
     home_star_brightness_rules: [
       { id: "contributor_contribution_count", priority: 500 },
       { id: "contributor_recent_activity", priority: 400 },
@@ -324,6 +325,13 @@
           Number(merged.home_star_label_duration_ms) || 3000
         )
       ),
+      home_star_active_edge_mode: [
+        "full",
+        "minimal_tree",
+        "single_path"
+      ].includes(merged.home_star_active_edge_mode)
+        ? merged.home_star_active_edge_mode
+        : defaults.home_star_active_edge_mode,
       home_star_brightness_rules: validRules
         .filter((rule) => rule && rule.id)
         .map((rule) => ({
@@ -509,6 +517,7 @@
       "<dl>" +
       "<div><dt>静星</dt><dd data-star-coverage-contributors></dd></div>" +
       "<div><dt>动星</dt><dd data-star-coverage-documents></dd></div>" +
+      "<div><dt>关系</dt><dd data-star-coverage-relations></dd></div>" +
       "</dl>";
     document.body.append(panel);
     return panel;
@@ -578,6 +587,8 @@
     let disposed = false;
     let selectedRoot = "";
     let selectedIds = new Set();
+    let activeRelationPlan = null;
+    let activeVisualEdgeIds = new Set();
     let labelStar = null;
     let labelExpiresAt = 0;
     let labelTimer = 0;
@@ -660,8 +671,9 @@
         const source = starById.get(edge.source);
         const target = starById.get(edge.target);
         const distance = Math.hypot(source.x - target.x, source.y - target.y);
-        const highlighted =
-          selectedIds.has(source.id) && selectedIds.has(target.id);
+        const highlighted = activeVisualEdgeIds.has(
+          illumination.edgeId(edge)
+        );
         const visible =
           highlighted ||
           visibility === "always" ||
@@ -898,6 +910,13 @@
       panel.querySelector("[data-star-coverage-documents]").textContent =
         `${litDocuments} / ${documents.length} · ` +
         percentage(litDocuments, documents.length);
+      panel.querySelector("[data-star-coverage-relations]").textContent =
+        `${activeRelationPlan.coverageCount} / ` +
+        `${activeRelationPlan.totalCount} · ` +
+        percentage(
+          activeRelationPlan.coverageCount,
+          activeRelationPlan.totalCount
+        );
     }
 
     function showLabel(star, now) {
@@ -922,8 +941,13 @@
     function clearSelection() {
       selectedRoot = "";
       selectedIds = new Set();
+      activeRelationPlan = null;
+      activeVisualEdgeIds = new Set();
       panel.hidden = true;
       canvas.dataset.selectedCount = "0";
+      canvas.dataset.selectedRelationCount = "0";
+      canvas.dataset.selectedRelationCoverage = "0";
+      canvas.dataset.activeVisualEdgeCount = "0";
       if (reducedMotion) draw(performance.now());
     }
 
@@ -942,7 +966,25 @@
         runtimeSettings.home_star_illumination_rule,
         runtimeSettings.home_star_illumination_depth
       );
+      activeRelationPlan = illumination.relationPlan(
+        stars,
+        edges,
+        selectedIds,
+        runtimeSettings.home_star_active_edge_mode
+      );
+      activeVisualEdgeIds = new Set(
+        activeRelationPlan.visualEdges.map(illumination.edgeId)
+      );
       canvas.dataset.selectedCount = String(selectedIds.size);
+      canvas.dataset.selectedRelationCount = String(
+        activeRelationPlan.coverageCount
+      );
+      canvas.dataset.selectedRelationCoverage = String(
+        activeRelationPlan.coverageRate
+      );
+      canvas.dataset.activeVisualEdgeCount = String(
+        activeRelationPlan.visualCount
+      );
       updateCoverage();
       selectionTimer = window.setTimeout(
         clearSelection,
@@ -1014,6 +1056,11 @@
       runtimeSettings.home_star_illumination_depth
     );
     canvas.dataset.selectedCount = "0";
+    canvas.dataset.selectedRelationCount = "0";
+    canvas.dataset.selectedRelationCoverage = "0";
+    canvas.dataset.activeVisualEdgeCount = "0";
+    canvas.dataset.activeEdgeMode =
+      runtimeSettings.home_star_active_edge_mode;
     canvas.dataset.contributorCount = String(
       stars.filter((star) => star.kind === "contributor").length
     );

@@ -1,7 +1,8 @@
 const assert = require("node:assert/strict");
 const {
   brightnessPresentation,
-  illuminate
+  illuminate,
+  relationPlan
 } = require("../src/assets/js/home-star-illumination");
 
 const stars = [
@@ -68,6 +69,114 @@ assert.deepEqual(values("depth_contributor_terminal", 1, "u:one"), [
 assert.deepEqual(values("strong_component", 2), ["d:a", "d:b"]);
 assert.deepEqual(values("reference_depth", 3, "d:b"), ["d:b", "d:c"]);
 assert.deepEqual(values("unsupported", 1), values("bfs", 1));
+
+const planStars = [
+  { id: "a", kind: "document", x: 0, y: 0 },
+  { id: "b", kind: "document", x: 1, y: 0 },
+  { id: "c", kind: "document", x: 2, y: 0 },
+  { id: "d", kind: "document", x: 3, y: 0 }
+];
+const planEdges = [
+  { source: "a", target: "b", type: "strong" },
+  { source: "b", target: "c", type: "strong" },
+  { source: "c", target: "d", type: "strong" },
+  { source: "a", target: "d", type: "reference" },
+  { source: "a", target: "c", type: "reference" }
+];
+const allPlanIds = new Set(["a", "b", "c", "d"]);
+const fullPlan = relationPlan(
+  planStars,
+  planEdges,
+  allPlanIds,
+  "full"
+);
+assert.equal(fullPlan.coverageCount, 5);
+assert.equal(fullPlan.visualCount, 5);
+assert.equal(fullPlan.totalCount, 5);
+assert.equal(fullPlan.coverageRate, 1);
+
+const minimalPlan = relationPlan(
+  planStars,
+  planEdges,
+  allPlanIds,
+  "minimal_tree"
+);
+assert.equal(minimalPlan.coverageCount, 5);
+assert.equal(minimalPlan.visualCount, 3);
+assert.equal(minimalPlan.totalCount, 5);
+assert.deepEqual(
+  minimalPlan.visualEdges.map((edge) => {
+    return [edge.source, edge.target].sort().join("-");
+  }).sort(),
+  ["a-b", "b-c", "c-d"]
+);
+assert.ok(
+  minimalPlan.visualEdges.every((edge) => {
+    return minimalPlan.coverageEdges.includes(edge);
+  })
+);
+
+const partialPlan = relationPlan(
+  planStars,
+  planEdges,
+  new Set(["a", "b", "c"]),
+  "minimal_tree"
+);
+assert.equal(partialPlan.coverageCount, 3);
+assert.equal(partialPlan.visualCount, 2);
+assert.equal(partialPlan.totalCount, 5);
+assert.equal(partialPlan.coverageRate, 3 / 5);
+
+const topologyStars = [
+  { id: "doc:left", kind: "document", x: -2, y: 0 },
+  { id: "doc:top", kind: "document", x: 0, y: 2 },
+  { id: "doc:right", kind: "document", x: 2, y: 0 },
+  { id: "user", kind: "contributor", x: 0, y: 1.9 }
+];
+const topologyEdges = [
+  { source: "doc:left", target: "doc:top", type: "strong" },
+  { source: "doc:top", target: "doc:right", type: "strong" },
+  { source: "user", target: "doc:left", type: "contribution" },
+  { source: "user", target: "doc:top", type: "contribution" },
+  { source: "user", target: "doc:right", type: "contribution" }
+];
+const topologyIds = new Set([
+  "doc:left",
+  "doc:top",
+  "doc:right",
+  "user"
+]);
+const topologyPlan = relationPlan(
+  topologyStars,
+  topologyEdges,
+  topologyIds,
+  "minimal_tree"
+);
+assert.equal(topologyPlan.visualCount, 3);
+assert.equal(
+  topologyPlan.visualEdges.filter(
+    (edge) => edge.type === "contribution"
+  ).length,
+  1,
+  "content topology must be preferred over contributor spokes"
+);
+assert.equal(
+  topologyPlan.visualEdges.filter((edge) => edge.type === "strong").length,
+  2
+);
+const singlePathPlan = relationPlan(
+  topologyStars,
+  topologyEdges,
+  topologyIds,
+  "single_path"
+);
+assert.equal(singlePathPlan.coverageCount, 5);
+assert.equal(singlePathPlan.visualCount, 2);
+assert.ok(
+  singlePathPlan.visualEdges.every((edge) => {
+    return singlePathPlan.coverageEdges.includes(edge);
+  })
+);
 
 const low = brightnessPresentation(2, "document", false);
 const medium = brightnessPresentation(10, "document", false);

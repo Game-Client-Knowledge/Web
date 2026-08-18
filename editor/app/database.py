@@ -548,6 +548,7 @@ class Database:
                 "home_star_illumination_depth": "3",
                 "home_star_selection_duration_ms": "3000",
                 "home_star_label_duration_ms": "3000",
+                "home_star_active_edge_mode": "single_path",
                 "home_star_brightness_rules": (
                     '[{"id":"contributor_contribution_count",'
                     '"priority":500},'

@@ -592,6 +592,8 @@ async function loadOverview() {
     data.settings.home_star_contributor_relation_style;
   byId("visualSettingsForm").home_star_illumination_rule.value =
     data.settings.home_star_illumination_rule;
+  byId("visualSettingsForm").home_star_active_edge_mode.value =
+    data.settings.home_star_active_edge_mode;
   byId("visualSettingsForm").home_star_illumination_depth.value =
     String(data.settings.home_star_illumination_depth);
   byId("visualSettingsForm").home_star_selection_duration_seconds.value =
@@ -710,6 +712,8 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
           form.home_star_contributor_relation_style.value,
         home_star_illumination_rule:
           form.home_star_illumination_rule.value,
+        home_star_active_edge_mode:
+          form.home_star_active_edge_mode.value,
         home_star_illumination_depth: Number(
           form.home_star_illumination_depth.value
         ),
@@ -774,6 +778,8 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         saved.home_star_contributor_relation_style,
       home_star_illumination_rule:
         saved.home_star_illumination_rule,
+      home_star_active_edge_mode:
+        saved.home_star_active_edge_mode,
       home_star_illumination_depth:
         saved.home_star_illumination_depth,
       home_star_selection_duration_ms:

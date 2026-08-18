@@ -293,6 +293,7 @@ class VisualSettingsRequest(BaseModel):
         ge=500,
         le=60000,
     )
+    home_star_active_edge_mode: str = "single_path"
     home_star_brightness_rules: list[StarBrightnessRuleRequest] = Field(
         default_factory=lambda: [
             StarBrightnessRuleRequest(**item)
@@ -876,6 +877,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         if illumination_rule not in STAR_ILLUMINATION_RULE_IDS:
             illumination_rule = "bfs"
+        active_edge_mode = db.setting(
+            "home_star_active_edge_mode", "single_path"
+        )
+        if active_edge_mode not in {
+            "full",
+            "minimal_tree",
+            "single_path",
+        }:
+            active_edge_mode = "single_path"
         return {
             "home_background_style": db.setting(
                 "home_background_style", "old_star_map"
@@ -963,6 +973,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     setting_int("home_star_label_duration_ms", 3000),
                 ),
             ),
+            "home_star_active_edge_mode": active_edge_mode,
             "home_star_brightness_rules": resolved_star_brightness_rules(),
         }
 
@@ -3327,6 +3338,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             not in STAR_ILLUMINATION_RULE_IDS
         ):
             raise HTTPException(status_code=422, detail="星图点亮规则无效")
+        if payload.home_star_active_edge_mode not in {
+            "full",
+            "minimal_tree",
+            "single_path",
+        }:
+            raise HTTPException(
+                status_code=422,
+                detail="主动点亮关系视觉无效",
+            )
         rule_ids = [
             rule.id for rule in payload.home_star_brightness_rules
         ]
@@ -3422,6 +3442,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_star_label_duration_ms": str(
                 payload.home_star_label_duration_ms
+            ),
+            "home_star_active_edge_mode": (
+                payload.home_star_active_edge_mode
             ),
             "home_star_brightness_rules": json.dumps(
                 [

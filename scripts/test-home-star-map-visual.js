@@ -59,6 +59,7 @@ async function runScenario(browser, scenario) {
     home_star_color_random_enabled: true,
     home_star_illumination_rule: "depth_contributor_terminal",
     home_star_illumination_depth: 2,
+    home_star_active_edge_mode: "single_path",
     home_star_selection_duration_ms: 1000,
     home_star_label_duration_ms: 1800
   };
@@ -117,6 +118,7 @@ async function runScenario(browser, scenario) {
       edges: Number(canvas.dataset.edgeCount),
       illuminationRule: canvas.dataset.illuminationRule,
       illuminationDepth: Number(canvas.dataset.illuminationDepth),
+      activeEdgeMode: canvas.dataset.activeEdgeMode,
       width: rectangle.width,
       height: rectangle.height,
       overflow:
@@ -137,6 +139,7 @@ async function runScenario(browser, scenario) {
   assert.ok(metrics.edges > metrics.stars, `${scenario.name}: too few edges`);
   assert.equal(metrics.illuminationRule, "depth_contributor_terminal");
   assert.equal(metrics.illuminationDepth, 2);
+  assert.equal(metrics.activeEdgeMode, "single_path");
   assert.ok(metrics.nonblank > 10, `${scenario.name}: canvas is blank`);
   assert.ok(metrics.overflow <= 1, `${scenario.name}: horizontal overflow`);
   assert.ok(
@@ -186,6 +189,42 @@ async function runScenario(browser, scenario) {
   const coverage = await page.locator(".star-coverage-panel").innerText();
   assert.match(coverage, /静星/);
   assert.match(coverage, /动星/);
+  assert.match(coverage, /关系/);
+  const selectionMetrics = await page.evaluate(() => {
+    const canvas = document.querySelector("[data-knowledge-field]");
+    return {
+      selected: Number(canvas.dataset.selectedCount),
+      coveredRelations: Number(canvas.dataset.selectedRelationCount),
+      relationCoverage: Number(
+        canvas.dataset.selectedRelationCoverage
+      ),
+      visualEdges: Number(canvas.dataset.activeVisualEdgeCount),
+      totalEdges: Number(canvas.dataset.edgeCount)
+    };
+  });
+  assert.ok(
+    selectionMetrics.coveredRelations <= selectionMetrics.totalEdges
+  );
+  assert.equal(
+    selectionMetrics.relationCoverage,
+    selectionMetrics.totalEdges
+      ? selectionMetrics.coveredRelations / selectionMetrics.totalEdges
+      : 0
+  );
+  assert.ok(
+    selectionMetrics.visualEdges <= selectionMetrics.coveredRelations
+  );
+  assert.ok(
+    selectionMetrics.visualEdges <=
+      Math.max(0, selectionMetrics.selected - 1)
+  );
+  if (selectionMetrics.selected > 3) {
+    assert.ok(
+      selectionMetrics.visualEdges <
+        selectionMetrics.selected - 1,
+      `${scenario.name}: single path did not prune tree branches`
+    );
+  }
   assert.ok(
     await page.locator(".star-map-label:not([hidden])").isVisible(),
     `${scenario.name}: contributor label is missing`
@@ -225,6 +264,7 @@ async function runScenario(browser, scenario) {
             home_background_style: "contribution_star_map",
             home_star_scope: "hero",
             home_star_relation_visibility: "near",
+            home_star_active_edge_mode: "single_path",
             home_star_illumination_rule:
               "depth_contributor_terminal",
             home_star_illumination_depth: 2,

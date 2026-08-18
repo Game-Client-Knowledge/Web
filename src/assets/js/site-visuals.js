@@ -167,6 +167,8 @@
             settings.home_star_color_random_enabled,
           home_star_illumination_rule:
             settings.home_star_illumination_rule,
+          home_star_active_edge_mode:
+            settings.home_star_active_edge_mode,
           home_star_illumination_depth:
             settings.home_star_illumination_depth,
           home_star_selection_duration_ms:

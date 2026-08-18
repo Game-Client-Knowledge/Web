@@ -134,6 +134,26 @@ The resulting set is highlighted and a fixed coverage panel reports:
 - highlighted stars and percentage of all stars;
 - highlighted contributor stars and percentage;
 - highlighted document stars and percentage.
+- covered relations and percentage of the complete relation set.
+
+Relation coverage always counts every real edge whose two endpoint stars are
+highlighted. It is independent from rendering. Active highlighting supports:
+
+- `single_path`: build the relation-aware minimal tree, then draw only its
+  longest unbranched path. Every selected star remains illuminated, while the
+  active visual stays as one chain made only from real relations.
+- `full`: draw every covered relation with its configured relation style.
+- `minimal_tree`: run a relation-aware Kruskal pass over the covered real
+  edges. Strong document links are preferred first, references second, and
+  contributor links last; distance breaks ties inside each relation type. This
+  prevents one contributor star from becoming a dense radial hub when document
+  topology can connect the same stars. A connected set of `N` highlighted stars
+  uses exactly `N - 1` active lines. No synthetic edge is created.
+
+The minimal tree affects only active highlight lines. The complete edge set
+still drives illumination rules and coverage metrics. `always` and `near`
+continue to render their normal edges independently, including covered edges
+that were pruned from the active tree.
 
 After the configured relation duration, the set and coverage panel are cleared
 while normal star movement continues.
@@ -174,6 +194,7 @@ bounded highlight boost without replacing the underlying brightness.
 - relation visibility;
 - strong, reference, and contribution styles (`solid`, `dashed`, `glow`);
 - illumination rule and N-level depth;
+- active relation rendering (`single_path`, `minimal_tree`, or `full`);
 - relation-highlight and moving-label durations;
 - brightness variation enablement, magnitude, transition, and interval;
 - random color enablement;

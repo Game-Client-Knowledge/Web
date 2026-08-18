@@ -113,6 +113,163 @@
     return visited;
   }
 
+  function edgeId(edge) {
+    return `${edge.type}:${[edge.source, edge.target].sort().join("\u0000")}`;
+  }
+
+  function coveredRelations(edges, selectedIds) {
+    return (edges || []).filter((edge) => {
+      return (
+        selectedIds.has(edge.source) &&
+        selectedIds.has(edge.target)
+      );
+    });
+  }
+
+  function minimumRelationTree(stars, relations, selectedIds) {
+    if (selectedIds.size <= 1) return [];
+    const starById = new Map(
+      (stars || []).map((star) => [star.id, star])
+    );
+    const parent = new Map(
+      Array.from(selectedIds, (id) => [id, id])
+    );
+
+    function find(id) {
+      const current = parent.get(id);
+      if (current !== id) {
+        parent.set(id, find(current));
+      }
+      return parent.get(id);
+    }
+
+    function union(left, right) {
+      const leftRoot = find(left);
+      const rightRoot = find(right);
+      if (leftRoot === rightRoot) return false;
+      parent.set(rightRoot, leftRoot);
+      return true;
+    }
+
+    const typeOrder = {
+      strong: 0,
+      reference: 1,
+      contribution: 2
+    };
+    const candidates = relations
+      .map((edge) => {
+        const source = starById.get(edge.source);
+        const target = starById.get(edge.target);
+        const dx = Number(source?.x || 0) - Number(target?.x || 0);
+        const dy = Number(source?.y || 0) - Number(target?.y || 0);
+        return {
+          edge,
+          typeOrder: typeOrder[edge.type] ?? 3,
+          distanceSquared: dx * dx + dy * dy,
+          id: edgeId(edge)
+        };
+      })
+      .sort((left, right) => {
+        return (
+          left.typeOrder - right.typeOrder ||
+          left.distanceSquared - right.distanceSquared ||
+          left.id.localeCompare(right.id)
+        );
+      });
+    const tree = [];
+    for (const candidate of candidates) {
+      if (union(candidate.edge.source, candidate.edge.target)) {
+        tree.push(candidate.edge);
+      }
+      if (tree.length >= selectedIds.size - 1) break;
+    }
+    return tree;
+  }
+
+  function longestTreePath(tree) {
+    if (!tree.length) return [];
+    const adjacency = new Map();
+    for (const edge of tree) {
+      if (!adjacency.has(edge.source)) adjacency.set(edge.source, []);
+      if (!adjacency.has(edge.target)) adjacency.set(edge.target, []);
+      adjacency.get(edge.source).push({ id: edge.target, edge });
+      adjacency.get(edge.target).push({ id: edge.source, edge });
+    }
+    for (const neighbors of adjacency.values()) {
+      neighbors.sort((left, right) => left.id.localeCompare(right.id));
+    }
+
+    function farthest(start) {
+      const queue = [{ id: start, distance: 0 }];
+      const seen = new Set([start]);
+      const parent = new Map();
+      let result = queue[0];
+      while (queue.length) {
+        const current = queue.shift();
+        if (
+          current.distance > result.distance ||
+          (
+            current.distance === result.distance &&
+            current.id.localeCompare(result.id) < 0
+          )
+        ) {
+          result = current;
+        }
+        for (const neighbor of adjacency.get(current.id) || []) {
+          if (seen.has(neighbor.id)) continue;
+          seen.add(neighbor.id);
+          parent.set(neighbor.id, {
+            id: current.id,
+            edge: neighbor.edge
+          });
+          queue.push({
+            id: neighbor.id,
+            distance: current.distance + 1
+          });
+        }
+      }
+      return { ...result, parent };
+    }
+
+    const first = Array.from(adjacency.keys()).sort()[0];
+    const endpoint = farthest(first).id;
+    const opposite = farthest(endpoint);
+    const path = [];
+    let current = opposite.id;
+    while (current !== endpoint) {
+      const step = opposite.parent.get(current);
+      if (!step) break;
+      path.push(step.edge);
+      current = step.id;
+    }
+    return path.reverse();
+  }
+
+  function relationPlan(stars, edges, selectedIds, mode) {
+    const coverageEdges = coveredRelations(edges, selectedIds);
+    const minimalTree =
+      mode === "full"
+        ? null
+        : minimumRelationTree(stars, coverageEdges, selectedIds);
+    const visualEdges =
+      mode === "single_path"
+        ? longestTreePath(minimalTree)
+        : mode === "minimal_tree"
+          ? minimalTree
+          : coverageEdges.slice();
+    const totalCount = (edges || []).length;
+    return {
+      coverageEdges,
+      visualEdges,
+      coverageCount: coverageEdges.length,
+      visualCount: visualEdges.length,
+      totalCount,
+      coverageRate: totalCount
+        ? coverageEdges.length / totalCount
+        : 0
+    };
+  }
+
   function brightnessPresentation(value, kind, selected) {
     const brightness = Math.max(0, Math.min(30, Number(value) || 0));
     const normalized = brightness / 30;
@@ -141,8 +298,13 @@
     RULES,
     brightnessPresentation,
     buildGraph,
+    coveredRelations,
+    edgeId,
     illuminate,
+    longestTreePath,
+    minimumRelationTree,
     normalizedDepth,
+    relationPlan,
     ruleOptions
   };
 });
