@@ -589,6 +589,23 @@ a[aria-disabled="true"] {
   gap: 10px;
 }
 
+.explorer-commands {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.explorer-commands .compact-button {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+.explorer-commands svg {
+  width: 14px;
+  height: 14px;
+}
+
 .explorer-heading > div {
   display: flex;
   min-width: 0;

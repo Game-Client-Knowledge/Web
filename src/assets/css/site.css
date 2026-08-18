@@ -4215,8 +4215,8 @@ body.has-comments-open .reader-comments {
 }
 
 .draft-rendered-content {
-  padding-left: 12px;
-  border-left: 3px solid var(--teal);
+  padding-left: 0;
+  border-left: 0;
 }
 
 .draft-navigation {

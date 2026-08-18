@@ -2,18 +2,20 @@ const state = {
   config: null,
   session: null,
   csrf: "",
-  draftRevision: "",
   drafts: [],
   repository: [],
+  baseTree: null,
+  currentTree: null,
+  legacyDrafts: [],
   active: null,
   previewing: false,
   workspaceView: "resources",
   resourceFilter: "",
   visualEditor: null,
+  localSaveFrame: 0,
   remoteContent: new Map(),
   onboardingStep: 0,
-  onboardingSaving: false,
-  repositorySyncTimer: 0
+  onboardingSaving: false
 };
 
 const byId = (id) => document.getElementById(id);
@@ -79,7 +81,74 @@ function slugify(value) {
 }
 
 function draftStatus(draft) {
-  return draft.operation === "delete" ? "D" : draft.base_sha ? "M" : "A";
+  return draft.status ||
+    (draft.operation === "delete" ? "D" : draft.base_sha ? "M" : "A");
+}
+
+function workspaceStore() {
+  return window.GCKWorkspaceStore || null;
+}
+
+function workspaceRepository() {
+  return state.config?.repository ||
+    "Game-Client-Knowledge/Game-Client-Knowledge";
+}
+
+function workspaceUserId() {
+  return state.session?.user?.id || null;
+}
+
+function applyWorkspaceState(workspace) {
+  if (!workspace) return false;
+  state.baseTree = workspace.base;
+  state.currentTree = workspace.current;
+  state.repository = (workspace.current?.entries || [])
+    .filter((entry) => entry.operation !== "delete")
+    .map((entry) => ({
+      path: entry.path,
+      sha: entry.sha,
+      size: entry.size,
+      content: entry.content
+    }));
+  state.drafts = (workspace.changes || []).map((change) => ({
+    ...change,
+    base_sha: change.baseSha || null,
+    base_content:
+      typeof change.baseContent === "string"
+        ? change.baseContent
+        : null,
+    line_diff: change.lineDiff || [],
+    diff_summary: change.diffSummary || {
+      added: 0,
+      modified: 0,
+      deleted: 0
+    },
+    local: true
+  }));
+  renderResources();
+  return true;
+}
+
+function readLocalWorkspace() {
+  const store = workspaceStore();
+  const userId = workspaceUserId();
+  if (!store || !userId) return null;
+  const base = store.readBase(
+    window.localStorage,
+    userId,
+    workspaceRepository()
+  );
+  const current = store.readCurrent(
+    window.localStorage,
+    userId,
+    workspaceRepository()
+  );
+  if (!base || !current) return null;
+  return {
+    base,
+    current,
+    changes: store.deriveChanges(base, current)
+  };
 }
 
 function takeGithubAuthError() {
@@ -212,22 +281,18 @@ async function loadSession() {
     return;
   }
   state.csrf = session.csrf_token;
-  state.drafts = bootstrap.drafts || [];
-  state.draftRevision = bootstrap.draft_revision || "";
-  mergeReaderBuffersIntoDrafts();
+  state.legacyDrafts = bootstrap.drafts || [];
   if (session.user.must_change_password) {
     showView("password");
     return;
   }
   showView("workspace");
-  await initializeWorkspace(true);
-  syncReaderBuffers();
-  beginRepositorySync();
+  await initializeWorkspace();
   openOnboardingIfNeeded();
   if (githubAuthError) feedback(byId("editorFeedback"), githubAuthError);
 }
 
-async function initializeWorkspace(draftsReady = false) {
+async function initializeWorkspace() {
   const { user, can_edit: canEdit, edit_policy: policy } = state.session;
   byId("accountSummary").textContent =
     `${user.username} · ${user.email}` +
@@ -262,12 +327,9 @@ async function initializeWorkspace(draftsReady = false) {
     .forEach((element) => {
       element.disabled = !canEdit;
     });
-  if (draftsReady) {
-    renderResources();
-  }
+  applyWorkspaceState(readLocalWorkspace());
   await Promise.all([
-    draftsReady ? Promise.resolve() : loadDrafts(),
-    loadRepository(),
+    syncRemoteWorkspace({ quiet: Boolean(state.baseTree) }),
     loadSubmissions()
   ]);
   const requestedFile = new URLSearchParams(location.search).get("file");
@@ -278,16 +340,7 @@ async function initializeWorkspace(draftsReady = false) {
 }
 
 async function loadDrafts() {
-  if (!state.session?.can_edit) {
-    state.drafts = [];
-    renderResources();
-    return;
-  }
-  const payload = await api("/drafts");
-  state.drafts = payload.items || [];
-  state.draftRevision = payload.revision || "";
-  mergeReaderBuffersIntoDrafts();
-  renderResources();
+  applyWorkspaceState(readLocalWorkspace());
 }
 
 function readerBuffers() {
@@ -304,121 +357,75 @@ function readerBuffers() {
   );
 }
 
-function mergeReaderBuffersIntoDrafts() {
-  const drafts = new Map(
-    state.drafts.map((draft) => [draft.path, draft])
+function applyLocalChange(change) {
+  const store = workspaceStore();
+  const userId = workspaceUserId();
+  if (!store || !userId) return null;
+  const workspace = store.applyChange(
+    window.localStorage,
+    userId,
+    workspaceRepository(),
+    change
+  );
+  applyWorkspaceState(workspace);
+  return workspace;
+}
+
+function migrateLegacyChanges() {
+  const store = workspaceStore();
+  const userId = workspaceUserId();
+  if (!store || !userId || !state.baseTree) return;
+  const legacyDrafts = state.legacyDrafts.slice();
+  const migrationKey =
+    "gck-workspace-legacy-migrated:v1:" +
+    encodeURIComponent(String(userId)) +
+    ":" +
+    encodeURIComponent(workspaceRepository());
+  const localPaths = new Set(
+    store
+      .deriveChanges(state.baseTree, state.currentTree)
+      .map((change) => change.path)
   );
   for (const change of readerBuffers()) {
-    const remote = drafts.get(change.path);
-    drafts.set(change.path, {
-      ...(remote || {}),
-      path: change.path,
-      content: change.content,
-      operation: change.operation || "upsert",
-      base_sha: change.baseSha || remote?.base_sha || null,
-      revision: change.serverRevision || 0,
-      updated_at: change.updatedAt,
-      local: true,
-      conflict: Boolean(change.conflict),
-      base_content:
-        typeof change.baseContent === "string"
-          ? change.baseContent
-          : null,
-      line_diff: Array.isArray(change.lineDiff)
-        ? change.lineDiff
-        : [],
-      diff_summary: change.diffSummary || {
-        added: 0,
-        modified: 0,
-        deleted: 0
-      }
-    });
-  }
-  state.drafts = Array.from(drafts.values());
-}
-
-async function syncReaderBuffers() {
-  if (!state.session?.can_edit || !window.GCKEditorBuffer) return;
-  for (const change of readerBuffers()) {
-    await syncReaderBuffer(change, false);
-  }
-  mergeReaderBuffersIntoDrafts();
-  renderResources();
-}
-
-async function syncReaderBuffer(change, retried) {
-  try {
-    const saved = await api("/drafts", {
-      method: "PUT",
-      body: JSON.stringify({
-        path: change.path,
-        content: change.operation === "delete" ? "" : change.content,
-        operation: change.operation || "upsert",
-        base_sha: change.baseSha || null,
-        base_content:
-          typeof change.baseContent === "string"
-            ? change.baseContent
-            : null,
-        base_revision: change.serverRevision || 0
-      })
-    });
+    if (!localPaths.has(change.path)) {
+      applyLocalChange({
+        ...change,
+        operation: change.operation || "upsert"
+      });
+      localPaths.add(change.path);
+    }
     window.GCKEditorBuffer.remove(
       window.localStorage,
-      state.session.user.id,
+      userId,
       change.path
     );
-    const index = state.drafts.findIndex(
-      (draft) => draft.path === saved.path
-    );
-    if (index >= 0) state.drafts[index] = saved;
-    else state.drafts.push(saved);
-    return saved;
-  } catch (error) {
-    const remote =
-      error.status === 409 &&
-      error.detail?.code === "draft_revision_conflict"
-        ? error.detail.draft
-        : null;
-    if (
-      !retried &&
-      remote &&
-      typeof change.baseContent === "string" &&
-      window.JsDiff
-    ) {
-      const patch = window.JsDiff.createPatch(
-        change.path,
-        change.syncBaseContent || change.baseContent,
-        change.content,
-        "",
-        ""
-      );
-      const merged = window.JsDiff.applyPatch(remote.content, patch);
-      if (typeof merged === "string") {
-        const updated = {
-          ...change,
-          content: merged,
-          syncBaseContent: remote.content,
-          serverRevision: remote.revision,
-          conflict: false,
-          updatedAt: Date.now()
-        };
-        window.GCKEditorBuffer.write(
-          window.localStorage,
-          state.session.user.id,
-          change.path,
-          updated
-        );
-        return syncReaderBuffer(updated, true);
-      }
-    }
-    window.GCKEditorBuffer.write(
-      window.localStorage,
-      state.session.user.id,
-      change.path,
-      { ...change, conflict: true }
-    );
-    return null;
   }
+  if (window.localStorage.getItem(migrationKey) !== "1") {
+    for (const draft of legacyDrafts) {
+      if (localPaths.has(draft.path)) continue;
+      applyLocalChange({
+        path: draft.path,
+        content: draft.content,
+        operation: draft.operation,
+        baseSha: draft.base_sha || null,
+        baseContent:
+          typeof draft.base_content === "string"
+            ? draft.base_content
+            : null,
+        conflict: false,
+        updatedAt: Date.parse(draft.updated_at) || Date.now()
+      });
+    }
+    window.localStorage.setItem(migrationKey, "1");
+  }
+  state.legacyDrafts = [];
+  Promise.allSettled(
+    legacyDrafts
+      .filter((draft) => draft.id)
+      .map((draft) =>
+        api(`/drafts/${draft.id}`, { method: "DELETE" })
+      )
+  );
 }
 
 function resourceEntries() {
@@ -485,13 +492,20 @@ function resourcePathMatches(path, target, kind) {
     : path === target || path.startsWith(`${target.replace(/\/$/, "")}/`);
 }
 
+function isTopLevelModulePath(path) {
+  const parts = path.split("/").filter(Boolean);
+  return parts[0] === "program" || parts[0] === "planning"
+    ? parts.length === 2
+    : parts.length === 1;
+}
+
 function resourceTargetDeleted(target, kind) {
-  const repositoryFiles = state.repository.filter((entry) =>
+  const baseFiles = (state.baseTree?.entries || []).filter((entry) =>
     resourcePathMatches(entry.path, target, kind)
   );
   return (
-    repositoryFiles.length > 0 &&
-    repositoryFiles.every((entry) =>
+    baseFiles.length > 0 &&
+    baseFiles.every((entry) =>
       state.drafts.some(
         (draft) =>
           draft.path === entry.path && draft.operation === "delete"
@@ -517,92 +531,91 @@ function resourceDeleteButton(path, kind, label) {
 }
 
 async function deleteResourceTarget(path, kind, label, restore) {
-  const matchingDrafts = state.drafts.filter((draft) =>
-    resourcePathMatches(draft.path, path, kind)
+  const matchingPaths = new Set(
+    (state.currentTree?.entries || [])
+      .filter((entry) => resourcePathMatches(entry.path, path, kind))
+      .map((entry) => entry.path)
   );
+  state.drafts
+    .filter((draft) => resourcePathMatches(draft.path, path, kind))
+    .forEach((draft) => matchingPaths.add(draft.path));
   if (restore) {
     if (!window.confirm(`撤销 ${label} 的删除标记？`)) return;
-    try {
-      await Promise.all(
-        matchingDrafts
-          .filter((draft) => draft.operation === "delete" && draft.id)
-          .map((draft) => api(`/drafts/${draft.id}`, { method: "DELETE" }))
+    const store = workspaceStore();
+    let workspace = readLocalWorkspace();
+    for (const targetPath of matchingPaths) {
+      workspace = store.discardChange(
+        window.localStorage,
+        workspaceUserId(),
+        workspaceRepository(),
+        targetPath
       );
-      await loadDrafts();
-    } catch (error) {
-      feedback(byId("editorFeedback"), error.message);
     }
+    applyWorkspaceState(workspace);
     return;
   }
 
+  if (!matchingPaths.size) return;
+  const topLevelModule =
+    kind === "directory" && isTopLevelModulePath(path);
+  const scope =
+    kind === "file" ? "文件" : topLevelModule ? "大模块" : "子模块";
+  if (
+    !window.confirm(
+      `删除${scope}“${label}”？将处理 ${matchingPaths.size} 个本地文件。`
+    )
+  ) {
+    return;
+  }
+  if (
+    topLevelModule &&
+    !window.confirm("大模块及其全部子模块都会被删除，确认继续？")
+  ) {
+    return;
+  }
   try {
-    const repositoryMatches = state.repository.filter((entry) =>
-      resourcePathMatches(entry.path, path, kind)
+    const baseByPath = new Map(
+      (state.baseTree?.entries || []).map((entry) => [entry.path, entry])
     );
-    if (!repositoryMatches.length && matchingDrafts.length) {
-      if (
-        !window.confirm(
-          `删除尚未提交的${kind === "file" ? "文件" : "模块"}“${label}”？`
-        )
-      ) {
-        return;
+    for (const targetPath of matchingPaths) {
+      const base = baseByPath.get(targetPath);
+      if (!base) {
+        const workspace = workspaceStore().discardChange(
+          window.localStorage,
+          workspaceUserId(),
+          workspaceRepository(),
+          targetPath
+        );
+        applyWorkspaceState(workspace);
+        continue;
       }
-      await Promise.all(
-        matchingDrafts
-          .filter((draft) => draft.id)
-          .map((draft) => api(`/drafts/${draft.id}`, { method: "DELETE" }))
-      );
-      await loadDrafts();
-      return;
-    }
-    const payload = await api(
-      `/repository/delete-tree?path=${encodeURIComponent(path)}` +
-        `&kind=${encodeURIComponent(kind)}`
-    );
-    const repositoryItems = payload.items || [];
-    const scope =
-      kind === "file" ? "文件" : path.includes("/") ? "子模块" : "大模块";
-    if (
-      !window.confirm(
-        `删除${scope}“${label}”？将标记 ${repositoryItems.length} 个文件为删除。`
-      )
-    ) {
-      return;
-    }
-    if (
-      kind === "directory" &&
-      !path.includes("/") &&
-      !window.confirm("大模块及其全部子模块都会被删除，确认继续？")
-    ) {
-      return;
-    }
-    const repositoryPaths = new Set(
-      repositoryItems.map((entry) => entry.path)
-    );
-    await Promise.all(
-      matchingDrafts
-        .filter(
-          (draft) =>
-            draft.id &&
-            !draft.base_sha &&
-            !repositoryPaths.has(draft.path)
-        )
-        .map((draft) => api(`/drafts/${draft.id}`, { method: "DELETE" }))
-    );
-    for (const entry of repositoryItems) {
-      const draft = state.drafts.find((item) => item.path === entry.path);
-      await api("/drafts", {
-        method: "PUT",
-        body: JSON.stringify({
-          path: entry.path,
-          content: "",
-          base_sha: entry.sha,
-          base_revision: draft ? draft.revision : 0,
-          operation: "delete"
-        })
+      const diff = localLineDiff(base.content || "", "", "delete");
+      applyLocalChange({
+        path: targetPath,
+        content: "",
+        operation: "delete",
+        baseSha: base.sha,
+        baseContent: base.content,
+        ...diff,
+        updatedAt: Date.now()
       });
     }
-    await loadDrafts();
+    if (
+      state.active &&
+      resourcePathMatches(state.active.path, path, kind)
+    ) {
+      const deleted = state.drafts.find(
+        (draft) => draft.path === state.active.path
+      );
+      if (deleted) await openDraft(deleted);
+      else {
+        state.active = null;
+        destroyVisualEditor();
+        byId("activeEditor").hidden = true;
+        byId("emptyEditor").hidden = false;
+        resetEmptyEditor();
+      }
+    }
   } catch (error) {
     feedback(byId("editorFeedback"), error.message);
   }
@@ -618,10 +631,17 @@ function renderTreeNode(node, target, depth, parentPath = "") {
     summary.append(icon("folder"), document.createTextNode(name));
     const count = document.createElement("small");
     count.textContent = String(child.files.length + child.folders.size);
-    summary.append(
-      count,
-      resourceDeleteButton(folderPath, "directory", name)
-    );
+    summary.append(count);
+    if (
+      !(
+        depth === 0 &&
+        (folderPath === "program" || folderPath === "planning")
+      )
+    ) {
+      summary.append(
+        resourceDeleteButton(folderPath, "directory", name)
+      );
+    }
     details.append(summary);
     const children = document.createElement("div");
     children.className = "resource-folder-children";
@@ -653,7 +673,7 @@ function renderTreeNode(node, target, depth, parentPath = "") {
       badge.dataset.status = status;
       badge.textContent = file.draft.conflict ? "!" : status;
       badge.title = file.draft.conflict
-        ? "本地与服务器草稿冲突"
+        ? "本地更改与远端基树冲突"
         : `Git ${status}`;
       button.dataset.status = status;
       button.append(badge);
@@ -671,7 +691,7 @@ function renderChanges() {
   const list = byId("changeList");
   list.replaceChildren();
   byId("changeCount").textContent = String(state.drafts.length);
-  byId("draftCount").textContent = `${state.drafts.length} 个草稿`;
+  byId("draftCount").textContent = `${state.drafts.length} 个本地更改`;
   for (const draft of state.drafts) {
     const row = document.createElement("div");
     row.className = "change-row";
@@ -935,7 +955,6 @@ function destroyVisualEditor() {
 }
 
 function showContentEditor(path, content) {
-  const initializationStartedAt = performance.now();
   destroyVisualEditor();
   state.previewing = false;
   byId("diffViewer").hidden = true;
@@ -963,18 +982,15 @@ function showContentEditor(path, content) {
         ["ul", "ol", "task"],
         ["table", "link"],
         ["code", "codeblock"]
-      ]
+      ],
+      events: {
+        change: scheduleActivePersist
+      }
     });
     if (state.active) {
       state.active.originalContent = content;
       state.active.canonicalContent = state.visualEditor.getMarkdown();
     }
-    // #region debug-point H:workspace-editor-layout
-    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"H",location:"editor.js:showContentEditor",msg:"[DEBUG] Workspace editor initialized",data:{sourceLength:content.length,initializationMs:Math.round((performance.now()-initializationStartedAt)*10)/10,totalOpenMs:Math.round((performance.now()-(state.active?.openStartedAt||initializationStartedAt))*10)/10},ts:Date.now()})}).catch(()=>{});
-    // #endregion
-    // #region debug-point C:workspace-initial-serialization
-    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"C",location:"editor.js:showContentEditor",msg:"[DEBUG] Workspace initial Markdown serialization",data:(()=>{const output=state.visualEditor.getMarkdown();return{inputLength:content.length,outputLength:output.length,same:output===content,escapedHeadings:(output.match(/^## \\d+\\\\\\./gm)||[]).length,dashBullets:(output.match(/^- /gm)||[]).length,starBullets:(output.match(/^\\* /gm)||[]).length,compactTable:output.includes("|---|"),spacedTable:output.includes("| --- |")}})(),ts:Date.now()})}).catch(()=>{});
-    // #endregion
     return;
   }
   if (state.active) {
@@ -992,6 +1008,110 @@ function editorContent() {
   return state.visualEditor
     ? state.visualEditor.getMarkdown()
     : byId("contentEditor").value;
+}
+
+function activeSerializedContent() {
+  const canonicalContent = editorContent();
+  const serializedContent =
+    state.visualEditor &&
+    window.GCKMarkdown &&
+    state.active?.originalContent !== undefined
+      ? window.GCKMarkdown.preserveSourceFormatting(
+          state.active.originalContent,
+          state.active.canonicalContent,
+          canonicalContent
+        )
+      : canonicalContent;
+  return { canonicalContent, serializedContent };
+}
+
+function localLineDiff(baseContent, nextContent, operation) {
+  const rows = window.GCKReaderDiff?.buildLineDiff(
+    baseContent || "",
+    operation === "delete" ? "" : nextContent || ""
+  ) || [];
+  const changed = rows.filter((row) => row.type !== "context");
+  return {
+    lineDiff: changed,
+    diffSummary: changed.reduce(
+      (summary, row) => {
+        if (row.type === "added") summary.added += 1;
+        else if (row.type === "modified") summary.modified += 1;
+        else if (row.type === "deleted") summary.deleted += 1;
+        return summary;
+      },
+      { added: 0, modified: 0, deleted: 0 }
+    )
+  };
+}
+
+function persistActiveChange() {
+  if (!state.active) return null;
+  const path = byId("filePath").value || state.active.path;
+  const { canonicalContent, serializedContent } =
+    activeSerializedContent();
+  const baseContent = state.active.baseContent || "";
+  if (
+    state.active.baseSha &&
+    serializedContent === baseContent
+  ) {
+    workspaceStore().discardChange(
+      window.localStorage,
+      workspaceUserId(),
+      workspaceRepository(),
+      path
+    );
+    state.active.content = serializedContent;
+    applyWorkspaceState(readLocalWorkspace());
+    return null;
+  }
+  const diff = localLineDiff(
+    baseContent,
+    serializedContent,
+    "upsert"
+  );
+  applyLocalChange({
+    path,
+    content: serializedContent,
+    operation: "upsert",
+    baseSha: state.active.baseSha,
+    baseContent,
+    ...diff,
+    updatedAt: Date.now()
+  });
+  state.active.path = path;
+  state.active.content = serializedContent;
+  state.active.currentCanonicalContent = canonicalContent;
+  return state.drafts.find((draft) => draft.path === path) || null;
+}
+
+function scheduleActivePersist() {
+  if (state.localSaveFrame) return;
+  state.localSaveFrame = window.requestAnimationFrame(() => {
+    state.localSaveFrame = 0;
+    try {
+      persistActiveChange();
+    } catch (error) {
+      feedback(byId("editorFeedback"), error.message);
+    }
+  });
+}
+
+async function saveActiveLocally() {
+  if (!state.active) return;
+  clearFeedback(byId("editorFeedback"));
+  try {
+    const saved = persistActiveChange();
+    feedback(
+      byId("editorFeedback"),
+      saved
+        ? "更改已写入本地当前树。"
+        : "当前内容与基树一致，没有未提交更改。",
+      "success"
+    );
+  } catch (error) {
+    feedback(byId("editorFeedback"), error.message);
+  }
 }
 
 async function openDraft(draft, forceEditor = false) {
@@ -1073,68 +1193,132 @@ function resetEmptyEditor() {
   byId("emptyEditor").append(title, copy);
 }
 
-async function loadRepository(force = false) {
-  if (state.repository.length && !force) {
-    renderResources();
-    return;
-  }
-  const cacheKey =
-    "gck-repository-tree:v1:" +
-    encodeURIComponent(state.config?.repository || "content");
-  if (!force) {
-    try {
-      const cached = JSON.parse(localStorage.getItem(cacheKey));
-      const maxAge =
-        (Number(state.config?.workspace_sync_interval_seconds) || 60) *
-        1000;
-      if (
-        cached &&
-        Array.isArray(cached.items) &&
-        Date.now() - cached.updatedAt < maxAge
-      ) {
-        state.repository = cached.items;
-        renderResources();
-        return;
+async function rebaseLocalChanges(previousChanges, remoteEntries) {
+  const remoteByPath = new Map(
+    remoteEntries.map((entry) => [entry.path, entry])
+  );
+  for (const change of previousChanges) {
+    const remote = remoteByPath.get(change.path);
+    if (!remote) {
+      if (change.baseSha && change.operation === "delete") {
+        const workspace = workspaceStore().discardChange(
+          window.localStorage,
+          workspaceUserId(),
+          workspaceRepository(),
+          change.path
+        );
+        applyWorkspaceState(workspace);
+      } else if (change.baseSha) {
+        applyLocalChange({
+          ...change,
+          conflict: true,
+          conflictReason: "远端文件已删除"
+        });
       }
-    } catch {
-      // The server-backed tree remains available when cache access fails.
+      continue;
     }
-  }
-  byId("resourceTree").textContent = "正在读取仓库目录…";
-  if (force) state.remoteContent.clear();
-  try {
-    const payload = await api("/repository/tree");
-    state.repository = payload.items;
+    if (!change.baseSha) {
+      applyLocalChange({
+        ...change,
+        conflict: true,
+        conflictReason: "远端已创建同名文件"
+      });
+      continue;
+    }
+    if (remote.sha === change.baseSha) {
+      continue;
+    }
+    if (change.operation === "delete") {
+      applyLocalChange({
+        ...change,
+        baseSha: remote.sha,
+        conflict: true,
+        conflictReason: "远端文件在本地删除后发生了修改"
+      });
+      continue;
+    }
     try {
-      localStorage.setItem(
-        cacheKey,
-        JSON.stringify({
-          updatedAt: Date.now(),
-          items: state.repository
-        })
+      const latest = await api(
+        `/repository/file?path=${encodeURIComponent(change.path)}`
       );
-    } catch {
-      // Repository browsing does not depend on persistent cache access.
+      const patch = window.JsDiff?.createPatch(
+        change.path,
+        change.baseContent || "",
+        change.content,
+        "",
+        ""
+      );
+      const merged = patch
+        ? window.JsDiff.applyPatch(latest.content, patch)
+        : null;
+      applyLocalChange({
+        ...change,
+        content: typeof merged === "string" ? merged : change.content,
+        baseSha: latest.sha,
+        baseContent: latest.content,
+        conflict: typeof merged !== "string",
+        conflictReason:
+          typeof merged === "string"
+            ? ""
+            : "远端与本地修改了相同内容"
+      });
+    } catch (error) {
+      applyLocalChange({
+        ...change,
+        conflict: true,
+        conflictReason: error.message
+      });
     }
-    renderResources();
-  } catch (error) {
-    byId("resourceTree").textContent = error.message;
   }
 }
 
-function beginRepositorySync() {
-  window.clearInterval(state.repositorySyncTimer);
-  const seconds = Math.max(
-    15,
-    Math.min(
-      3600,
-      Number(state.config?.workspace_sync_interval_seconds) || 60
-    )
-  );
-  state.repositorySyncTimer = window.setInterval(async () => {
-    if (document.hidden) return;
-    await Promise.all([loadDrafts(), loadRepository(true)]);
-  }, seconds * 1000);
+async function syncRemoteWorkspace(options = {}) {
+  const store = workspaceStore();
+  const userId = workspaceUserId();
+  if (!store || !userId) return null;
+  const button = byId("refreshRepositoryButton");
+  if (button) button.disabled = true;
+  if (!options.quiet && !state.baseTree) {
+    byId("resourceTree").textContent = "正在同步远端基树…";
+  }
+  const previous = readLocalWorkspace();
+  const previousChanges = previous?.changes || [];
+  try {
+    const payload = await api("/repository/tree?refresh=true");
+    if (
+      !payload?.revision ||
+      !Array.isArray(payload.items)
+    ) {
+      throw new Error("远端目录树响应不完整");
+    }
+    const workspace = store.syncBase(
+      window.localStorage,
+      userId,
+      workspaceRepository(),
+      payload.revision,
+      payload.items
+    );
+    applyWorkspaceState(workspace);
+    migrateLegacyChanges();
+    await rebaseLocalChanges(previousChanges, payload.items);
+    applyWorkspaceState(readLocalWorkspace());
+    state.remoteContent.clear();
+    feedback(
+      byId("editorFeedback"),
+      `已同步远端版本 ${String(payload.revision).slice(0, 7)}。`,
+      "success"
+    );
+    return readLocalWorkspace();
+  } catch (error) {
+    if (!state.baseTree) {
+      byId("resourceTree").textContent = error.message;
+    } else if (!options.quiet) {
+      feedback(byId("editorFeedback"), error.message);
+    }
+    return null;
+  } finally {
+    if (button) button.disabled = !state.session.can_edit;
+  }
 }
 
 async function loadStaticRepositoryFile(path, expectedSha) {
@@ -1159,26 +1343,41 @@ async function openResource(path) {
     return;
   }
   showEditorLoading(path);
-  const openStartedAt = performance.now();
   try {
-    const sourceStartedAt = performance.now();
     const repositoryEntry = state.repository.find((item) => item.path === path);
-    let file = await loadStaticRepositoryFile(path, repositoryEntry?.sha);
+    let file =
+      typeof repositoryEntry?.content === "string"
+        ? {
+            path,
+            sha: repositoryEntry.sha,
+            content: repositoryEntry.content,
+            sourceType: "current-tree"
+          }
+        : await loadStaticRepositoryFile(path, repositoryEntry?.sha);
     if (!file) {
       file = await api(`/repository/file?path=${encodeURIComponent(path)}`);
       file.sourceType = "repository-api";
     }
-    // #region debug-point G:workspace-source-load
-    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"G",location:"editor.js:openResource",msg:"[DEBUG] Workspace source loaded","data":{sourceType:file.sourceType,sourceMs:Math.round((performance.now()-sourceStartedAt)*10)/10,sourceLength:file.content.length,shaMatchesTree:Boolean(repositoryEntry&&file.sha===repositoryEntry.sha)},ts:Date.now()})}).catch(()=>{});
-    // #endregion
+    const store = workspaceStore();
+    if (store && workspaceUserId()) {
+      applyWorkspaceState(
+        store.hydrateBaseFile(
+          window.localStorage,
+          workspaceUserId(),
+          workspaceRepository(),
+          file.path,
+          file.sha,
+          file.content
+        )
+      );
+    }
     state.active = {
       draftId: null,
       path: file.path,
       baseSha: file.sha,
       baseContent: file.content,
       content: file.content,
-      operation: "upsert",
-      openStartedAt
+      operation: "upsert"
     };
     state.remoteContent.set(file.path, file.content);
     byId("emptyEditor").hidden = true;
@@ -1203,70 +1402,6 @@ async function openResource(path) {
   }
 }
 
-async function saveActiveDraft() {
-  if (!state.active) return;
-  clearFeedback(byId("editorFeedback"));
-  try {
-    const canonicalContent = editorContent();
-    const serializedContent =
-      state.visualEditor &&
-      window.GCKMarkdown &&
-      state.active.originalContent !== undefined
-        ? window.GCKMarkdown.preserveSourceFormatting(
-            state.active.originalContent,
-            state.active.canonicalContent,
-            canonicalContent
-          )
-        : canonicalContent;
-    // #region debug-point D:workspace-save-payload
-    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"D",location:"editor.js:saveActiveDraft",msg:"[DEBUG] Workspace draft save payload",data:{originalLength:state.active.originalContent.length,canonicalLength:canonicalContent.length,outputLength:serializedContent.length,canonicalSame:canonicalContent===state.active.canonicalContent,sourceSame:serializedContent===state.active.originalContent,escapedHeadings:(serializedContent.match(/^## \\d+\\\\\\./gm)||[]).length,dashBullets:(serializedContent.match(/^- /gm)||[]).length,starBullets:(serializedContent.match(/^\\* /gm)||[]).length,compactTable:serializedContent.includes("|---|"),spacedTable:serializedContent.includes("| --- |")},ts:Date.now()})}).catch(()=>{});
-    // #endregion
-    const unsavedNewFile =
-      !state.active.draftId && !state.active.baseSha;
-    if (
-      serializedContent === state.active.originalContent &&
-      !unsavedNewFile
-    ) {
-      // #region debug-point F:workspace-noop-skipped
-      fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"F",location:"editor.js:saveActiveDraft",msg:"[DEBUG] Workspace unchanged save skipped","data":{sourceSame:true,apiCalled:false,hadDraft:Boolean(state.active.draftId)},ts:Date.now()})}).catch(()=>{});
-      // #endregion
-      feedback(
-        byId("editorFeedback"),
-        "没有检测到需要保存的更改。",
-        "success"
-      );
-      return;
-    }
-    const saved = await api("/drafts", {
-      method: "PUT",
-      body: JSON.stringify({
-        path: byId("filePath").value,
-        content: serializedContent,
-        base_sha: state.active.baseSha,
-        base_content: state.active.baseContent,
-        operation: "upsert"
-      })
-    });
-    // #region debug-point F:workspace-noop-created
-    fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix-latency",hypothesisId:"F",location:"editor.js:saveActiveDraft",msg:"[DEBUG] Workspace changed or new save completed","data":{sourceSame:serializedContent===state.active.originalContent,apiCalled:true,savedDraftId:saved.id,hadDraft:Boolean(state.active.draftId),unsavedNewFile},ts:Date.now()})}).catch(()=>{});
-    // #endregion
-    state.active.draftId = saved.id;
-    state.active.path = saved.path;
-    state.active.content = saved.content;
-    state.active.operation = saved.operation;
-    state.active.baseContent =
-      typeof saved.base_content === "string"
-        ? saved.base_content
-        : state.active.baseContent;
-    state.active.originalContent = saved.content;
-    state.active.canonicalContent = canonicalContent;
-    feedback(byId("editorFeedback"), "草稿已保存到个人工作区", "success");
-    await loadDrafts();
-  } catch (error) {
-    feedback(byId("editorFeedback"), error.message);
-  }
-}
-
 async function discardDraft(draft, confirmChange = true) {
   if (
     confirmChange &&
@@ -1274,28 +1409,32 @@ async function discardDraft(draft, confirmChange = true) {
   ) {
     return;
   }
-  try {
-    await api(`/drafts/${draft.id}`, { method: "DELETE" });
-    await loadDrafts();
-    if (state.active?.path === draft.path) {
-      const restoreRemote = Boolean(draft.base_sha);
-      state.active = null;
-      destroyVisualEditor();
-      byId("activeEditor").hidden = true;
-      byId("emptyEditor").hidden = false;
-      resetEmptyEditor();
-      if (restoreRemote && state.workspaceView === "resources") {
-        await openResource(draft.path);
-      }
+  const store = workspaceStore();
+  const workspace = store?.discardChange(
+    window.localStorage,
+    workspaceUserId(),
+    workspaceRepository(),
+    draft.path
+  );
+  applyWorkspaceState(workspace);
+  if (state.active?.path === draft.path) {
+    const restoreRemote = Boolean(draft.base_sha);
+    state.active = null;
+    destroyVisualEditor();
+    byId("activeEditor").hidden = true;
+    byId("emptyEditor").hidden = false;
+    resetEmptyEditor();
+    if (restoreRemote && state.workspaceView === "resources") {
+      await openResource(draft.path);
     }
-  } catch (error) {
-    feedback(byId("editorFeedback"), error.message);
   }
 }
 
 async function discardActiveDraft() {
-  if (!state.active?.draftId) return;
-  const draft = state.drafts.find((item) => item.id === state.active.draftId);
+  if (!state.active) return;
+  const draft = state.drafts.find(
+    (item) => item.path === state.active.path
+  );
   if (draft) {
     await discardDraft(draft);
   }
@@ -1325,22 +1464,24 @@ async function markActiveFileDeleted() {
   ) {
     return;
   }
-  try {
-    const deleted = await api("/drafts", {
-      method: "PUT",
-      body: JSON.stringify({
-        path: state.active.path,
-        content: "",
-        base_sha: state.active.baseSha,
-        base_content: state.active.baseContent,
-        operation: "delete"
-      })
-    });
-    await loadDrafts();
-    await openDraft(deleted);
-  } catch (error) {
-    feedback(byId("editorFeedback"), error.message);
-  }
+  const diff = localLineDiff(
+    state.active.baseContent || "",
+    "",
+    "delete"
+  );
+  applyLocalChange({
+    path: state.active.path,
+    content: "",
+    operation: "delete",
+    baseSha: state.active.baseSha,
+    baseContent: state.active.baseContent,
+    ...diff,
+    updatedAt: Date.now()
+  });
+  const deleted = state.drafts.find(
+    (item) => item.path === state.active.path
+  );
+  if (deleted) await openDraft(deleted);
 }
 
 async function togglePreview() {
@@ -1560,7 +1701,8 @@ byId("passwordForm").addEventListener("submit", async (event) => {
 });
 
 byId("logoutButton").addEventListener("click", logout);
-byId("saveDraftButton").addEventListener("click", saveActiveDraft);
+byId("saveDraftButton").addEventListener("click", saveActiveLocally);
+byId("contentEditor").addEventListener("input", scheduleActivePersist);
 byId("discardDraftButton").addEventListener("click", discardActiveDraft);
 byId("markDeleteButton").addEventListener("click", markActiveFileDeleted);
 byId("previewButton").addEventListener("click", togglePreview);
@@ -1595,19 +1737,45 @@ byId("onboardingFinish").addEventListener("click", completeOnboarding);
 byId("onboardingDialog").addEventListener("cancel", (event) => {
   event.preventDefault();
 });
-// #region debug-point A:file-dialog-click
-byId("fileForm").addEventListener("click",(event)=>{const button=event.target.closest("button");if(button)fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"A",location:"editor.js:fileForm-click",msg:"[DEBUG] File dialog button clicked",data:{value:button.value,type:button.type,formValid:event.currentTarget.matches(":valid")},ts:Date.now()})}).catch(()=>{})});
-// #endregion
-// #region debug-point B:file-dialog-invalid
-byId("fileForm").addEventListener("invalid",(event)=>{fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"B",location:"editor.js:fileForm-invalid",msg:"[DEBUG] Native validation blocked file dialog",data:{field:event.target.name,validationMessage:event.target.validationMessage},ts:Date.now()})}).catch(()=>{})},true);
-// #endregion
 byId("resourceSearch").addEventListener("input", (event) => {
   state.resourceFilter = event.currentTarget.value;
   renderResources();
 });
 byId("refreshRepositoryButton").addEventListener("click", async () => {
-  state.repository = [];
-  await Promise.all([loadRepository(true), loadDrafts()]);
+  await syncRemoteWorkspace();
+});
+byId("releaseWorkspaceButton").addEventListener("click", () => {
+  if (!state.drafts.length) {
+    feedback(
+      byId("editorFeedback"),
+      "当前树已经与基树一致，无需释放。",
+      "success"
+    );
+    return;
+  }
+  if (
+    !window.confirm(
+      `释放 ${state.drafts.length} 个本地更改？此操作无法撤销。`
+    )
+  ) {
+    return;
+  }
+  const workspace = workspaceStore().release(
+    window.localStorage,
+    workspaceUserId(),
+    workspaceRepository()
+  );
+  state.active = null;
+  destroyVisualEditor();
+  byId("activeEditor").hidden = true;
+  byId("emptyEditor").hidden = false;
+  resetEmptyEditor();
+  applyWorkspaceState(workspace);
+  feedback(
+    byId("editorFeedback"),
+    "本地 Current Tree 已重置为 Base Tree。",
+    "success"
+  );
 });
 byId("githubUnlinkButton").addEventListener("click", async () => {
   try {
@@ -1632,9 +1800,6 @@ document.querySelectorAll("[data-workspace-view]").forEach((button) => {
 });
 
 byId("fileForm").addEventListener("submit", async (event) => {
-  // #region debug-point A:file-dialog-submit
-  fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"draft-markdown-churn",runId:"post-fix",hypothesisId:"A",location:"editor.js:fileForm-submit",msg:"[DEBUG] File dialog submit handler entered",data:{submitterValue:event.submitter?.value,formValid:event.currentTarget.matches(":valid")},ts:Date.now()})}).catch(()=>{});
-  // #endregion
   event.preventDefault();
   if (event.submitter?.value === "cancel") {
     byId("fileDialog").close();
@@ -1642,15 +1807,36 @@ byId("fileForm").addEventListener("submit", async (event) => {
   }
   clearFeedback(byId("fileDialogFeedback"));
   const payload = formPayload(event.currentTarget);
-  state.active = {
-    draftId: null,
-    path: payload.path,
+  const path = payload.path.trim().replace(/\\/g, "/").replace(/^\/+/, "");
+  if (
+    (state.currentTree?.entries || []).some(
+      (entry) => entry.path === path
+    )
+  ) {
+    feedback(byId("fileDialogFeedback"), "当前树中已存在该路径");
+    return;
+  }
+  const content = `# ${payload.title.trim()}\n\n`;
+  const diff = localLineDiff("", content, "upsert");
+  applyLocalChange({
+    path,
+    content,
+    operation: "upsert",
     baseSha: null,
     baseContent: "",
-    content: `# ${payload.title}\n\n`,
+    ...diff,
+    updatedAt: Date.now()
+  });
+  state.active = {
+    draftId: null,
+    path,
+    baseSha: null,
+    baseContent: "",
+    content,
     operation: "upsert"
   };
   byId("fileDialog").close();
+  event.currentTarget.reset();
   byId("emptyEditor").hidden = true;
   byId("activeEditor").hidden = false;
   byId("filePath").value = state.active.path;
@@ -1670,13 +1856,40 @@ byId("topicForm").addEventListener("submit", async (event) => {
   }
   clearFeedback(byId("topicDialogFeedback"));
   try {
-    const result = await api("/topics", {
-      method: "POST",
-      body: JSON.stringify(formPayload(event.currentTarget))
+    const values = formPayload(event.currentTarget);
+    const slug = slugify(values.slug);
+    const parent = values.parent
+      .trim()
+      .replace(/\\/g, "/")
+      .replace(/^\/+|\/+$/g, "");
+    const path = [values.root, parent, slug, "README.md"]
+      .filter(Boolean)
+      .join("/");
+    if (
+      (state.currentTree?.entries || []).some(
+        (entry) => entry.path === path
+      )
+    ) {
+      throw new Error("当前树中已存在该专题");
+    }
+    let content = `# ${values.title.trim()}\n\n`;
+    if (values.description.trim()) {
+      content += `${values.description.trim()}\n\n`;
+    }
+    content += "## 阅读导航\n\n请在此处补充章节入口和推荐阅读顺序。\n";
+    const diff = localLineDiff("", content, "upsert");
+    applyLocalChange({
+      path,
+      content,
+      operation: "upsert",
+      baseSha: null,
+      baseContent: "",
+      ...diff,
+      updatedAt: Date.now()
     });
+    const result = state.drafts.find((draft) => draft.path === path);
     byId("topicDialog").close();
     event.currentTarget.reset();
-    await loadDrafts();
     await openDraft(result);
   } catch (error) {
     feedback(byId("topicDialogFeedback"), error.message);
@@ -1696,25 +1909,46 @@ byId("moduleForm").addEventListener("submit", async (event) => {
   submit.disabled = true;
   try {
     const values = formPayload(form);
-    const result = await api("/modules", {
-      method: "POST",
-      body: JSON.stringify({
-        slug: values.slug,
-        title: values.title,
-        short_title: values.short_title,
-        description: values.description,
-        icon: values.icon,
-        accent: values.accent,
-        allow_code: form.allow_code.checked
-      })
+    const track = values.track === "planning" ? "planning" : "program";
+    const slug = slugify(values.slug);
+    const path = `${track}/${slug}/README.md`;
+    if (
+      (state.currentTree?.entries || []).some(
+        (entry) => entry.path === path
+      )
+    ) {
+      throw new Error("当前树中已存在该大模块");
+    }
+    const description = values.description.trim() ||
+      `${values.title.trim()} 的知识内容与阅读导航。`;
+    const content =
+      "---\n" +
+      `shortTitle: ${JSON.stringify(values.short_title.trim())}\n` +
+      `icon: ${JSON.stringify(values.icon)}\n` +
+      `accent: ${JSON.stringify(values.accent)}\n` +
+      `allowCode: ${form.allow_code.checked ? "true" : "false"}\n` +
+      "---\n" +
+      `# ${values.title.trim()}\n\n` +
+      `${description}\n\n` +
+      "## 内容导航\n\n" +
+      "在此模块下创建子目录和 Markdown，网站会自动生成导航。\n";
+    const diff = localLineDiff("", content, "upsert");
+    applyLocalChange({
+      path,
+      content,
+      operation: "upsert",
+      baseSha: null,
+      baseContent: "",
+      ...diff,
+      updatedAt: Date.now()
     });
+    const result = state.drafts.find((draft) => draft.path === path);
     byId("moduleDialog").close();
     form.reset();
-    await loadDrafts();
     await openDraft(result);
     feedback(
       byId("editorFeedback"),
-      `大模块 ${result.path} 已创建为草稿。`,
+      `大模块 ${result.path} 已写入本地 Current Tree。`,
       "success"
     );
   } catch (error) {
@@ -1751,11 +1985,16 @@ byId("submitForm").addEventListener("submit", async (event) => {
   button.disabled = true;
   button.textContent = "正在创建分支和 PR";
   try {
-    await syncReaderBuffers();
-    const pendingLocal = readerBuffers();
-    if (pendingLocal.length) {
+    if (state.active?.operation !== "delete") {
+      persistActiveChange();
+    }
+    if (!state.drafts.length) {
+      throw new Error("没有可提交的本地更改。");
+    }
+    const conflicted = state.drafts.filter((draft) => draft.conflict);
+    if (conflicted.length) {
       throw new Error(
-        "仍有本地更改未完成合并，请先处理冲突后再提交。"
+        `有 ${conflicted.length} 个文件存在远端冲突，请先同步并处理。`
       );
     }
     const submitChanges = (overwrite) =>
@@ -1763,7 +2002,19 @@ byId("submitForm").addEventListener("submit", async (event) => {
         method: "POST",
         body: JSON.stringify({
           ...formPayload(form),
-          overwrite
+          overwrite,
+          base_revision: state.baseTree?.revision || null,
+          changes: state.drafts.map((draft) => ({
+            path: draft.path,
+            content:
+              draft.operation === "delete" ? "" : draft.content,
+            operation: draft.operation,
+            base_sha: draft.base_sha || null,
+            base_content:
+              typeof draft.base_content === "string"
+                ? draft.base_content
+                : null
+          }))
         })
       });
     let result;
@@ -1813,7 +2064,14 @@ byId("submitForm").addEventListener("submit", async (event) => {
     byId("activeEditor").hidden = true;
     byId("emptyEditor").hidden = false;
     resetEmptyEditor();
-    await Promise.all([loadDrafts(), loadSubmissions()]);
+    applyWorkspaceState(
+      workspaceStore().release(
+        window.localStorage,
+        workspaceUserId(),
+        workspaceRepository()
+      )
+    );
+    await loadSubmissions();
   } catch (error) {
     feedback(
       byId("submitFeedback"),

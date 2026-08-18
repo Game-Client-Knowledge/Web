@@ -570,6 +570,7 @@
         editorApi: {{ (site.editorUrl ~ 'api') | json | safe }},
         assetVersion: {{ site.assetVersion | json | safe }},
         contentVersion: {{ catalog.repository.commit | json | safe }},
+        repository: {{ catalog.repositoryUrl | json | safe }},
         rawBase: {{ '/raw/' | withBase | json | safe }},
         contentRoutes: {{ catalog.sourceRoutes | json | safe }},
         workspaceEntries: {{ catalog.workspaceEntries | json | safe }},
@@ -609,6 +610,7 @@
       <script src="{{ '/assets/vendor/diff.js' | assetUrl }}"></script>
       <script src="{{ '/assets/js/markdown-preserve.js' | assetUrl }}"></script>
       <script src="{{ '/assets/js/editor-buffer.js' | assetUrl }}"></script>
+      <script src="{{ '/assets/js/workspace-store.js' | assetUrl }}"></script>
       <script src="{{ '/assets/js/workspace-tree.js' | assetUrl }}"></script>
       <script src="{{ '/assets/js/reader-diff.js' | assetUrl }}"></script>
     {% endif %}

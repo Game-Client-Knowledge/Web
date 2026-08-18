@@ -10,13 +10,13 @@
     config: null,
     session: null,
     csrf: "",
-    serverDrafts: [],
+    baseTree: null,
+    currentTree: null,
+    legacyDrafts: [],
     drafts: [],
     localChanges: [],
-    draftRevision: "",
     workspaceSnapshot: null,
-    workspaceSyncTimer: 0,
-    workspaceSyncPromise: null,
+    remoteSyncPromise: null,
     workspaceRenderFrame: 0,
     editMode: window.localStorage.getItem("gck-edit-mode") === "1",
     inlinePanel: null,
@@ -279,66 +279,147 @@
 
   async function loadDrafts() {
     if (!state.session || !state.session.authenticated || !state.session.can_edit) {
-      state.serverDrafts = [];
+      state.baseTree = null;
+      state.currentTree = null;
       state.drafts = [];
       return;
     }
-    try {
-      const payload = await api("/drafts");
-      state.serverDrafts = payload.items || [];
-      state.draftRevision = payload.revision || "";
-      refreshEffectiveDrafts();
-    } catch {
-      refreshEffectiveDrafts();
-    }
-  }
-
-  function localBufferChanges() {
-    const buffers = editorBufferApi();
+    const store = window.GCKWorkspaceStore;
     const userId = editorUserId();
-    if (!buffers || !buffers.list || !userId) {
-      return [];
+    if (!store || !userId) return;
+    applyWorkspaceState(
+      store.ensure(
+        window.localStorage,
+        userId,
+        workspaceRepository(),
+        config.contentVersion,
+        config.workspaceEntries || []
+      )
+    );
+    migrateLegacyChanges();
+    const buffers = editorBufferApi();
+    if (buffers && buffers.list) {
+      buffers.list(window.localStorage, userId).forEach(function (change) {
+        applyWorkspaceChange(change);
+        buffers.remove(window.localStorage, userId, change.path);
+      });
     }
-    return buffers.list(window.localStorage, userId);
   }
 
-  function refreshEffectiveDrafts() {
-    state.localChanges = localBufferChanges();
-    const drafts = new Map(
-      state.serverDrafts.map(function (draft) {
-        return [draft.path, { ...draft, local: false }];
-      })
+  function workspaceRepository() {
+    const repository =
+      (state.config && state.config.repository) ||
+      config.repository ||
+      "Game-Client-Knowledge/Game-Client-Knowledge";
+    return repository
+      .replace(/^https?:\/\/github\.com\//, "")
+      .replace(/\.git$/, "");
+  }
+
+  function readLocalWorkspace() {
+    const store = window.GCKWorkspaceStore;
+    const userId = editorUserId();
+    if (!store || !userId) return null;
+    const base = store.readBase(
+      window.localStorage,
+      userId,
+      workspaceRepository()
     );
-    state.localChanges.forEach(function (change) {
-      const remote = drafts.get(change.path);
-      drafts.set(change.path, {
-        ...(remote || {}),
-        path: change.path,
-        content: change.content,
-        operation: change.operation || "upsert",
-        base_sha: change.baseSha || (remote && remote.base_sha) || null,
-        revision: Number(change.serverRevision) || 0,
-        updated_at: change.updatedAt,
-        local: true,
-        conflict: Boolean(change.conflict),
+    const current = store.readCurrent(
+      window.localStorage,
+      userId,
+      workspaceRepository()
+    );
+    if (!base || !current) return null;
+    return {
+      base,
+      current,
+      changes: store.deriveChanges(base, current)
+    };
+  }
+
+  function applyWorkspaceState(workspace) {
+    if (!workspace) return false;
+    state.baseTree = workspace.base;
+    state.currentTree = workspace.current;
+    state.localChanges = workspace.changes || [];
+    state.drafts = state.localChanges.map(function (change) {
+      return {
+        ...change,
+        base_sha: change.baseSha || null,
         base_content:
           typeof change.baseContent === "string"
             ? change.baseContent
             : null,
-        line_diff: Array.isArray(change.lineDiff)
-          ? change.lineDiff
-          : [],
+        line_diff: change.lineDiff || [],
         diff_summary: change.diffSummary || {
           added: 0,
           modified: 0,
           deleted: 0
-        }
-      });
-    });
-    state.drafts = Array.from(drafts.values()).sort(function (left, right) {
-      return Number(right.updated_at || 0) - Number(left.updated_at || 0);
+        },
+        updated_at: change.updatedAt,
+        local: true
+      };
     });
     rebuildWorkspaceSnapshot();
+    return true;
+  }
+
+  function applyWorkspaceChange(change) {
+    const store = window.GCKWorkspaceStore;
+    const userId = editorUserId();
+    if (!store || !userId) return null;
+    const workspace = store.applyChange(
+      window.localStorage,
+      userId,
+      workspaceRepository(),
+      change
+    );
+    applyWorkspaceState(workspace);
+    return state.drafts.find(function (draft) {
+      return draft.path === change.path;
+    }) || null;
+  }
+
+  function migrateLegacyChanges() {
+    const userId = editorUserId();
+    if (!userId || !state.legacyDrafts.length) return;
+    const legacyDrafts = state.legacyDrafts.slice();
+    const key =
+      "gck-workspace-legacy-migrated:v1:" +
+      encodeURIComponent(String(userId)) +
+      ":" +
+      encodeURIComponent(workspaceRepository());
+    if (window.localStorage.getItem(key) !== "1") {
+      legacyDrafts.forEach(function (draft) {
+        applyWorkspaceChange({
+          path: draft.path,
+          content: draft.content,
+          operation: draft.operation || "upsert",
+          baseSha: draft.base_sha || null,
+          baseContent:
+            typeof draft.base_content === "string"
+              ? draft.base_content
+              : null,
+          updatedAt: Date.parse(draft.updated_at) || Date.now()
+        });
+      });
+      window.localStorage.setItem(key, "1");
+    }
+    state.legacyDrafts = [];
+    Promise.allSettled(
+      legacyDrafts
+        .filter(function (draft) {
+          return draft.id;
+        })
+        .map(function (draft) {
+          return api("/drafts/" + draft.id, { method: "DELETE" });
+        })
+    );
+  }
+
+  function refreshEffectiveDrafts() {
+    applyWorkspaceState(readLocalWorkspace());
   }
 
   function rebuildWorkspaceSnapshot() {
@@ -349,8 +430,10 @@
       return;
     }
     const entries = tree.mergeEntries(
-      config.workspaceEntries || [],
-      state.serverDrafts,
+      (state.baseTree && state.baseTree.entries) ||
+        config.workspaceEntries ||
+        [],
+      [],
       state.localChanges
     );
     state.workspaceSnapshot = tree.buildModuleTree(root, entries);
@@ -380,15 +463,17 @@
   }
 
   async function discardDraft(draft) {
-    removeEditorBuffer(draft.path);
-    if (draft.id) {
-      await api("/drafts/" + draft.id, { method: "DELETE" });
-      state.serverDrafts = state.serverDrafts.filter(function (item) {
-        return item.id !== draft.id;
-      });
-      state.draftRevision = "";
+    const store = window.GCKWorkspaceStore;
+    if (store) {
+      applyWorkspaceState(
+        store.discardChange(
+          window.localStorage,
+          editorUserId(),
+          workspaceRepository(),
+          draft.path
+        )
+      );
     }
-    refreshEffectiveDrafts();
     updateAccountView();
     addDraftNavigation();
   }
@@ -508,7 +593,7 @@
             : status === "M"
               ? "已修改"
               : "已删除"
-        ) + " · 个人未提交草稿";
+        ) + " · 本地未提交更改";
   }
 
   function normalizeRoutePath(value) {
@@ -922,7 +1007,7 @@
     badge.className = "draft-change-badge";
     badge.dataset.status = status;
     badge.textContent = conflict ? "!" : status;
-    badge.title = conflict ? "本地与服务器草稿冲突" : "Git " + status;
+    badge.title = conflict ? "本地更改与远端基树冲突" : "Git " + status;
     target.append(badge);
   }
 
@@ -1257,10 +1342,11 @@
     state.csrf = state.session && state.session.authenticated
       ? state.session.csrf_token
       : "";
-    state.cachedDraftCount = Number(payload.draft_count || 0);
-    state.serverDrafts = payload.drafts || [];
-    state.draftRevision = payload.draft_revision || "";
-    refreshEffectiveDrafts();
+    state.legacyDrafts = payload.drafts || [];
+    if (state.session && state.session.authenticated) {
+      loadDrafts();
+    }
+    state.cachedDraftCount = state.drafts.length;
     updateAccountView();
     if (payload.config) {
       window.dispatchEvent(
@@ -1523,20 +1609,34 @@
   }
 
   function readEditorBuffer(path) {
-    const buffers = editorBufferApi();
-    const userId = editorUserId();
-    if (!buffers || !userId) {
-      return null;
-    }
-    return buffers.read(window.localStorage, userId, path);
+    const draft = state.drafts.find(function (item) {
+      return item.path === path;
+    });
+    if (!draft) return null;
+    return {
+      ...draft,
+      baseSha: draft.base_sha || draft.baseSha || null,
+      baseContent:
+        typeof draft.base_content === "string"
+          ? draft.base_content
+          : draft.baseContent,
+      lineDiff: draft.line_diff || draft.lineDiff || [],
+      diffSummary: draft.diff_summary || draft.diffSummary,
+      updatedAt: draft.updated_at || draft.updatedAt
+    };
   }
 
   function removeEditorBuffer(path) {
-    const buffers = editorBufferApi();
-    const userId = editorUserId();
-    if (buffers && userId) {
-      buffers.remove(window.localStorage, userId, path);
-    }
+    const store = window.GCKWorkspaceStore;
+    if (!store || !editorUserId()) return;
+    applyWorkspaceState(
+      store.discardChange(
+        window.localStorage,
+        editorUserId(),
+        workspaceRepository(),
+        path
+      )
+    );
   }
 
   function cachedLineDiff(baseContent, nextContent, operation) {
@@ -1572,22 +1672,26 @@
   }
 
   function writeEditorBuffer(path, value) {
-    const buffers = editorBufferApi();
-    const userId = editorUserId();
-    if (!buffers || !userId) return null;
     const diff = cachedLineDiff(
       value.baseContent,
       value.content,
       value.operation
     );
-    const saved = buffers.write(window.localStorage, userId, path, {
+    if (
+      value.operation !== "delete" &&
+      value.baseSha &&
+      value.content === value.baseContent
+    ) {
+      removeEditorBuffer(path);
+      scheduleWorkspaceRender();
+      return null;
+    }
+    const saved = applyWorkspaceChange({
+      path,
       ...value,
       lineDiff: diff.rows,
       diffSummary: diff.summary
     });
-    if (saved) {
-      refreshEffectiveDrafts();
-    }
     scheduleWorkspaceRender();
     return saved;
   }
@@ -1602,194 +1706,137 @@
     });
   }
 
-  function replaceServerDraft(saved) {
-    const index = state.serverDrafts.findIndex(function (item) {
-      return item.path === saved.path;
-    });
-    if (index >= 0) state.serverDrafts[index] = saved;
-    else state.serverDrafts.push(saved);
-    state.draftRevision = "";
-    refreshEffectiveDrafts();
-  }
-
-  function mergeLocalWithRemote(change, remote) {
-    if (
-      !remote ||
-      typeof change.baseContent !== "string" ||
-      !window.JsDiff
-    ) {
-      return null;
-    }
-    const patch = window.JsDiff.createPatch(
-      change.path,
-      change.syncBaseContent || change.baseContent,
-      change.content,
-      "",
-      ""
+  async function rebaseWorkspaceChanges(changes, remoteEntries) {
+    const remoteByPath = new Map(
+      remoteEntries.map(function (entry) {
+        return [entry.path, entry];
+      })
     );
-    const merged = window.JsDiff.applyPatch(remote.content, patch);
-    return typeof merged === "string" ? merged : null;
-  }
-
-  async function syncBufferedChange(change, options, retried) {
-    try {
-      const saved = await api("/drafts", {
-        method: "PUT",
-        keepalive: Boolean(options && options.keepalive),
-        body: JSON.stringify({
-          path: change.path,
-          content: change.operation === "delete" ? "" : change.content,
-          base_sha: change.baseSha || null,
-          base_content:
-            typeof change.baseContent === "string"
-              ? change.baseContent
-              : null,
-          base_revision: Number(change.serverRevision) || 0,
-          operation: change.operation || "upsert"
-        })
-      });
-      replaceServerDraft(saved);
-      const latest = readEditorBuffer(change.path);
-      if (!latest || latest.updatedAt === change.updatedAt) {
-        removeEditorBuffer(change.path);
-      } else {
-        latest.serverRevision = saved.revision;
-        latest.syncBaseContent = saved.content;
-        writeEditorBuffer(change.path, latest);
-      }
-      refreshEffectiveDrafts();
-      const panel = state.inlinePanel;
-      if (
-        panel &&
-        panel.dataset.path === change.path &&
-        panel.bufferedContent === change.content
-      ) {
-        panel.dataset.draftId = String(saved.id);
-        panel.serverRevision = saved.revision;
-        panel.lastSyncedContent = saved.content;
-        panel.originalContent = saved.content;
-        setEditorSyncState(
-          panel,
-          "synced",
-          "更改已同步到服务器。",
-          "success"
-        );
-      }
-      return saved;
-    } catch (error) {
-      const remote =
-        error.status === 409 &&
-        error.detail &&
-        error.detail.code === "draft_revision_conflict"
-          ? error.detail.draft
-          : null;
-      if (
-        !retried &&
-        remote &&
-        change.operation === "delete"
-      ) {
-        const updated = {
-          ...change,
-          serverRevision: remote.revision,
-          conflict: false,
-          updatedAt: Date.now()
-        };
-        writeEditorBuffer(change.path, updated);
-        replaceServerDraft(remote);
-        return syncBufferedChange(updated, options, true);
-      }
-      if (!retried && remote) {
-        const merged = mergeLocalWithRemote(change, remote);
-        if (merged !== null) {
-          const updated = {
+    for (const change of changes) {
+      const remote = remoteByPath.get(change.path);
+      if (!remote) {
+        if (change.baseSha && change.operation === "delete") {
+          removeEditorBuffer(change.path);
+        } else if (change.baseSha) {
+          applyWorkspaceChange({
             ...change,
-            content: merged,
-            syncBaseContent: remote.content,
-            serverRevision: remote.revision,
-            conflict: false,
-            updatedAt: Date.now()
-          };
-          writeEditorBuffer(change.path, updated);
-          replaceServerDraft(remote);
-          return syncBufferedChange(updated, options, true);
+            conflict: true,
+            conflictReason: "远端文件已删除"
+          });
         }
+        continue;
       }
-      writeEditorBuffer(change.path, {
-        ...change,
-        conflict:
-          error.status === 409 ||
-          Boolean(change.conflict),
-        updatedAt: change.updatedAt || Date.now()
-      });
-      return null;
-    }
-  }
-
-  async function pullServerDrafts() {
-    if (!state.session || !state.session.can_edit) return false;
-    const suffix = state.draftRevision
-      ? "?revision=" + encodeURIComponent(state.draftRevision)
-      : "";
-    const payload = await api("/drafts" + suffix);
-    state.draftRevision = payload.revision || state.draftRevision;
-    if (!payload.changed) return false;
-    state.serverDrafts = payload.items || [];
-    refreshEffectiveDrafts();
-    addDraftNavigation();
-    return true;
-  }
-
-  async function syncWorkspaceState(options) {
-    if (
-      state.workspaceSyncPromise ||
-      !state.session ||
-      !state.session.can_edit
-    ) {
-      return state.workspaceSyncPromise;
-    }
-    state.workspaceSyncPromise = (async function () {
+      if (!change.baseSha) {
+        applyWorkspaceChange({
+          ...change,
+          conflict: true,
+          conflictReason: "远端已创建同名文件"
+        });
+        continue;
+      }
+      if (remote.sha === change.baseSha) continue;
+      if (change.operation === "delete") {
+        applyWorkspaceChange({
+          ...change,
+          conflict: true,
+          conflictReason: "远端文件在本地删除后发生了修改"
+        });
+        continue;
+      }
       try {
-        await pullServerDrafts();
-      } catch {
-        // Local changes remain authoritative while the server is unavailable.
+        const latest = await api(
+          "/repository/file?path=" + encodeURIComponent(change.path)
+        );
+        const patch = window.JsDiff
+          ? window.JsDiff.createPatch(
+              change.path,
+              change.baseContent || "",
+              change.content,
+              "",
+              ""
+            )
+          : null;
+        const merged = patch
+          ? window.JsDiff.applyPatch(latest.content, patch)
+          : null;
+        applyWorkspaceChange({
+          ...change,
+          content:
+            typeof merged === "string" ? merged : change.content,
+          baseSha: latest.sha,
+          baseContent: latest.content,
+          conflict: typeof merged !== "string",
+          conflictReason:
+            typeof merged === "string"
+              ? ""
+              : "远端与本地修改了相同内容",
+          updatedAt: Date.now()
+        });
+      } catch (error) {
+        applyWorkspaceChange({
+          ...change,
+          conflict: true,
+          conflictReason: error.message
+        });
       }
-      const changes = localBufferChanges();
-      for (const change of changes) {
-        await syncBufferedChange(change, options, false);
+    }
+  }
+
+  async function syncRemoteWorkspace() {
+    if (
+      state.remoteSyncPromise ||
+      !state.session ||
+      !state.session.can_edit ||
+      !window.GCKWorkspaceStore
+    ) {
+      return state.remoteSyncPromise;
+    }
+    const previous = readLocalWorkspace();
+    const previousChanges = previous ? previous.changes : [];
+    state.remoteSyncPromise = (async function () {
+      const payload = await api("/repository/tree");
+      if (
+        !payload ||
+        !payload.revision ||
+        !Array.isArray(payload.items)
+      ) {
+        throw new Error("远端目录树响应不完整");
       }
+      applyWorkspaceState(
+        window.GCKWorkspaceStore.syncBase(
+          window.localStorage,
+          editorUserId(),
+          workspaceRepository(),
+          payload.revision,
+          payload.items || []
+        )
+      );
+      await rebaseWorkspaceChanges(
+        previousChanges,
+        payload.items || []
+      );
       refreshEffectiveDrafts();
       addDraftNavigation();
       updateAccountView();
-    })().finally(function () {
-      state.workspaceSyncPromise = null;
+      return readLocalWorkspace();
+    })().catch(function () {
+      return readLocalWorkspace();
+    }).finally(function () {
+      state.remoteSyncPromise = null;
     });
-    return state.workspaceSyncPromise;
+    return state.remoteSyncPromise;
+  }
+
+  function syncWorkspaceState() {
+    refreshEffectiveDrafts();
+    addDraftNavigation();
+    updateAccountView();
+    return Promise.resolve(readLocalWorkspace());
   }
 
   function beginWorkspaceSync() {
-    window.clearInterval(state.workspaceSyncTimer);
     if (!state.session || !state.session.can_edit) return;
-    const seconds = Math.max(
-      15,
-      Math.min(
-        3600,
-        Number(state.config.workspace_sync_interval_seconds) || 60
-      )
-    );
-    window.setTimeout(function () {
-      pullServerDrafts()
-        .then(function () {
-          refreshEffectiveDrafts();
-          addDraftNavigation();
-          updateAccountView();
-        })
-        .catch(function () {
-          // Cached worktree remains usable while the server is unavailable.
-        });
-    }, 0);
-    state.workspaceSyncTimer = window.setInterval(function () {
-      if (!document.hidden) syncWorkspaceState();
-    }, seconds * 1000);
+    window.setTimeout(syncRemoteWorkspace, 0);
   }
 
   function createInlinePanel(host, sourcePath) {
@@ -1838,7 +1885,7 @@
       const save = document.createElement("button");
       save.className = "primary-button";
       save.dataset.inlineSave = "";
-      save.textContent = "保存草稿";
+      save.textContent = "保存到本地";
       actions.append(remove, close, save);
       toolbar.append(path, actions);
       panel.append(toolbar);
@@ -1866,7 +1913,7 @@
     const host = panel.closest("[data-editor-host]");
     const rendered = query("[data-editable-rendered]", host);
     panel.closing = true;
-    if (panel.classList.contains("is-modern") && panel.ready) {
+    if (panel.ready) {
       const buffered = cacheInlineEditor(panel);
       panel.inert = true;
       if (panel.titleElement) {
@@ -1932,6 +1979,16 @@
       ? "module-introduction prose compact-prose draft-rendered-content"
       : "prose draft-rendered-content";
     prose.append(template.content);
+    queryAll("table", prose).forEach(function (table) {
+      if (table.parentElement?.classList.contains("table-scroll")) {
+        return;
+      }
+      const wrapper = document.createElement("div");
+      wrapper.className = "table-scroll";
+      wrapper.tabIndex = 0;
+      table.before(wrapper);
+      wrapper.append(table);
+    });
     rendered.replaceChildren(prose);
     rendered.dataset.draftOverlay = "true";
     if (window.GCKMermaid) {
@@ -2063,7 +2120,7 @@
           ],
       events: {
         change: function () {
-          if (panel.ready && panel.classList.contains("is-modern")) {
+          if (panel.ready) {
             cacheInlineEditor(panel);
           }
         }
@@ -2126,43 +2183,40 @@
     const content = serializedInlineContent(panel);
     panel.currentCanonical = content.canonical;
     panel.bufferedContent = content.serialized;
-    if (content.serialized === panel.lastSyncedContent) {
+    if (
+      panel.dataset.baseSha &&
+      content.serialized === panel.repositoryBaseContent
+    ) {
       removeEditorBuffer(path);
       scheduleWorkspaceRender();
-      setEditorSyncState(panel, "synced", "所有更改已同步。", "success");
+      setEditorSyncState(
+        panel,
+        "synced",
+        "当前内容与 Base Tree 一致。",
+        "success"
+      );
       return content;
     }
 
     const cached = writeEditorBuffer(path, {
-        content: content.serialized,
-        baseSha: panel.dataset.baseSha || null,
-        baseContent: panel.repositoryBaseContent,
-        syncBaseContent: panel.lastSyncedContent,
-        operation: "upsert",
-        serverRevision: panel.serverRevision,
-        updatedAt: Date.now()
-      });
+      content: content.serialized,
+      baseSha: panel.dataset.baseSha || null,
+      baseContent: panel.repositoryBaseContent,
+      operation: "upsert",
+      updatedAt: Date.now()
+    });
     setEditorSyncState(
       panel,
       cached ? "local" : "memory",
       cached
-        ? "更改已保存到本地缓存。"
-        : "本地缓存不可用，将尽快同步到服务器。",
+        ? "更改已写入本地 Current Tree。"
+        : "本地缓存不可用，当前更改仅保留在内存中。",
       cached ? "success" : "error"
     );
-    if (!cached && !panel.syncPromise) {
-      window.setTimeout(function () {
-        syncInlineBuffer(panel);
-      }, 0);
-    }
     return content;
   }
 
-  function replaceDraft(saved) {
-    replaceServerDraft(saved);
-  }
-
-  async function syncInlineBuffer(panel, options) {
+  async function syncInlineBuffer(panel) {
     if (
       !panel ||
       !panel.ready ||
@@ -2171,89 +2225,9 @@
       return null;
     }
     const content = cacheInlineEditor(panel);
-    if (!content || content.serialized === panel.lastSyncedContent) {
-      return null;
-    }
-    if (panel.syncPromise) {
-      return panel.syncPromise;
-    }
-
-    const path = panel.dataset.path;
-    const contentAtRequest = content.serialized;
-    const canonicalAtRequest = content.canonical;
-    const buffered = readEditorBuffer(path) || {
-      path,
-      content: contentAtRequest,
-      baseSha: panel.dataset.baseSha || null,
-      baseContent: panel.repositoryBaseContent,
-      syncBaseContent: panel.lastSyncedContent,
-      operation: "upsert",
-      serverRevision: panel.serverRevision,
-      updatedAt: Date.now()
-    };
-    setEditorSyncState(panel, "syncing", "正在同步更改…");
-    panel.syncPromise = syncBufferedChange(
-      buffered,
-      options,
-      false
-    )
-      .then(function (saved) {
-        if (!saved) {
-          setEditorSyncState(
-            panel,
-            "local",
-            "服务器内容已变化；本地更改已保留，请检查冲突。",
-            "error"
-          );
-          return null;
-        }
-        replaceDraft(saved);
-        panel.dataset.draftId = String(saved.id);
-        panel.serverRevision = saved.revision;
-        panel.lastSyncedContent = saved.content;
-        panel.originalContent = saved.content;
-        panel.repositoryBaseContent =
-          typeof saved.base_content === "string"
-            ? saved.base_content
-            : panel.repositoryBaseContent;
-        panel.canonicalContent = canonicalAtRequest;
-        if (panel.titleElement) {
-          panel.documentParts = splitMarkdownDocument(saved.content);
-        }
-        if (panel.bufferedContent === contentAtRequest) {
-          removeEditorBuffer(path);
-          setEditorSyncState(
-            panel,
-            "synced",
-            "更改已同步到服务器。",
-            "success"
-          );
-        } else if (state.inlinePanel === panel && !panel.closing) {
-          cacheInlineEditor(panel);
-        } else {
-          document.body.dataset.editorSyncState = "local";
-        }
-        updateAccountView();
-        addDraftNavigation();
-        const host = panel.closest("[data-editor-host]");
-        if (host) {
-          showDraftBadge(host, saved);
-        }
-        return saved;
-      })
-      .catch(function (error) {
-        setEditorSyncState(
-          panel,
-          "local",
-          error.message + "；更改仍保存在本地缓存。",
-          "error"
-        );
-        return null;
-      })
-      .finally(function () {
-        panel.syncPromise = null;
-      });
-    return panel.syncPromise;
+    return content
+      ? readEditorBuffer(panel.dataset.path)
+      : null;
   }
 
   function beginInlineAutoSync(panel) {
@@ -2317,17 +2291,24 @@
       const draft = state.drafts.find(function (item) {
         return item.path === sourcePath;
       });
-      const remoteDraft = state.serverDrafts.find(function (item) {
+      let baseEntry = (state.baseTree?.entries || []).find(function (item) {
         return item.path === sourcePath;
       });
-      let source = remoteDraft
-        ? { ...remoteDraft, sourceType: "draft" }
-        : await loadDeployedSource(sourcePath);
+      const currentEntry = (state.currentTree?.entries || []).find(
+        function (item) {
+          return item.path === sourcePath &&
+            item.operation !== "delete";
+        }
+      );
       const cached = readEditorBuffer(sourcePath);
+      let source =
+        currentEntry && typeof currentEntry.content === "string"
+          ? { ...currentEntry, sourceType: "current-tree" }
+          : await loadDeployedSource(sourcePath);
       if (!source && cached && !cached.baseSha) {
         source = {
           path: sourcePath,
-          content: cached.baseContent || "",
+          content: cached.content || "",
           sha: null,
           sourceType: "local-new"
         };
@@ -2338,41 +2319,38 @@
         );
         source.sourceType = "repository-api";
       }
+      if (
+        baseEntry &&
+        typeof baseEntry.content !== "string" &&
+        source.sha === baseEntry.sha
+      ) {
+        const hydrated = window.GCKWorkspaceStore.hydrateBaseFile(
+          window.localStorage,
+          editorUserId(),
+          workspaceRepository(),
+          sourcePath,
+          source.sha,
+          source.content
+        );
+        applyWorkspaceState(hydrated);
+        baseEntry = (state.baseTree?.entries || []).find(function (item) {
+          return item.path === sourcePath;
+        });
+      }
       let repositoryBaseContent =
         cached && typeof cached.baseContent === "string"
           ? cached.baseContent
-          : typeof source.base_content === "string"
-            ? source.base_content
-            : remoteDraft
-              ? null
-              : source.content;
-      if (
-        repositoryBaseContent === null &&
-        remoteDraft &&
-        remoteDraft.base_sha
-      ) {
-        const deployedBase = await loadDeployedSource(sourcePath);
-        if (
-          deployedBase &&
-          deployedBase.sha === remoteDraft.base_sha
-        ) {
-          repositoryBaseContent = deployedBase.content;
-        }
-      }
+          : typeof baseEntry?.content === "string"
+            ? baseEntry.content
+            : source.content;
       const editorContent = cached ? cached.content : source.content;
       panel.dataset.baseSha =
         (cached && cached.baseSha) ||
-        source.base_sha ||
+        baseEntry?.sha ||
         source.sha ||
         "";
-      panel.dataset.draftId = remoteDraft ? String(remoteDraft.id) : "";
-      panel.serverRevision = remoteDraft
-        ? remoteDraft.revision
-        : cached
-          ? cached.serverRevision
-          : 0;
       panel.repositoryBaseContent = repositoryBaseContent;
-      panel.lastSyncedContent = source.content;
+      panel.lastSyncedContent = editorContent;
       panel.renderedContent = draft ? draft.content : source.content;
       panel.bufferedContent = editorContent;
       const deleteButton = query("[data-inline-delete]", panel);
@@ -2391,25 +2369,27 @@
       }
       panel.ready = true;
       textarea.addEventListener("input", function () {
-        if (panel.classList.contains("is-modern")) {
-          cacheInlineEditor(panel);
-        }
+        cacheInlineEditor(panel);
       });
       if (cached && cached.content !== source.content) {
         setEditorSyncState(
           panel,
           "local",
-          "已从本地缓存恢复尚未同步的更改。",
+          "已从本地 Current Tree 恢复更改。",
+          "success"
+        );
+      } else if (draft) {
+        setEditorSyncState(
+          panel,
+          "local",
+          "已加载本地 Current Tree 更改。",
           "success"
         );
       } else {
-        removeEditorBuffer(sourcePath);
         setEditorSyncState(
           panel,
           "synced",
-          remoteDraft
-            ? "已加载服务器更改。"
-            : "已加载 main 分支源文件。",
+          "已加载本地 Base Tree 源文件。",
           "success"
         );
       }
@@ -2437,38 +2417,36 @@
       const content = serializedInlineContent(panel);
       const canonicalContent = content.canonical;
       const serializedContent = content.serialized;
-      if (serializedContent === panel.originalContent) {
+      if (
+        panel.dataset.baseSha &&
+        serializedContent === panel.repositoryBaseContent
+      ) {
+        removeEditorBuffer(path);
         setInlineFeedback(
           panel,
-          "没有检测到需要保存的更改。",
+          "当前内容与 Base Tree 一致。",
           "success"
         );
         return;
       }
-      const saved = await api("/drafts", {
-        method: "PUT",
-        body: JSON.stringify({
-          path: path,
-          content: serializedContent,
-          base_sha: panel.dataset.baseSha || null,
-          base_content: panel.repositoryBaseContent,
-          operation: "upsert"
-        })
+      const saved = writeEditorBuffer(path, {
+        content: serializedContent,
+        baseSha: panel.dataset.baseSha || null,
+        baseContent: panel.repositoryBaseContent,
+        operation: "upsert",
+        updatedAt: Date.now()
       });
-      replaceDraft(saved);
-      panel.dataset.draftId = String(saved.id);
-      panel.originalContent = saved.content;
       panel.canonicalContent = canonicalContent;
       if (path.toLowerCase().endsWith(".md")) {
         const preview = await api("/preview", {
           method: "POST",
-          body: JSON.stringify({ content: saved.content })
+          body: JSON.stringify({ content: serializedContent })
         });
         renderMarkdownIntoHost(host, preview.html);
       }
       setInlineFeedback(
         panel,
-        "草稿已保存，可在编辑工作台统一查看并提交。",
+        "更改已写入本地 Current Tree，可在工作台统一提交。",
         "success"
       );
       updateAccountView();
@@ -2503,16 +2481,11 @@
         window.location.href = "/" + path.split("/")[0] + "/";
         return;
       }
-      const remoteDraft = state.serverDrafts.find(function (item) {
-        return item.path === path;
-      });
       const deleted = writeEditorBuffer(path, {
         content: "",
         baseSha: remoteSha,
         baseContent: panel.repositoryBaseContent,
-        syncBaseContent: panel.lastSyncedContent || "",
         operation: "delete",
-        serverRevision: remoteDraft ? remoteDraft.revision : 0,
         updatedAt: Date.now()
       });
       refreshEffectiveDrafts();
@@ -2520,7 +2493,6 @@
       showDeletedDraft(host, deleted);
       updateAccountView();
       addDraftNavigation();
-      syncWorkspaceState();
     } catch (error) {
       setInlineFeedback(panel, error.message, "error");
     }
@@ -2530,6 +2502,13 @@
     return kind === "file"
       ? path === target
       : path === target || path.startsWith(target.replace(/\/$/, "") + "/");
+  }
+
+  function isTopLevelModulePath(path) {
+    const parts = path.split("/").filter(Boolean);
+    return parts[0] === "program" || parts[0] === "planning"
+      ? parts.length === 2
+      : parts.length === 1;
   }
 
   function workspaceTargetEntries(target, kind) {
@@ -2571,9 +2550,9 @@
         ? "撤销删除"
         : kind === "file"
           ? "删除文件"
-          : button.dataset.deletePath.includes("/")
-            ? "删除子模块"
-            : "删除大模块";
+          : isTopLevelModulePath(button.dataset.deletePath)
+            ? "删除大模块"
+            : "删除子模块";
       button.title = text;
       button.setAttribute(
         "aria-label",
@@ -2611,33 +2590,14 @@
   }
 
   async function restoreWorkspaceTarget(target, kind) {
-    const localPaths = new Set(
-      localBufferChanges()
-        .filter(function (change) {
-          return workspacePathMatches(change.path, target, kind);
-        })
-        .map(function (change) {
-          return change.path;
-        })
-    );
-    localPaths.forEach(removeEditorBuffer);
-    const serverDeletes = state.serverDrafts.filter(function (draft) {
-      return (
-        draft.operation === "delete" &&
-        workspacePathMatches(draft.path, target, kind)
-      );
-    });
-    await Promise.all(
-      serverDeletes.map(function (draft) {
-        return api("/drafts/" + draft.id, { method: "DELETE" });
+    state.drafts
+      .filter(function (change) {
+        return workspacePathMatches(change.path, target, kind);
       })
-    );
-    state.serverDrafts = state.serverDrafts.filter(function (draft) {
-      return !serverDeletes.some(function (deleted) {
-        return deleted.id === draft.id;
-      });
-    });
-    state.draftRevision = "";
+      .map(function (change) {
+        return change.path;
+      })
+      .forEach(removeEditorBuffer);
     refreshEffectiveDrafts();
     addDraftNavigation();
     updateAccountView();
@@ -2662,40 +2622,22 @@
 
     const localEntries = workspaceTargetEntries(target, kind);
     const localDrafts = workspaceTargetDrafts(target, kind);
-    const hasRepositoryFiles = localEntries.some(function (entry) {
-      return entry.baseExists;
-    });
-    let repositoryItems = [];
-    if (hasRepositoryFiles) {
-      try {
-        const payload = await api(
-          "/repository/delete-tree?path=" +
-            encodeURIComponent(target) +
-            "&kind=" +
-            encodeURIComponent(kind)
-        );
-        repositoryItems = payload.items || [];
-      } catch (error) {
-        window.alert(error.message);
-        return;
-      }
-    }
     const count = new Set(
-      repositoryItems
+      localEntries
         .map(function (entry) {
           return entry.path;
         })
-        .concat(
-          localEntries.map(function (entry) {
-            return entry.path;
-          })
-        )
+        .concat(localDrafts.map(function (draft) {
+          return draft.path;
+        }))
     ).size;
+    const topLevelModule =
+      kind === "directory" && isTopLevelModulePath(target);
     const scope = kind === "file"
       ? "文件"
-      : target.includes("/")
-        ? "子模块"
-        : "大模块";
+      : topLevelModule
+        ? "大模块"
+        : "子模块";
     if (
       !window.confirm(
         "删除" +
@@ -2710,8 +2652,7 @@
       return;
     }
     if (
-      kind === "directory" &&
-      !target.includes("/") &&
+      topLevelModule &&
       !window.confirm(
         "这是大模块删除操作，模块入口及全部子模块都会被删除。确认继续？"
       )
@@ -2729,66 +2670,36 @@
       ) {
         await closeInlineEditor({ renderLatest: false });
       }
-      const repositoryByPath = new Map(
-        repositoryItems.map(function (entry) {
+      const baseByPath = new Map(
+        (state.baseTree?.entries || []).map(function (entry) {
           return [entry.path, entry];
         })
       );
       const allPaths = new Set(
-        repositoryItems
+        localEntries
           .map(function (entry) {
             return entry.path;
           })
           .concat(
-            localEntries.map(function (entry) {
-              return entry.path;
-            }),
             localDrafts.map(function (draft) {
               return draft.path;
             })
           )
       );
-      const discardServerDrafts = [];
       allPaths.forEach(function (path) {
-        const entry = localEntries.find(function (item) {
-          return item.path === path;
-        });
-        const remoteDraft = state.serverDrafts.find(function (item) {
-          return item.path === path;
-        });
-        const repository = repositoryByPath.get(path);
-        const baseSha =
-          (repository && repository.sha) ||
-          (entry && entry.baseSha) ||
-          (remoteDraft && remoteDraft.base_sha) ||
-          null;
-        if (!baseSha) {
+        const base = baseByPath.get(path);
+        if (!base) {
           removeEditorBuffer(path);
-          if (remoteDraft && remoteDraft.id) {
-            discardServerDrafts.push(remoteDraft);
-          }
           return;
         }
         writeEditorBuffer(path, {
           content: "",
-          baseSha,
-          baseContent: null,
+          baseSha: base.sha,
+          baseContent: base.content,
           operation: "delete",
-          serverRevision: remoteDraft ? remoteDraft.revision : 0,
           updatedAt: Date.now()
         });
       });
-      await Promise.all(
-        discardServerDrafts.map(function (draft) {
-          return api("/drafts/" + draft.id, { method: "DELETE" });
-        })
-      );
-      state.serverDrafts = state.serverDrafts.filter(function (draft) {
-        return !discardServerDrafts.some(function (discarded) {
-          return discarded.id === draft.id;
-        });
-      });
-      state.draftRevision = "";
       refreshEffectiveDrafts();
       addDraftNavigation();
       updateAccountView();
@@ -2804,7 +2715,6 @@
         });
         if (draft) showDeletedDraft(host, draft);
       }
-      syncWorkspaceState();
     } catch (error) {
       window.alert(error.message);
     } finally {
@@ -2919,7 +2829,6 @@
         baseSha: null,
         baseContent: "",
         operation: "upsert",
-        serverRevision: 0,
         updatedAt: Date.now()
       });
       if (!saved) {
@@ -2933,7 +2842,6 @@
       );
       updateAccountView();
       addDraftNavigation();
-      syncWorkspaceState({ keepalive: true });
       window.setTimeout(function () {
         window.location.href = draftLink(saved.path);
       }, 180);
@@ -2975,9 +2883,7 @@
         await loadDrafts();
         writeIdentityCache({
           config: state.config,
-          session: state.session,
-          drafts: state.serverDrafts,
-          draft_revision: state.draftRevision
+          session: state.session
         });
         updateAccountView();
         await applyDraftsToReader();
@@ -3001,9 +2907,7 @@
         await loadDrafts();
         writeIdentityCache({
           config: state.config,
-          session: state.session,
-          drafts: state.serverDrafts,
-          draft_revision: state.draftRevision
+          session: state.session
         });
         updateAccountView();
         await applyDraftsToReader();

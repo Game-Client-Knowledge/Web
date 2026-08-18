@@ -179,7 +179,7 @@
 
   function createAmbientField(style, pointerEnabled, reducedMotion) {
     if (style === "clean" && !pointerEnabled) {
-      return;
+      return function () {};
     }
     const canvas = createCanvas(
       "site-ambient-canvas",
@@ -424,23 +424,48 @@
       }
     }
 
-    if (pointerEnabled && window.matchMedia("(pointer: fine)").matches) {
-      window.addEventListener("pointermove", (event) => {
-        pointer.x = event.clientX;
-        pointer.y = event.clientY;
-        pointer.active = true;
-      });
-      document.documentElement.addEventListener("mouseleave", () => {
-        pointer.active = false;
-      });
+    function onPointerMove(event) {
+      pointer.x = event.clientX;
+      pointer.y = event.clientY;
+      pointer.active = true;
     }
-    document.addEventListener("visibilitychange", () => {
+    function onMouseLeave() {
+      pointer.active = false;
+    }
+    function onVisibilityChange() {
       if (document.hidden) stop();
       else start();
-    });
+    }
+    const trackPointer =
+      pointerEnabled && window.matchMedia("(pointer: fine)").matches;
+    if (trackPointer) {
+      window.addEventListener("pointermove", onPointerMove);
+      document.documentElement.addEventListener(
+        "mouseleave",
+        onMouseLeave
+      );
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("resize", resize);
     resize();
     start();
+    return function () {
+      stop();
+      visible = false;
+      if (trackPointer) {
+        window.removeEventListener("pointermove", onPointerMove);
+        document.documentElement.removeEventListener(
+          "mouseleave",
+          onMouseLeave
+        );
+      }
+      document.removeEventListener(
+        "visibilitychange",
+        onVisibilityChange
+      );
+      window.removeEventListener("resize", resize);
+      canvas.remove();
+    };
   }
 
   function createPointerReticle(reducedMotion) {
@@ -448,7 +473,7 @@
       reducedMotion ||
       !window.matchMedia("(pointer: fine)").matches
     ) {
-      return;
+      return function () {};
     }
     const reticle = document.createElement("span");
     reticle.className = "site-pointer-reticle";
@@ -474,16 +499,27 @@
         frame = window.requestAnimationFrame(draw);
       }
     }
-    window.addEventListener("pointermove", (event) => {
+    function onPointerMove(event) {
       targetX = event.clientX;
       targetY = event.clientY;
       visible = true;
       if (!frame) frame = window.requestAnimationFrame(draw);
-    });
-    document.documentElement.addEventListener("mouseleave", () => {
+    }
+    function onMouseLeave() {
       visible = false;
       reticle.classList.remove("is-visible");
-    });
+    }
+    window.addEventListener("pointermove", onPointerMove);
+    document.documentElement.addEventListener("mouseleave", onMouseLeave);
+    return function () {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener("pointermove", onPointerMove);
+      document.documentElement.removeEventListener(
+        "mouseleave",
+        onMouseLeave
+      );
+      reticle.remove();
+    };
   }
 
   function createEntrySequence(settings, reducedMotion) {
@@ -1555,8 +1591,56 @@
     }
     const settings = normalizeHomeIntroSettings(resolvedSettings);
     cacheHomeIntroSettings(settings);
-    document.body.dataset.pointerEffect =
-      settings.pointer_effect_enabled ? "on" : "off";
+    let ambientCleanup = function () {};
+    let pointerCleanup = function () {};
+
+    function applyVisualSurface(nextSettings) {
+      ambientCleanup();
+      pointerCleanup();
+      Array.from(document.body.classList)
+        .filter((name) => {
+          return (
+            name.startsWith("visual-catalog-") ||
+            name.startsWith("visual-reader-")
+          );
+        })
+        .forEach((name) => document.body.classList.remove(name));
+      document.body.dataset.pointerEffect =
+        nextSettings.pointer_effect_enabled ? "on" : "off";
+      if (type === "catalog") {
+        document.body.dataset.catalogBackground =
+          nextSettings.catalog_background_style;
+        document.body.classList.add(
+          `visual-catalog-${nextSettings.catalog_background_style}`
+        );
+        ambientCleanup = createAmbientField(
+          nextSettings.catalog_background_style,
+          nextSettings.pointer_effect_enabled,
+          reducedMotion
+        );
+      } else if (type === "reader") {
+        document.body.dataset.readerBackground =
+          nextSettings.reader_background_style;
+        document.body.classList.add(
+          `visual-reader-${nextSettings.reader_background_style}`
+        );
+        ambientCleanup = createAmbientField(
+          nextSettings.reader_background_style,
+          nextSettings.pointer_effect_enabled,
+          reducedMotion
+        );
+      }
+      if (
+        nextSettings.pointer_effect_enabled &&
+        !document.body.classList.contains("page-code-workspace")
+      ) {
+        pointerCleanup = createPointerReticle(reducedMotion);
+      } else {
+        pointerCleanup = function () {};
+      }
+    }
+
+    applyVisualSurface(settings);
 
     if (type === "home") {
       const shouldPlay = policy.updateMode(
@@ -1585,8 +1669,7 @@
         ...(event.detail || {})
       });
       cacheHomeIntroSettings(liveSettings);
-      document.body.dataset.pointerEffect =
-        liveSettings.pointer_effect_enabled ? "on" : "off";
+      applyVisualSurface(liveSettings);
       if (type !== "home") return;
       const shouldPlay = policy.updateMode(
         liveSettings.home_intro_mode,
@@ -1604,35 +1687,6 @@
       }
     });
 
-    if (type === "catalog") {
-      document.body.dataset.catalogBackground =
-        settings.catalog_background_style;
-      document.body.classList.add(
-        `visual-catalog-${settings.catalog_background_style}`
-      );
-      createAmbientField(
-        settings.catalog_background_style,
-        settings.pointer_effect_enabled,
-        reducedMotion
-      );
-    } else if (type === "reader") {
-      document.body.dataset.readerBackground =
-        settings.reader_background_style;
-      document.body.classList.add(
-        `visual-reader-${settings.reader_background_style}`
-      );
-      createAmbientField(
-        settings.reader_background_style,
-        settings.pointer_effect_enabled,
-        reducedMotion
-      );
-    }
-    if (
-      settings.pointer_effect_enabled &&
-      !document.body.classList.contains("page-code-workspace")
-    ) {
-      createPointerReticle(reducedMotion);
-    }
   }
 
   initialize().catch(() => {
