@@ -115,7 +115,18 @@
         </a>
 
         <nav class="primary-nav" aria-label="主导航">
-          {% if catalog.tracks.length %}
+          {% if catalog.tracks.length and activeTrack %}
+            {% for module in catalog.modules %}
+              {% if module.trackKey == activeTrack %}
+                <a
+                  href="{{ module.route | withBase }}"
+                  {% if activeModule == module.key %}aria-current="page"{% endif %}
+                >
+                  {{ module.shortTitle }}
+                </a>
+              {% endif %}
+            {% endfor %}
+          {% elif catalog.tracks.length %}
             {% for track in catalog.tracks %}
               <a
                 href="{{ track.route | withBase }}"
@@ -213,7 +224,16 @@
       </div>
 
       <nav class="mobile-nav" data-mobile-nav aria-label="移动端导航">
-        {% if catalog.tracks.length %}
+        {% if catalog.tracks.length and activeTrack %}
+          {% for module in catalog.modules %}
+            {% if module.trackKey == activeTrack %}
+              <a href="{{ module.route | withBase }}">
+                <i data-lucide="{{ module.icon }}" aria-hidden="true"></i>
+                {{ module.title }}
+              </a>
+            {% endif %}
+          {% endfor %}
+        {% elif catalog.tracks.length %}
           {% for track in catalog.tracks %}
             <a href="{{ track.route | withBase }}">
               <i data-lucide="{{ track.icon }}" aria-hidden="true"></i>

@@ -769,6 +769,14 @@ body[data-editor-state="loading"] [data-account-label] {
   font-size: 13px;
 }
 
+.track-overview-grid {
+  display: grid;
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
 .track-band {
   padding: 28px 0 42px;
   border-top: 1px solid var(--line);
@@ -1235,6 +1243,7 @@ body[data-editor-state="loading"] [data-account-label] {
   gap: 14px;
 }
 
+.track-overview-card,
 .track-module-card {
   position: relative;
   display: flex;
@@ -1262,6 +1271,7 @@ body[data-editor-state="loading"] [data-account-label] {
     box-shadow 140ms ease;
 }
 
+.track-overview-card:hover,
 .track-module-card:hover {
   color: var(--teal-dark);
   background: #ffffff;
@@ -1269,16 +1279,20 @@ body[data-editor-state="loading"] [data-account-label] {
   box-shadow: 0 14px 32px rgba(14, 47, 39, 0.12);
 }
 
+.track-overview-card > strong,
 .track-module-card > strong {
   font-size: 19px;
 }
 
+.track-overview-card > span:last-of-type,
 .track-module-card > span:last-of-type {
   color: var(--ink-soft);
   font-size: 14px;
   line-height: 1.65;
 }
 
+.track-overview-card > svg,
+.track-overview-card > i:last-child,
 .track-module-card > svg,
 .track-module-card > i:last-child {
   position: absolute;
@@ -4532,6 +4546,10 @@ body.has-comments-open .reader-comments {
   .catalog-stats {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .track-overview-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .track-band-heading {

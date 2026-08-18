@@ -588,19 +588,19 @@ async function inspectPage(browser, scenario) {
 
   if (scenario.homeHierarchy) {
     const hierarchy = await page.evaluate(() => {
-      const knowledge = document.querySelector(
-        '[aria-labelledby="module-knowledge"]'
-      );
       return {
-        rootCards: knowledge?.querySelectorAll(":scope .unit-card").length,
-        cppChildren: Array.from(
-          knowledge?.querySelectorAll(".unit-card-children span") || []
-        ).map((item) => item.textContent.trim())
+        tracks: Array.from(
+          document.querySelectorAll(".track-overview-card strong")
+        ).map((item) => item.textContent.trim()),
+        moduleBands: document.querySelectorAll(".module-band").length,
+        unitCards: document.querySelectorAll(".unit-card").length
       };
     });
     assert(
-      hierarchy.rootCards === 5 &&
-        hierarchy.cppChildren.some((title) => title.includes("C++ 多态")),
+      hierarchy.tracks.some((title) => title.includes("程序")) &&
+        hierarchy.tracks.some((title) => title.includes("策划")) &&
+        hierarchy.moduleBands === 0 &&
+        hierarchy.unitCards === 0,
       `${scenario.name}: homepage hierarchy is ${JSON.stringify(hierarchy)}`
     );
   }
