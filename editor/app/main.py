@@ -2043,10 +2043,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 f"{verification}"
             )
 
-        remote_branch_exists = await github.branch_exists(
-            branch,
-            submit_token,
-        )
+        def github_credential_hint() -> str:
+            if token_source == "github-user":
+                return (
+                    "GitHub 令牌已失效（可能已被撤销或过期），"
+                    "请在账号菜单中解绑 GitHub 后重新绑定"
+                )
+            return (
+                "服务器提交 Bot 令牌已失效，请联系站点管理员更新 "
+                "EDITOR_GITHUB_BOT_TOKEN"
+            )
+
+        try:
+            remote_branch_exists = await github.branch_exists(
+                branch,
+                submit_token,
+            )
+        except GitHubError as exc:
+            if exc.status_code == 401:
+                raise HTTPException(
+                    status_code=401,
+                    detail=github_credential_hint(),
+                ) from exc
+            raise
         if remote_branch_exists and not previous:
             raise HTTPException(
                 status_code=409,
@@ -2402,7 +2421,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 target=branch,
                 detail=str(exc)[:1000],
             )
-            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=(
+                    github_credential_hint()
+                    if exc.status_code == 401
+                    else str(exc)
+                ),
+            ) from exc
 
         completed_at = utc_now()
         with db.connect() as connection:
