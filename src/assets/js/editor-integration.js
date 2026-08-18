@@ -481,9 +481,77 @@
         ) + " · 个人未提交草稿";
   }
 
+  function normalizeRoutePath(value) {
+    return (value || "").replace(/\/+$/, "");
+  }
+
+  function currentDraftPath() {
+    return (
+      new URLSearchParams(window.location.search).get("draft") || ""
+    );
+  }
+
+  function entryMatchesCurrentPage(entry) {
+    if (!entry) return false;
+    if (entry.status || !entry.route) {
+      return currentDraftPath() === entry.path;
+    }
+    const base = (config.basePath || "").replace(/\/$/, "");
+    return (
+      normalizeRoutePath(window.location.pathname) ===
+      normalizeRoutePath(base + entry.route)
+    );
+  }
+
+  function unitContainsCurrentPage(unit) {
+    if (!unit) return false;
+    if (unit.readme && entryMatchesCurrentPage(unit.readme)) {
+      return true;
+    }
+    const draft = currentDraftPath();
+    if (draft && unit.id) {
+      const unitPath = normalizeRoutePath(unit.id) + "/";
+      if (draft.startsWith(unitPath)) {
+        return true;
+      }
+    }
+    if (unit.readme && unit.readme.route) {
+      const base = (config.basePath || "").replace(/\/$/, "");
+      const prefix = normalizeRoutePath(base + unit.readme.route) + "/";
+      return (
+        (normalizeRoutePath(window.location.pathname) + "/").startsWith(
+          prefix
+        )
+      );
+    }
+    return false;
+  }
+
+  function unitIsCurrent(unit) {
+    if (!unit) return false;
+    if (unit.readme && entryMatchesCurrentPage(unit.readme)) {
+      return true;
+    }
+    if ((unit.documents || []).some(function (entry) {
+      return entryMatchesCurrentPage(entry);
+    })) {
+      return true;
+    }
+    const draft = currentDraftPath();
+    if (draft && unit.id) {
+      const unitPath = normalizeRoutePath(unit.id) + "/";
+      if (draft.startsWith(unitPath)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function addDraftNavigation() {
     const snapshot = state.workspaceSnapshot;
     if (!snapshot) return;
+    const sidebar = document.querySelector("[data-docs-sidebar]");
+    const previousTop = sidebar ? sidebar.scrollTop : 0;
     const docsNavigation = query(".docs-navigation");
     if (docsNavigation) {
       docsNavigation.replaceChildren();
@@ -515,6 +583,26 @@
       }
       refreshIcons(unitList);
     }
+    if (sidebar) {
+      sidebar.scrollTop = previousTop;
+      const current = sidebar.querySelector(
+        '.docs-nav-unit li a[aria-current="page"], ' +
+          '.docs-nav-unit-title[aria-current="true"]'
+      );
+      if (current) {
+        const linkBox = current.getBoundingClientRect();
+        const sidebarBox = sidebar.getBoundingClientRect();
+        if (
+          linkBox.top < sidebarBox.top + 24 ||
+          linkBox.bottom > sidebarBox.bottom - 24
+        ) {
+          sidebar.scrollTop = Math.max(
+            0,
+            current.offsetTop - sidebar.clientHeight / 2
+          );
+        }
+      }
+    }
     updateWorkspaceDeleteControls();
   }
 
@@ -529,6 +617,9 @@
       const item = document.createElement("li");
       const link = document.createElement("a");
       link.href = workspaceEntryHref(entry);
+      if (entryMatchesCurrentPage(entry)) {
+        link.setAttribute("aria-current", "page");
+      }
       const icon = document.createElement("i");
       icon.dataset.lucide =
         entry.kind === "code" ? "file-code-2" : "file-text";
@@ -629,6 +720,9 @@
     title.className = "docs-nav-unit-title";
     title.href = workspaceEntryHref(unit.readme);
     title.textContent = unit.title;
+    if (unitContainsCurrentPage(unit)) {
+      title.setAttribute("aria-current", "true");
+    }
     if (unit.readme.operation === "delete") {
       title.classList.add("is-deleted-draft");
     }
@@ -645,12 +739,15 @@
     const visibleDocuments = unit.documents.filter(function (entry) {
       return !entry.isReadme;
     });
-    if (visibleDocuments.length) {
+    if (visibleDocuments.length && unitIsCurrent(unit)) {
       const list = document.createElement("ol");
       visibleDocuments.forEach(function (entry) {
         const item = document.createElement("li");
         const link = document.createElement("a");
         link.href = workspaceEntryHref(entry);
+        if (entryMatchesCurrentPage(entry)) {
+          link.setAttribute("aria-current", "page");
+        }
         if (entry.operation === "delete") {
           link.classList.add("is-deleted-draft");
         }

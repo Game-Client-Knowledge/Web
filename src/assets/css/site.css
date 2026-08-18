@@ -2192,6 +2192,68 @@ body.is-edit-mode .edit-mode-only {
   display: flex !important;
 }
 
+/* 编辑操作区始终渲染但折叠为 0 高度，进入/退出编辑模式时平滑展开，
+   避免 display 切换造成的布局跳动 */
+.reader-context-actions.edit-mode-only,
+.module-editor-actions.edit-mode-only,
+.unit-editor-actions.edit-mode-only {
+  display: flex !important;
+  max-height: 0;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  border-top-width: 0 !important;
+  opacity: 0;
+  visibility: hidden;
+  overflow: hidden;
+  transition:
+    max-height 0.24s ease,
+    opacity 0.18s ease,
+    margin 0.24s ease,
+    padding 0.24s ease,
+    visibility 0s linear 0.24s;
+}
+
+body.can-edit-content .reader-context-actions.edit-mode-only,
+body.is-edit-mode .reader-context-actions.edit-mode-only,
+body.can-edit-content .module-editor-actions.edit-mode-only,
+body.is-edit-mode .module-editor-actions.edit-mode-only,
+body.can-edit-content .unit-editor-actions.edit-mode-only,
+body.is-edit-mode .unit-editor-actions.edit-mode-only {
+  max-height: 220px;
+  opacity: 1;
+  visibility: visible;
+  overflow: visible;
+  transition:
+    max-height 0.24s ease,
+    opacity 0.18s ease 0.05s,
+    margin 0.24s ease,
+    padding 0.24s ease;
+}
+
+body.can-edit-content .reader-context-actions.edit-mode-only,
+body.is-edit-mode .reader-context-actions.edit-mode-only {
+  margin-top: 14px !important;
+}
+
+body.can-edit-content .module-editor-actions.edit-mode-only,
+body.is-edit-mode .module-editor-actions.edit-mode-only {
+  margin-top: 22px !important;
+  padding-top: 18px !important;
+  border-top-width: 1px !important;
+}
+
+body.can-edit-content .unit-editor-actions.edit-mode-only,
+body.is-edit-mode .unit-editor-actions.edit-mode-only {
+  margin-top: 12px !important;
+}
+
+body.can-edit-content .module-subunit-body > .unit-editor-actions.edit-mode-only,
+body.is-edit-mode .module-subunit-body > .unit-editor-actions.edit-mode-only {
+  margin-bottom: 10px !important;
+}
+
 body.reader-edit-old [data-editor-host] {
   position: relative;
 }
