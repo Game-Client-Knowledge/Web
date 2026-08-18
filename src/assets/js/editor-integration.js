@@ -4,6 +4,8 @@
   const config = window.GCK_CONFIG || {};
   const editorApi = (config.editorApi || "/editor/api").replace(/\/$/, "");
   const editorUrl = config.editorUrl || "/editor/";
+  const IDENTITY_CACHE_KEY = "gck-editor-identity:v1";
+  const IDENTITY_CACHE_TTL = 5 * 60 * 1000;
   const state = {
     config: null,
     session: null,
@@ -20,7 +22,10 @@
     inlinePanel: null,
     inlineEditor: null,
     onboardingStep: 0,
-    onboardingSaving: false
+    onboardingSaving: false,
+    identityLoaded: false,
+    identityPromise: null,
+    cachedDraftCount: 0
   };
 
   function query(selector, root) {
@@ -105,6 +110,55 @@
       return_to: currentReturnPath()
     });
     return editorApi + "/auth/github?" + parameters.toString();
+  }
+
+  function bootstrapPath() {
+    return window.GCK_EDITOR_BOOTSTRAP_PATH || "/bootstrap";
+  }
+
+  function readIdentityCache() {
+    try {
+      const cached = JSON.parse(
+        window.localStorage.getItem(IDENTITY_CACHE_KEY) || "null"
+      );
+      if (
+        !cached ||
+        Date.now() - Number(cached.cachedAt || 0) > IDENTITY_CACHE_TTL
+      ) {
+        return null;
+      }
+      return cached.payload || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeIdentityCache(payload) {
+    try {
+      const session = payload && payload.session;
+      window.localStorage.setItem(
+        IDENTITY_CACHE_KEY,
+        JSON.stringify({
+          cachedAt: Date.now(),
+          payload: {
+            config: payload.config || null,
+            session: session || { authenticated: false },
+            draft_count: (payload.drafts || []).length,
+            draft_revision: payload.draft_revision || ""
+          }
+        })
+      );
+    } catch {
+      // Login state is still resolved by the server when localStorage is full.
+    }
+  }
+
+  function clearIdentityCache() {
+    try {
+      window.localStorage.removeItem(IDENTITY_CACHE_KEY);
+    } catch {
+      // Nothing to clear when localStorage is unavailable.
+    }
   }
 
   function takeGithubAuthError() {
@@ -192,7 +246,7 @@
       ? "@" + user.github_login
       : "未绑定";
     query("[data-account-draft-count]").textContent =
-      state.drafts.length + " 个";
+      (state.drafts.length || state.cachedDraftCount || 0) + " 个";
     query("[data-account-admin]").hidden = user.role !== "admin";
 
     const bind = query("[data-account-bind-github]");
@@ -851,32 +905,59 @@
     }
   }
 
-  async function loadIdentity() {
-    const sourcePath =
-      requestedDraftPath() ||
-      (config.editorContext && config.editorContext.sourcePath) ||
-      "";
-    const bootstrapPath =
-      "/bootstrap" +
-      (sourcePath ? "?path=" + encodeURIComponent(sourcePath) : "");
-    const bootstrap =
-      window.GCK_EDITOR_BOOTSTRAP ||
-      api(bootstrapPath);
-    let payload = await bootstrap;
-    if (payload.bootstrap_error) {
-      payload = await api(bootstrapPath);
-    }
-    window.GCK_EDITOR_BOOTSTRAP = null;
+  function applyIdentityPayload(payload, options) {
+    const settings = options || {};
     state.config = payload.config;
     state.session = payload.session;
-    state.csrf = state.session.authenticated
+    state.csrf = state.session && state.session.authenticated
       ? state.session.csrf_token
       : "";
+    state.cachedDraftCount = Number(payload.draft_count || 0);
     state.serverDrafts = payload.drafts || [];
     state.draftRevision = payload.draft_revision || "";
     refreshEffectiveDrafts();
-    const githubAuthError = takeGithubAuthError();
     updateAccountView();
+    if (!settings.fromCache) {
+      state.identityLoaded = true;
+      writeIdentityCache(payload);
+    }
+  }
+
+  async function loadIdentity(options) {
+    const settings = options || {};
+    if (!settings.force) {
+      const cached = readIdentityCache();
+      if (cached) {
+        applyIdentityPayload(cached, { fromCache: true });
+        if (settings.cacheOnly) {
+          return cached;
+        }
+      } else if (settings.cacheOnly) {
+        state.config = state.config || {};
+        state.session = { authenticated: false };
+        updateAccountView();
+        return state.session;
+      }
+    }
+    if (settings.cacheOnly) {
+      return state.session;
+    }
+    if (state.identityPromise) {
+      return state.identityPromise;
+    }
+    state.identityPromise = (async function () {
+      let payload = await api(bootstrapPath());
+      if (payload.bootstrap_error) {
+        payload = await api(bootstrapPath());
+      }
+      applyIdentityPayload(payload);
+      return payload;
+    })().finally(function () {
+      state.identityPromise = null;
+      window.GCK_EDITOR_BOOTSTRAP = null;
+    });
+    const payload = await state.identityPromise;
+    const githubAuthError = takeGithubAuthError();
     if (githubAuthError) {
       openAccount();
       feedback(query("[data-account-feedback]"), githubAuthError);
@@ -893,6 +974,28 @@
       await openCurrentEditor();
     }
     beginWorkspaceSync();
+    return payload;
+  }
+
+  async function ensureIdentityLoaded() {
+    if (state.identityLoaded) {
+      return state.session;
+    }
+    await loadIdentity({ force: true });
+    return state.session;
+  }
+
+  function refreshIdentityWhenIdle() {
+    const refresh = function () {
+      loadIdentity({ force: true }).catch(function () {
+        // Cached identity keeps the header usable while the editor API is slow.
+      });
+    };
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(refresh, { timeout: 3500 });
+    } else {
+      window.setTimeout(refresh, 1800);
+    }
   }
 
   function renderOnboarding() {
@@ -2402,7 +2505,12 @@
   }
 
   function bindEvents() {
-    query("[data-account-trigger]").addEventListener("click", openAccount);
+    query("[data-account-trigger]").addEventListener("click", function () {
+      openAccount();
+      ensureIdentityLoaded().catch(function (error) {
+        feedback(query("[data-account-feedback]"), error.message);
+      });
+    });
     queryAll("[data-close-account]").forEach(function (button) {
       button.addEventListener("click", function () {
         query("[data-account-dialog]").close();
@@ -2425,6 +2533,12 @@
         state.session = { authenticated: true, ...payload };
         state.csrf = payload.csrf_token;
         await loadDrafts();
+        writeIdentityCache({
+          config: state.config,
+          session: state.session,
+          drafts: state.serverDrafts,
+          draft_revision: state.draftRevision
+        });
         updateAccountView();
         await applyDraftsToReader();
         beginWorkspaceSync();
@@ -2445,6 +2559,12 @@
         state.session = { authenticated: true, ...payload };
         state.csrf = payload.csrf_token;
         await loadDrafts();
+        writeIdentityCache({
+          config: state.config,
+          session: state.session,
+          drafts: state.serverDrafts,
+          draft_revision: state.draftRevision
+        });
         updateAccountView();
         await applyDraftsToReader();
         beginWorkspaceSync();
@@ -2454,6 +2574,13 @@
       }
     });
     query("[data-edit-mode-trigger]").addEventListener("click", async function () {
+      try {
+        await ensureIdentityLoaded();
+      } catch (error) {
+        openAccount();
+        feedback(query("[data-account-feedback]"), error.message);
+        return;
+      }
       if (!ensureEditorAccess()) {
         return;
       }
@@ -2470,6 +2597,7 @@
       try {
         await api("/auth/logout", { method: "POST" });
       } finally {
+        clearIdentityCache();
         window.localStorage.removeItem("gck-edit-mode");
         window.location.reload();
       }
@@ -2574,9 +2702,7 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     bindEvents();
-    loadIdentity().catch(function (error) {
-      feedback(query("[data-account-feedback]"), error.message);
-      updateAccountView();
-    });
+    loadIdentity({ cacheOnly: true });
+    refreshIdentityWhenIdle();
   });
 })();

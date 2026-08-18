@@ -355,14 +355,27 @@ body.has-entry-sequence .site-pointer-reticle {
   display: flex;
   margin-left: auto;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
 }
 
 .utility-nav {
+  position: relative;
   display: flex;
   height: 38px;
+  margin-left: 4px;
+  padding-left: 12px;
   align-items: center;
   gap: 6px;
+}
+
+.utility-nav::before {
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.16);
+  content: "";
 }
 
 .utility-nav a {
@@ -506,9 +519,9 @@ body[data-editor-state="loading"] [data-account-label] {
 
 .search-trigger {
   display: flex;
-  width: 240px;
+  width: 126px;
   height: 38px;
-  padding: 0 8px 0 12px;
+  padding: 0 9px;
   color: #c4d0cc;
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -524,12 +537,12 @@ body[data-editor-state="loading"] [data-account-label] {
 }
 
 .search-trigger span {
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .search-trigger kbd {
   margin-left: auto;
-  padding: 1px 6px;
+  padding: 1px 5px;
   color: #9caca7;
   background: rgba(0, 0, 0, 0.14);
   border: 1px solid rgba(255, 255, 255, 0.11);
@@ -4111,10 +4124,6 @@ body.has-comments-open .reader-comments {
 
   .search-trigger {
     width: 108px;
-  }
-
-  .utility-nav {
-    margin-left: auto;
   }
 
   .mobile-menu-trigger {

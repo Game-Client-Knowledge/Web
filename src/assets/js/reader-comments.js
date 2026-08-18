@@ -3,6 +3,8 @@
 
   const config = window.GCK_CONFIG || {};
   const context = config.editorContext || {};
+  const IDENTITY_CACHE_KEY = "gck-editor-identity:v1";
+  const IDENTITY_CACHE_TTL = 5 * 60 * 1000;
   const article = document.querySelector("[data-editor-host]");
   const panel = document.querySelector("[data-comments-panel]");
   const track = document.querySelector("[data-comments-track]");
@@ -36,6 +38,23 @@
         attrs: { "stroke-width": 1.8 },
         root: root || document
       });
+    }
+  }
+
+  function cachedBootstrap() {
+    try {
+      const cached = JSON.parse(
+        window.localStorage.getItem(IDENTITY_CACHE_KEY) || "null"
+      );
+      if (
+        !cached ||
+        Date.now() - Number(cached.cachedAt || 0) > IDENTITY_CACHE_TTL
+      ) {
+        return null;
+      }
+      return cached.payload || null;
+    } catch {
+      return null;
     }
   }
 
@@ -854,10 +873,9 @@
     try {
       const bootstrap =
         window.GCK_EDITOR_BOOTSTRAP ||
-        api(
-          "/bootstrap?path=" +
-            encodeURIComponent(context.sourcePath)
-        );
+        Promise.resolve(cachedBootstrap() || {
+          session: { authenticated: false }
+        });
       const values = await Promise.all([
         bootstrap,
         sourceText(),
