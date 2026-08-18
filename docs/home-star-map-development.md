@@ -217,7 +217,7 @@ Changing draft content does not mutate this cache.
 
 ## 7. Directed and Undirected Graphs
 
-`home_star_graph_direction` controls adjacency and arrow rendering:
+`home_star_graph_direction` controls adjacency only:
 
 - `directed`: reference and contribution relations follow source to target;
 - `undirected`: every relation is traversable both ways for compatibility.
@@ -293,9 +293,9 @@ The tree preference is:
 strong -> reference -> contribution -> screen distance -> stable edge ID
 ```
 
-The algorithm never creates a synthetic edge. Direction affects traversal and
-arrowheads, while tree connectivity is intentionally evaluated over the
-selected underlying relations as an undirected visual simplification.
+The algorithm never creates a synthetic edge. Direction affects traversal,
+while tree connectivity is intentionally evaluated over the selected
+underlying relations as an undirected visual simplification.
 
 Normal `always` and `near` rendering continues to inspect the complete edge
 array. Active pruning only changes selected-edge emphasis.
@@ -345,13 +345,9 @@ the panel remains visible.
 
 Contributor stars are static. Document and code-system stars move.
 
-In directed mode:
-
-- reference and contribution edges receive one arrowhead;
-- strong edges receive arrowheads at both ends.
-
-The renderer skips arrowheads on very short edges because there is not enough
-space to distinguish direction without covering the star core.
+Directed and undirected modes use the same plain relation lines. The Canvas
+does not draw arrowheads; graph direction is represented by traversal behavior
+and the selected coverage result, which avoids visual noise in dense regions.
 
 Useful Canvas datasets for browser tests:
 
@@ -567,7 +563,7 @@ update must publish both.
 | `19477b3` | Enforced one display name per contributor identity. |
 | `496d1f3` | Added complete relation coverage and active visual pruning. |
 | `7c5e97d` | Folded `code` content into one star per system directory. |
-| `2400205` | Added directed traversal, arrowheads, reverse rules, and root brightness records. |
+| `2400205` | Added directed traversal, reverse rules, and root brightness records. |
 
 These commits are useful investigation anchors. The current source and tests,
 not the historical diff, remain authoritative.

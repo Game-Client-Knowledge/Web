@@ -53,11 +53,11 @@ The graph keeps source and target semantics for every edge:
 - strong: both directions, represented by one relation record.
 
 The administrator can switch between `directed` and `undirected`. Directed mode
-uses the semantics above for traversal and draws arrowheads: one arrowhead for
-reference and contribution edges, and two for strong edges. Undirected mode
-preserves the original behavior by making every edge traversable both ways and
-rendering it without arrowheads. Reciprocal references remain separate facts in
-both modes, so changing the traversal mode does not rewrite source data.
+uses the semantics above for traversal. Undirected mode preserves the original
+behavior by making every edge traversable both ways. Both modes render the same
+plain relation lines without arrowheads; direction is an algorithmic property,
+not an extra Canvas marker. Reciprocal references remain separate facts in both
+modes, so changing the traversal mode does not rewrite source data.
 
 All member references and contributor links are folded into their code-system
 star. Multiple files changed by the same contributor produce one contributor

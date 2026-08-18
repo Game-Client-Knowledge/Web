@@ -696,39 +696,12 @@
     function applyLineStyle(type, alpha, time) {
       const style = relationStyle(type);
       context.strokeStyle = `rgba(${relationColors[type]}, ${alpha})`;
-      context.fillStyle = `rgba(${relationColors[type]}, ${alpha})`;
       context.lineWidth = style === "glow" ? 1.35 : 0.8;
       context.setLineDash(style === "dashed" ? [5, 6] : []);
       context.shadowColor =
         style === "glow" ? `rgba(${relationColors[type]}, 0.75)` : "transparent";
       context.shadowBlur =
         style === "glow" ? 5 + Math.sin(time * 0.003) * 1.5 : 0;
-    }
-
-    function drawArrowhead(source, target) {
-      const dx = target.x - source.x;
-      const dy = target.y - source.y;
-      const distance = Math.hypot(dx, dy);
-      if (distance < 18) return;
-      const unitX = dx / distance;
-      const unitY = dy / distance;
-      const tipX = target.x - unitX * 8;
-      const tipY = target.y - unitY * 8;
-      const size = 5;
-      const baseX = tipX - unitX * size;
-      const baseY = tipY - unitY * size;
-      context.beginPath();
-      context.moveTo(tipX, tipY);
-      context.lineTo(
-        baseX - unitY * size * 0.62,
-        baseY + unitX * size * 0.62
-      );
-      context.lineTo(
-        baseX + unitY * size * 0.62,
-        baseY - unitX * size * 0.62
-      );
-      context.closePath();
-      context.fill();
     }
 
     function drawEdges(time) {
@@ -756,13 +729,6 @@
         context.moveTo(source.x, source.y);
         context.lineTo(target.x, target.y);
         context.stroke();
-        if (runtimeSettings.home_star_graph_direction === "directed") {
-          context.setLineDash([]);
-          drawArrowhead(source, target);
-          if (edge.type === "strong") {
-            drawArrowhead(target, source);
-          }
-        }
       }
       context.setLineDash([]);
       context.shadowBlur = 0;
