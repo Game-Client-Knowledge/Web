@@ -253,6 +253,7 @@ class VisualSettingsRequest(BaseModel):
     home_intro_lock_scroll: bool = True
     home_intro_contributor_limit: int = Field(default=8, ge=1, le=10)
     home_background_style: str = "old_star_map"
+    home_content_mask_enabled: bool = False
     home_star_scope: str = "hero"
     home_star_relation_visibility: str = "near"
     home_star_strong_relation_style: str = "solid"
@@ -873,6 +874,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "home_background_style": db.setting(
                 "home_background_style", "old_star_map"
+            ),
+            "home_content_mask_enabled": (
+                db.setting("home_content_mask_enabled", "0") == "1"
             ),
             "home_star_scope": db.setting("home_star_scope", "hero"),
             "home_star_relation_visibility": db.setting(
@@ -3413,6 +3417,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ensure_ascii=False,
             ),
         }
+        mask_field = "home_content_mask_enabled"
+        if mask_field in payload.model_fields_set:
+            values[mask_field] = (
+                "1" if payload.home_content_mask_enabled else "0"
+            )
         with db.connect() as connection:
             for key, value in values.items():
                 connection.execute(
@@ -3434,6 +3443,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "home_intro_assembly_duration_ms": assembly_duration_ms,
             "home_intro_hold_duration_ms": hold_duration_ms,
         }
+        if mask_field not in payload.model_fields_set:
+            response_payload.pop(mask_field, None)
         db.audit(
             "visual_settings.updated",
             request_ip(request),

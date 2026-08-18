@@ -8,6 +8,7 @@ The site exposes visual controls in the editor administration page:
 | --- | --- | --- |
 | Catalog background | `clean`, `circuit`, `constellation` | `circuit` |
 | Reader background | `clean`, `blueprint`, `constellation` | `blueprint` |
+| Homepage content mask | enabled or disabled | disabled |
 | Pointer effect | enabled or disabled | enabled |
 | Homepage entry policy | `off`, `always`, `revisit`, `first` | `revisit` |
 | Particle assembly duration | `0.5` to `10` seconds | `1.68` seconds |
@@ -22,6 +23,16 @@ rejected before persistence, and every successful update creates a
 
 The public site receives these values through the existing bootstrap response.
 No additional request is added for visual settings.
+
+When the homepage content mask is disabled, section, track-card, footer, and
+star-label glass backgrounds become transparent while text colors and structural
+borders remain. The setting is global and administrator-controlled.
+
+The homepage also exposes a fixed eye button. It hides the header, hero copy,
+statistics, catalog, contribution callout, and footer so the active background
+scene can be inspected by itself. The eye button remains available to restore
+the content. This visibility choice is device-local and does not change the
+administrator setting or other visitors' pages.
 
 ## Client visual engine
 
@@ -179,3 +190,6 @@ configuration deterministically. The suite covers:
 
 Backend tests cover administrator authorization, valid updates, public config
 propagation, and invalid style rejection.
+
+`npm run test:home-content-controls` covers the local show/hide state, button
+accessibility labels, refresh persistence, and non-home isolation.

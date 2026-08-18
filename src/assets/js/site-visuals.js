@@ -11,7 +11,8 @@
     home_intro_assembly_duration_ms: 1680,
     home_intro_hold_duration_ms: 630,
     home_intro_lock_scroll: true,
-    home_intro_contributor_limit: 8
+    home_intro_contributor_limit: 8,
+    home_content_mask_enabled: false
   };
   const HOME_INTRO_SETTINGS_CACHE = "gck-home-intro-settings";
   let releaseHomeIntro;
@@ -139,6 +140,8 @@
           home_intro_lock_scroll: settings.home_intro_lock_scroll,
           home_intro_contributor_limit:
             settings.home_intro_contributor_limit,
+          home_content_mask_enabled:
+            settings.home_content_mask_enabled,
           home_background_style: settings.home_background_style,
           home_star_scope: settings.home_star_scope,
           home_star_relation_visibility:
@@ -1637,6 +1640,20 @@
         .forEach((name) => document.body.classList.remove(name));
       document.body.dataset.pointerEffect =
         nextSettings.pointer_effect_enabled ? "on" : "off";
+      if (type === "home") {
+        const maskEnabled =
+          nextSettings.home_content_mask_enabled === true;
+        document.body.dataset.homeContentMask =
+          maskEnabled ? "on" : "off";
+        document.body.classList.toggle(
+          "home-content-masked",
+          maskEnabled
+        );
+        document.body.classList.toggle(
+          "home-content-unmasked",
+          !maskEnabled
+        );
+      }
       if (type === "catalog") {
         document.body.dataset.catalogBackground =
           nextSettings.catalog_background_style;
@@ -1714,6 +1731,17 @@
       } else if (!introStarted && !homeIntroReleased) {
         createEntrySequence(liveSettings, reducedMotion);
         introStarted = true;
+      }
+    });
+
+    window.addEventListener("gck:home-content-visibility", (event) => {
+      if (
+        type === "home" &&
+        event.detail &&
+        event.detail.hidden &&
+        cancelHomeIntro
+      ) {
+        cancelHomeIntro();
       }
     });
 

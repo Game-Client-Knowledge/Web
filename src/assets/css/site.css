@@ -764,6 +764,121 @@ body[data-editor-state="loading"] [data-account-label] {
   backdrop-filter: blur(4px);
 }
 
+.page-home.home-content-unmasked .library-intro,
+.page-home.home-content-unmasked .contribution-ledger,
+.page-home.home-content-unmasked .track-overview-card,
+.page-home.home-content-unmasked .contribution-band,
+.page-home.home-content-unmasked .site-footer {
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.page-home.home-content-unmasked .library-intro::before {
+  background: transparent;
+}
+
+.page-home.home-content-unmasked .track-overview-card {
+  box-shadow: none;
+}
+
+.home-content-unmasked .star-map-label {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
+}
+
+.home-content-toggle {
+  position: fixed;
+  z-index: 190;
+  bottom: 18px;
+  left: 18px;
+  display: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: #dcebe6;
+  background: rgba(7, 17, 15, 0.82);
+  border: 1px solid rgba(156, 224, 205, 0.38);
+  border-radius: 4px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
+  place-items: center;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.page-home .home-content-toggle {
+  display: grid;
+}
+
+.home-content-toggle:hover {
+  color: #ffffff;
+  background: rgba(18, 52, 43, 0.94);
+  border-color: rgba(156, 224, 205, 0.68);
+}
+
+.home-content-toggle svg,
+.home-content-toggle i {
+  width: 20px;
+  height: 20px;
+}
+
+.home-content-toggle [data-home-content-icon="show"] {
+  display: none;
+}
+
+.home-content-hidden .home-content-toggle [data-home-content-icon="hide"] {
+  display: none;
+}
+
+.home-content-hidden .home-content-toggle [data-home-content-icon="show"] {
+  display: block;
+}
+
+.page-home.has-entry-sequence .home-content-toggle {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.page-home.home-content-hidden .site-entry-sequence {
+  display: none;
+}
+
+.page-home.has-entry-sequence.home-content-hidden .home-content-toggle {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.page-home.home-content-hidden {
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+}
+
+.page-home.home-content-hidden .site-header,
+.page-home.home-content-hidden .library-intro-overlay,
+.page-home.home-content-hidden .contribution-ledger,
+.page-home.home-content-hidden .catalog-overview,
+.page-home.home-content-hidden .contribution-band,
+.page-home.home-content-hidden .site-footer {
+  display: none;
+}
+
+.page-home.home-content-hidden #main-content,
+.page-home.home-content-hidden .library-intro {
+  min-height: 100vh;
+  min-height: 100svh;
+}
+
+.page-home.home-content-hidden .library-intro,
+.page-home.home-content-hidden .library-intro::before {
+  background: transparent;
+}
+
 .star-map-label {
   position: fixed;
   z-index: 170;

@@ -576,6 +576,8 @@ async function loadOverview() {
     data.settings.reader_background_style;
   byId("visualSettingsForm").home_background_style.value =
     data.settings.home_background_style;
+  byId("visualSettingsForm").home_content_mask_enabled.checked =
+    data.settings.home_content_mask_enabled;
   byId("visualSettingsForm").home_star_scope.value =
     data.settings.home_star_scope;
   byId("visualSettingsForm").home_star_relation_visibility.value =
@@ -690,6 +692,8 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         catalog_background_style: form.catalog_background_style.value,
         reader_background_style: form.reader_background_style.value,
         home_background_style: form.home_background_style.value,
+        home_content_mask_enabled:
+          form.home_content_mask_enabled.checked,
         home_star_scope: form.home_star_scope.value,
         home_star_relation_visibility:
           form.home_star_relation_visibility.value,
@@ -752,6 +756,7 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
       home_intro_contributor_limit:
         saved.home_intro_contributor_limit,
       home_background_style: saved.home_background_style,
+      home_content_mask_enabled: saved.home_content_mask_enabled,
       home_star_scope: saved.home_star_scope,
       home_star_relation_visibility: saved.home_star_relation_visibility,
       home_star_strong_relation_style:
