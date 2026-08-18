@@ -30,6 +30,14 @@
       .trim();
   }
 
+  function refreshResultIcons() {
+    if (typeof window.GCKRefreshIcons === "function") {
+      window.GCKRefreshIcons(results);
+    } else if (window.lucide) {
+      window.lucide.createIcons();
+    }
+  }
+
   function withBase(route) {
     return `${config.basePath || ""}/${String(route).replace(/^\//, "")}`.replace(
       /\/+/g,
@@ -141,9 +149,7 @@
         '<div class="search-empty"><i data-lucide="search-x" aria-hidden="true"></i>' +
         "<strong>没有匹配内容</strong><span>尝试更短的关键词或相关术语。</span></div>";
       status.textContent = "没有找到结果";
-      if (window.lucide) {
-        window.lucide.createIcons();
-      }
+      refreshResultIcons();
       return;
     }
 
@@ -167,9 +173,7 @@
         );
       })
       .join("");
-    if (window.lucide) {
-      window.lucide.createIcons();
-    }
+    refreshResultIcons();
   }
 
   async function search() {

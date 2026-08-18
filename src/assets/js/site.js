@@ -2,15 +2,64 @@
   "use strict";
 
   function refreshIcons(root) {
-    if (window.lucide) {
-      window.lucide.createIcons({
-        attrs: {
-          "stroke-width": 1.8
-        },
-        root: root || document
+    const lucide = window.lucide;
+    if (!lucide || !lucide.icons || !lucide.createElement) {
+      return;
+    }
+    // The vendored lucide createIcons() ignores its root option and always
+    // re-renders every [data-lucide] element in the whole document, which
+    // repaints already-rendered SVGs and causes visible jank. Only convert
+    // <i data-lucide> placeholders inside the requested scope instead.
+    const scope = root || document;
+    const pending = [];
+    if (
+      scope.nodeType === Node.ELEMENT_NODE &&
+      typeof scope.matches === "function" &&
+      scope.matches("i[data-lucide]")
+    ) {
+      pending.push(scope);
+    }
+    if (typeof scope.querySelectorAll === "function") {
+      scope.querySelectorAll("i[data-lucide]").forEach(function (placeholder) {
+        pending.push(placeholder);
       });
     }
+    pending.forEach(function (placeholder) {
+      const name = placeholder.getAttribute("data-lucide");
+      if (!name) return;
+      const componentName = name.replace(
+        /(\w)(\w*)(_|-|\s*)/g,
+        function (match, first, rest) {
+          return first.toUpperCase() + rest.toLowerCase();
+        }
+      );
+      const iconNode = lucide.icons[componentName];
+      if (!iconNode) return;
+      const iconAttrs = Object.assign({}, iconNode[1], {
+        "data-lucide": name,
+        "stroke-width": 1.8
+      });
+      Array.from(placeholder.attributes).forEach(function (attr) {
+        if (attr.name === "data-lucide" || attr.name === "class") return;
+        iconAttrs[attr.name] = attr.value;
+      });
+      const className = (
+        "lucide lucide-" +
+        name +
+        " " +
+        (placeholder.getAttribute("class") || "")
+      ).trim();
+      if (className) {
+        iconAttrs.class = className;
+      }
+      const svg = lucide.createElement([iconNode[0], iconAttrs, iconNode[2] || []]);
+      placeholder.replaceWith(svg);
+    });
   }
+
+  // Shared with search.js and editor-integration.js so every script converts
+  // only new icon placeholders instead of re-rendering the whole document.
+  window.GCKRefreshIcons = refreshIcons;
 
   function setCopied(button, label) {
     const original = button.innerHTML;

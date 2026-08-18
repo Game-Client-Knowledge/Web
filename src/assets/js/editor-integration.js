@@ -37,13 +37,18 @@
   }
 
   function refreshIcons(root) {
-    if (!window.lucide) {
+    // site.js exposes a scoped converter that only renders new
+    // <i data-lucide> placeholders without repainting existing SVGs.
+    if (typeof window.GCKRefreshIcons === "function") {
+      window.GCKRefreshIcons(root);
       return;
     }
-    window.lucide.createIcons({
-      attrs: { "stroke-width": 1.8 },
-      root: root || document
-    });
+    if (window.lucide) {
+      window.lucide.createIcons({
+        attrs: { "stroke-width": 1.8 },
+        root: root || document
+      });
+    }
   }
 
   async function api(path, options) {
@@ -547,6 +552,194 @@
     return false;
   }
 
+  // Attributes that reflect runtime/user state and must survive a sync.
+  const SYNC_KEEP_ATTRIBUTES = {
+    open: true,
+    style: true,
+    "data-restore-delete": true
+  };
+
+  function syncNodeKey(node) {
+    if (node.nodeType === Node.TEXT_NODE) return "#text";
+    if (node.nodeType !== Node.ELEMENT_NODE) return "#node";
+    const dataset = node.dataset || {};
+    if (dataset.lucide) return "icon:" + dataset.lucide;
+    if (dataset.createContext) return "create:" + dataset.createContext;
+    if (dataset.deletePath) {
+      return "delete:" + dataset.deleteKind + ":" + dataset.deletePath;
+    }
+    if (node.classList.contains("draft-change-badge")) return "badge";
+    if (node.tagName === "A") {
+      return "a:" + (node.getAttribute("href") || "");
+    }
+    if (node.classList.contains("docs-nav-unit")) {
+      const title = node.querySelector(":scope > .docs-nav-unit-title");
+      const href = title && title.getAttribute("href");
+      return "unit:" + (href || (title && title.textContent.trim()) || "");
+    }
+    if (node.tagName === "LI") {
+      const anchor = node.querySelector("a[href]");
+      return "li:" + (anchor ? anchor.getAttribute("href") : node.textContent.trim());
+    }
+    if (node.classList.contains("module-unit-branch")) {
+      const headingLink = node.querySelector(":scope h3 a[href]");
+      if (headingLink) return "branch:" + headingLink.getAttribute("href");
+      const summaryTitle = node.querySelector(":scope > summary strong");
+      return "branch:" + (summaryTitle ? summaryTitle.textContent.trim() : "");
+    }
+    const classToken =
+      typeof node.className === "string" && node.className.trim()
+        ? node.className.trim().split(/\s+/)[0]
+        : "";
+    return node.tagName.toLowerCase() + "." + classToken;
+  }
+
+  function syncableChildren(parent) {
+    return Array.from(parent.childNodes).filter(function (node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return node.textContent.trim().length > 0;
+      }
+      return node.nodeType === Node.ELEMENT_NODE;
+    });
+  }
+
+  // Coarse structural key used as a fallback when exact key matching fails,
+  // e.g. when an entry gains a draft status and its href switches to a draft
+  // link. Pairing by structure lets us patch the existing node in place
+  // instead of replacing the whole subtree.
+  function looseNodeKey(node) {
+    if (node.nodeType === Node.TEXT_NODE) return "#text";
+    if (node.nodeType !== Node.ELEMENT_NODE) return "#node";
+    const dataset = node.dataset || {};
+    if (dataset.lucide) return "icon:" + dataset.lucide;
+    // Ignore transient state classes (is-*) so status toggles like
+    // is-deleted-draft do not break structural pairing.
+    const classToken =
+      typeof node.className === "string"
+        ? node.className
+            .trim()
+            .split(/\s+/)
+            .find(function (token) {
+              return token && !token.startsWith("is-");
+            }) || ""
+        : "";
+    return node.tagName.toLowerCase() + "." + classToken;
+  }
+
+  function syncAttributes(oldEl, newEl) {
+    Array.from(oldEl.attributes).forEach(function (attr) {
+      if (SYNC_KEEP_ATTRIBUTES[attr.name]) return;
+      if (!newEl.hasAttribute(attr.name)) {
+        oldEl.removeAttribute(attr.name);
+      }
+    });
+    Array.from(newEl.attributes).forEach(function (attr) {
+      if (SYNC_KEEP_ATTRIBUTES[attr.name]) return;
+      if (oldEl.getAttribute(attr.name) !== attr.value) {
+        oldEl.setAttribute(attr.name, attr.value);
+      }
+    });
+  }
+
+  function syncNode(oldNode, newNode) {
+    if (oldNode.nodeType !== newNode.nodeType) {
+      oldNode.replaceWith(newNode);
+      return;
+    }
+    if (oldNode.nodeType === Node.TEXT_NODE) {
+      if (oldNode.textContent.trim() !== newNode.textContent.trim()) {
+        oldNode.textContent = newNode.textContent;
+      }
+      return;
+    }
+    const oldIcon = oldNode.dataset && oldNode.dataset.lucide;
+    const newIcon = newNode.dataset && newNode.dataset.lucide;
+    if (oldIcon || newIcon) {
+      // Same-key icons keep the already-rendered node; anything else was
+      // handled by key-based insertion/removal in syncChildren.
+      return;
+    }
+    if (oldNode.tagName !== newNode.tagName) {
+      oldNode.replaceWith(newNode);
+      return;
+    }
+    syncAttributes(oldNode, newNode);
+    syncChildren(oldNode, newNode);
+  }
+
+  function syncChildren(oldParent, newParent) {
+    const oldNodes = syncableChildren(oldParent);
+    const newNodes = syncableChildren(newParent);
+    const buckets = new Map();
+    const looseBuckets = new Map();
+    oldNodes.forEach(function (node) {
+      const key = syncNodeKey(node);
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(node);
+      const loose = looseNodeKey(node);
+      if (!looseBuckets.has(loose)) looseBuckets.set(loose, []);
+      looseBuckets.get(loose).push(node);
+    });
+    const used = new Set();
+    const take = function (bucket) {
+      if (!bucket) return null;
+      return (
+        bucket.find(function (candidate) {
+          return !used.has(candidate);
+        }) || null
+      );
+    };
+    let anchor = null;
+    newNodes.forEach(function (newNode) {
+      const oldNode =
+        take(buckets.get(syncNodeKey(newNode))) ||
+        take(looseBuckets.get(looseNodeKey(newNode)));
+      if (oldNode) {
+        used.add(oldNode);
+        syncNode(oldNode, newNode);
+        // Move only when the node is not already the next syncable sibling.
+        let next = anchor ? anchor.nextSibling : oldParent.firstChild;
+        while (
+          next &&
+          next.nodeType === Node.TEXT_NODE &&
+          !next.textContent.trim()
+        ) {
+          next = next.nextSibling;
+        }
+        if (next !== oldNode) {
+          oldParent.insertBefore(
+            oldNode,
+            anchor ? anchor.nextSibling : oldParent.firstChild
+          );
+        }
+        anchor = oldNode;
+      } else {
+        oldParent.insertBefore(
+          newNode,
+          anchor ? anchor.nextSibling : oldParent.firstChild
+        );
+        anchor = newNode;
+      }
+    });
+    oldNodes.forEach(function (node) {
+      if (!used.has(node)) {
+        node.remove();
+      }
+    });
+  }
+
+  // Incrementally reconcile a live container with freshly rendered nodes so
+  // unchanged subtrees keep their DOM identity (no reflow/repaint), and only
+  // newly inserted icon placeholders get converted afterwards.
+  function syncContainer(container, freshNodes) {
+    const staging = document.createElement("div");
+    freshNodes.forEach(function (node) {
+      staging.append(node);
+    });
+    syncChildren(container, staging);
+    refreshIcons(container);
+  }
+
   function addDraftNavigation() {
     const snapshot = state.workspaceSnapshot;
     if (!snapshot) return;
@@ -554,34 +747,32 @@
     const previousTop = sidebar ? sidebar.scrollTop : 0;
     const docsNavigation = query(".docs-navigation");
     if (docsNavigation) {
-      docsNavigation.replaceChildren();
+      const navNodes = [];
       if (snapshot.rootDocuments.length) {
-        docsNavigation.append(
-          renderRootDocumentsNavigation(snapshot.rootDocuments)
-        );
+        navNodes.push(renderRootDocumentsNavigation(snapshot.rootDocuments));
       }
       snapshot.rootUnits.forEach(function (unit) {
-        docsNavigation.append(renderNavigationUnit(unit, 0));
+        navNodes.push(renderNavigationUnit(unit, 0));
       });
-      refreshIcons(docsNavigation);
+      syncContainer(docsNavigation, navNodes);
     }
 
     const unitList = query(".module-unit-list");
     if (unitList) {
-      unitList.replaceChildren();
+      const listNodes = [];
       if (snapshot.rootDocuments.length) {
-        unitList.append(renderRootDocuments(snapshot.rootDocuments));
+        listNodes.push(renderRootDocuments(snapshot.rootDocuments));
       }
       snapshot.rootUnits.forEach(function (unit) {
-        unitList.append(renderModuleUnit(unit, 0));
+        listNodes.push(renderModuleUnit(unit, 0));
       });
       if (!snapshot.rootUnits.length) {
         const empty = document.createElement("p");
         empty.className = "empty-state";
         empty.textContent = "该模块暂无内容。";
-        unitList.append(empty);
+        listNodes.push(empty);
       }
-      refreshIcons(unitList);
+      syncContainer(unitList, listNodes);
     }
     if (sidebar) {
       sidebar.scrollTop = previousTop;
@@ -2287,22 +2478,32 @@
       );
       const icon = query("svg, i", button);
       if (icon) {
-        const replacement = document.createElement("i");
-        replacement.dataset.lucide = deleted ? "undo-2" : "trash-2";
-        replacement.setAttribute("aria-hidden", "true");
-        icon.replaceWith(replacement);
+        const wantedIcon = deleted ? "undo-2" : "trash-2";
+        if (icon.dataset.lucide !== wantedIcon) {
+          const replacement = document.createElement("i");
+          replacement.dataset.lucide = wantedIcon;
+          replacement.setAttribute("aria-hidden", "true");
+          icon.replaceWith(replacement);
+          refreshIcons(button);
+        }
       }
       if (kind !== "file") {
-        Array.from(button.childNodes)
-          .filter(function (node) {
-            return node.nodeType === Node.TEXT_NODE;
+        const textNodes = Array.from(button.childNodes).filter(function (node) {
+          return node.nodeType === Node.TEXT_NODE;
+        });
+        const currentText = textNodes
+          .map(function (node) {
+            return node.textContent;
           })
-          .forEach(function (node) {
+          .join("")
+          .trim();
+        if (currentText !== text) {
+          textNodes.forEach(function (node) {
             node.remove();
           });
-        button.append(document.createTextNode(text));
+          button.append(document.createTextNode(text));
+        }
       }
-      refreshIcons(button);
     });
   }
 
