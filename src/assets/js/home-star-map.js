@@ -39,7 +39,10 @@
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)"
   ).matches;
-  const palette = ["#ffffff", "#9ce0cd", "#f0bd78", "#ef8e78", "#8fc9ff"];
+  const paletteFamilies = [
+    ["#9ce0cd", "#86d8c0", "#b5ead8", "#6fc9b2"],
+    ["#f0bd78", "#e5a95f", "#f7d9a8", "#d99a4e"]
+  ];
   const relationColors = {
     strong: "132, 220, 196",
     reference: "238, 190, 111",
@@ -72,6 +75,50 @@
 
   function normalizeName(value) {
     return String(value || "").trim().toLocaleLowerCase("en").replace(/\s+/g, " ");
+  }
+
+  function pickStarColor(random) {
+    const roll = random();
+    if (roll < 0.14) return "#ffffff";
+    const family = paletteFamilies[roll < 0.57 ? 0 : 1];
+    return family[Math.floor(random() * family.length)];
+  }
+
+  function hexToRgbChannels(hex) {
+    const value = String(hex || "#ffffff").replace("#", "");
+    return [
+      parseInt(value.slice(0, 2), 16) || 0,
+      parseInt(value.slice(2, 4), 16) || 0,
+      parseInt(value.slice(4, 6), 16) || 0
+    ].join(", ");
+  }
+
+  const glowSprites = new Map();
+  function glowSprite(color) {
+    let sprite = glowSprites.get(color);
+    if (sprite) return sprite;
+    const size = 96;
+    const rgb = hexToRgbChannels(color);
+    sprite = document.createElement("canvas");
+    sprite.width = size;
+    sprite.height = size;
+    const spriteContext = sprite.getContext("2d");
+    const gradient = spriteContext.createRadialGradient(
+      size / 2,
+      size / 2,
+      0,
+      size / 2,
+      size / 2,
+      size / 2
+    );
+    gradient.addColorStop(0, `rgba(${rgb}, 0.9)`);
+    gradient.addColorStop(0.22, `rgba(${rgb}, 0.38)`);
+    gradient.addColorStop(0.5, `rgba(${rgb}, 0.1)`);
+    gradient.addColorStop(1, `rgba(${rgb}, 0)`);
+    spriteContext.fillStyle = gradient;
+    spriteContext.fillRect(0, 0, size, size);
+    glowSprites.set(color, sprite);
+    return sprite;
   }
 
   function matchingRevision(value) {
@@ -511,8 +558,9 @@
       variationFrom: 0,
       variationTo: 0,
       variationStartedAt: 0,
+      variationNextAt: 0,
       color: runtimeSettings.home_star_color_random_enabled
-        ? palette[Math.floor(random() * palette.length)]
+        ? pickStarColor(random)
         : "#ffffff",
       index
     }));
@@ -534,7 +582,6 @@
     let labelExpiresAt = 0;
     let labelTimer = 0;
     let selectionTimer = 0;
-    let lastVariationAt = 0;
 
     function positionStars(initial) {
       const contributors = stars.filter((star) => star.kind === "contributor");
@@ -658,19 +705,22 @@
     }
 
     function updateVariations(time) {
-      if (
-        !runtimeSettings.home_star_brightness_variation_enabled ||
-        time - lastVariationAt < runtimeSettings.home_star_brightness_interval_ms
-      ) {
+      if (!runtimeSettings.home_star_brightness_variation_enabled) {
         return;
       }
-      lastVariationAt = time;
+      const interval = runtimeSettings.home_star_brightness_interval_ms;
       for (const star of stars) {
+        if (!star.variationNextAt) {
+          star.variationNextAt = time + random() * interval;
+          continue;
+        }
+        if (time < star.variationNextAt) continue;
         star.variationFrom = variation(star, time);
         star.variationTo =
           (random() * 2 - 1) *
           runtimeSettings.home_star_brightness_variation_amount;
         star.variationStartedAt = time;
+        star.variationNextAt = time + interval * (0.55 + random() * 0.9);
       }
     }
 
@@ -686,22 +736,22 @@
         selected
       );
 
-      context.fillStyle = star.color;
-      context.globalAlpha = presentation.haloAlpha;
-      context.shadowBlur = 0;
-      context.beginPath();
-      context.arc(
-        star.x,
-        star.y,
-        presentation.haloRadius,
-        0,
-        Math.PI * 2
-      );
-      context.fill();
+      // Soft glow from a pre-rendered radial gradient sprite. This avoids
+      // per-frame shadowBlur and the hard edge of a flat halo disc.
+      if (presentation.haloAlpha > 0.04) {
+        const diameter = presentation.haloRadius * 2;
+        context.globalAlpha = Math.min(1, presentation.haloAlpha * 2.4);
+        context.drawImage(
+          glowSprite(star.color),
+          star.x - presentation.haloRadius,
+          star.y - presentation.haloRadius,
+          diameter,
+          diameter
+        );
+      }
 
+      context.fillStyle = star.color;
       context.globalAlpha = presentation.alpha;
-      context.shadowColor = star.color;
-      context.shadowBlur = presentation.shadowBlur;
       context.beginPath();
       context.arc(
         star.x,
@@ -711,9 +761,26 @@
         Math.PI * 2
       );
       context.fill();
+
+      // Bright stars get a hotter white center for extra depth.
+      if (presentation.coreAlpha > 0.02) {
+        context.globalAlpha = presentation.coreAlpha;
+        context.fillStyle = "#ffffff";
+        context.beginPath();
+        context.arc(
+          star.x,
+          star.y,
+          Math.max(0.45, presentation.radius * 0.42),
+          0,
+          Math.PI * 2
+        );
+        context.fill();
+      }
+
       if (star.kind === "contributor") {
+        context.globalAlpha = presentation.alpha * 0.55;
         context.strokeStyle = star.color;
-        context.lineWidth = selected ? 1.3 : 0.75;
+        context.lineWidth = selected ? 1.2 : 0.7;
         context.beginPath();
         context.moveTo(
           star.x - presentation.radius * 2.4,
@@ -734,7 +801,6 @@
         context.stroke();
       }
       context.globalAlpha = 1;
-      context.shadowBlur = 0;
     }
 
     function moveDocuments() {
