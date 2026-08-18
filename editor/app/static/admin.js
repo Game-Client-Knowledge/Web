@@ -37,6 +37,11 @@ const STAR_BRIGHTNESS_RULES = [
 ];
 
 const byId = (id) => document.getElementById(id);
+const numberFormatter = new Intl.NumberFormat("zh-CN");
+
+function formatNumber(value) {
+  return numberFormatter.format(Number(value) || 0);
+}
 
 function refreshIcons(root = document) {
   if (window.lucide) {
@@ -117,6 +122,54 @@ function renderIntegrations(settings) {
     chip.className = `integration-chip${ready ? " ready" : ""}`;
     chip.textContent = `${label}：${ready ? "已配置" : "未配置"}`;
     target.append(chip);
+  }
+}
+
+function renderAnalytics(analytics) {
+  const periodGrid = byId("analyticsPeriodGrid");
+  const trend = byId("analyticsTrend");
+  periodGrid.replaceChildren();
+  trend.replaceChildren();
+
+  for (const period of analytics?.periods || []) {
+    const card = document.createElement("article");
+    card.className = "analytics-period-card";
+    card.dataset.period = period.key;
+    const title = document.createElement("span");
+    title.textContent = period.title;
+    const devices = document.createElement("strong");
+    devices.textContent = formatNumber(period.devices);
+    const deviceLabel = document.createElement("small");
+    deviceLabel.textContent = "独立设备";
+    const visits = document.createElement("p");
+    visits.textContent = `${formatNumber(period.visits)} 次访问`;
+    card.append(title, devices, deviceLabel, visits);
+    periodGrid.append(card);
+  }
+
+  const days = (analytics?.daily || []).slice(-14);
+  const maximum = Math.max(
+    1,
+    ...days.map((item) => Number(item.visits) || 0)
+  );
+  for (const item of days) {
+    const row = document.createElement("div");
+    row.className = "analytics-trend-row";
+    const day = document.createElement("time");
+    day.dateTime = item.day;
+    day.textContent = item.day.slice(5).replace("-", "/");
+    const bar = document.createElement("span");
+    bar.className = "analytics-trend-bar";
+    const fill = document.createElement("span");
+    fill.style.width =
+      `${Math.max(0, (Number(item.visits) || 0) / maximum * 100)}%`;
+    bar.append(fill);
+    const devices = document.createElement("span");
+    devices.textContent = `${formatNumber(item.devices)} 设备`;
+    const visits = document.createElement("strong");
+    visits.textContent = `${formatNumber(item.visits)} 次`;
+    row.append(day, bar, devices, visits);
+    trend.append(row);
   }
 }
 
@@ -633,6 +686,7 @@ async function loadOverview() {
   byId("visualSettingsForm").home_intro_contributor_limit.value =
     String(data.settings.home_intro_contributor_limit);
   state.autoCloseDays = data.settings.pr_auto_close_days;
+  renderAnalytics(data.analytics);
   renderIntegrations(data.settings);
   renderSiteUpdate(data.site_update);
   renderPendingSubmissions(

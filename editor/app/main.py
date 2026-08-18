@@ -31,6 +31,15 @@ from fastapi.staticfiles import StaticFiles
 from markdown_it import MarkdownIt
 from pydantic import BaseModel, Field
 
+from .analytics import (
+    DEVICE_COOKIE,
+    DEVICE_COOKIE_MAX_AGE,
+    analytics_dashboard,
+    device_hash,
+    new_device_token,
+    record_visit,
+    valid_device_token,
+)
 from .comments import contribution_graph_payload, create_comments_router
 from .config import Settings
 from .database import Database, utc_now
@@ -1215,6 +1224,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/config")
     async def config() -> dict[str, Any]:
         return config_payload()
+
+    @app.post("/api/analytics/visit")
+    async def analytics_visit(request: Request) -> Response:
+        raw_device = request.cookies.get(DEVICE_COOKIE)
+        new_device = not valid_device_token(raw_device)
+        if new_device:
+            raw_device = new_device_token()
+        anonymous_device_hash = device_hash(raw_device)
+        limiter_key = (
+            f"analytics:new:{request_ip(request)}"
+            if new_device
+            else f"analytics:device:{anonymous_device_hash}"
+        )
+        if rate_limiter.allow(limiter_key, 120, 60):
+            record_visit(db, anonymous_device_hash)
+        response = Response(status_code=204)
+        if new_device:
+            response.set_cookie(
+                DEVICE_COOKIE,
+                raw_device,
+                max_age=DEVICE_COOKIE_MAX_AGE,
+                secure=settings.cookie_secure,
+                httponly=True,
+                samesite="lax",
+                path="/",
+            )
+        return response
 
     @app.get("/api/session")
     async def session(request: Request) -> dict[str, Any]:
@@ -3126,6 +3162,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "submissions": submissions,
             "external_pull_requests": external_pull_requests,
             "notifications": notifications,
+            "analytics": analytics_dashboard(db),
             "settings": {
                 "edit_policy": db.setting(
                     "edit_policy", settings.default_edit_policy

@@ -12,6 +12,7 @@ import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
+from app.analytics import DEVICE_COOKIE
 from app.config import Settings
 from app.github import GitHubError, SubmissionResult
 from app.main import create_app
@@ -97,6 +98,57 @@ def test_bootstrap_admin_must_change_password(client: TestClient) -> None:
 
     session = client.get("/api/session").json()
     assert session["user"]["must_change_password"] is False
+
+
+def test_anonymous_visit_cookie_and_admin_analytics(
+    client: TestClient,
+) -> None:
+    first = client.post("/api/analytics/visit")
+    assert first.status_code == 204
+    first_device = client.cookies.get(DEVICE_COOKIE)
+    assert first_device
+    set_cookie = first.headers["set-cookie"].lower()
+    assert "httponly" in set_cookie
+    assert "samesite=lax" in set_cookie
+
+    second = client.post("/api/analytics/visit")
+    assert second.status_code == 204
+    assert client.cookies.get(DEVICE_COOKIE) == first_device
+
+    client.cookies.delete(DEVICE_COOKIE)
+    third = client.post("/api/analytics/visit")
+    assert third.status_code == 204
+    second_device = client.cookies.get(DEVICE_COOKIE)
+    assert second_device and second_device != first_device
+
+    payload = login(client, "sourcecode", TEST_BOOTSTRAP_PASSWORD)
+    changed = client.post(
+        "/api/auth/change-password",
+        headers={"X-CSRF-Token": payload["csrf_token"]},
+        json={
+            "current_password": TEST_BOOTSTRAP_PASSWORD,
+            "new_password": "a-new-strong-password",
+        },
+    )
+    assert changed.status_code == 200
+    overview = client.get("/api/admin/overview")
+    assert overview.status_code == 200
+    today = overview.json()["analytics"]["periods"][0]
+    assert today["key"] == "day"
+    assert today["devices"] == 2
+    assert today["visits"] == 3
+
+    with client.app.state.db.connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT device_hash, visit_count
+            FROM site_analytics_daily
+            ORDER BY visit_count DESC
+            """
+        ).fetchall()
+    assert [row["visit_count"] for row in rows] == [2, 1]
+    assert all(len(row["device_hash"]) == 64 for row in rows)
+    assert all(first_device not in row["device_hash"] for row in rows)
 
 
 def test_local_user_can_create_isolated_topic_draft(client: TestClient) -> None:

@@ -38,6 +38,26 @@
 
     <div id="adminFeedback" class="feedback" role="status" aria-live="polite"></div>
 
+    <section class="admin-section" aria-labelledby="analyticsTitle">
+      <div class="section-title">
+        <div>
+          <h2 id="analyticsTitle">访问统计</h2>
+          <p>匿名设备 Cookie 与页面访问次数，按中国标准时间汇总。</p>
+        </div>
+        <span class="count-badge">匿名统计</span>
+      </div>
+      <div
+        id="analyticsPeriodGrid"
+        class="analytics-period-grid"
+        aria-label="访问周期汇总"
+      ></div>
+      <div class="analytics-trend-heading">
+        <strong>近 14 日趋势</strong>
+        <span>独立设备 / 页面访问</span>
+      </div>
+      <div id="analyticsTrend" class="analytics-trend"></div>
+    </section>
+
     <section class="admin-section">
       <div class="section-title">
         <div><h2>编辑策略</h2><p>控制编辑准入、阅读器模式和客户端 Diff。</p></div>

@@ -205,6 +205,15 @@ CREATE TABLE IF NOT EXISTS comments (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS site_analytics_daily (
+    day TEXT NOT NULL,
+    device_hash TEXT NOT NULL,
+    visit_count INTEGER NOT NULL DEFAULT 1,
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    PRIMARY KEY(day, device_hash)
+);
+
 CREATE TABLE IF NOT EXISTS comment_mentions (
     comment_id INTEGER NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -236,6 +245,8 @@ ON document_contributors(contributor_id, path);
 CREATE INDEX IF NOT EXISTS idx_comments_path
 ON comments(path, start_line, created_at);
 CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_site_analytics_day
+ON site_analytics_daily(day);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_application_pending
 ON admin_applications(user_id) WHERE status = 'pending';
 """
