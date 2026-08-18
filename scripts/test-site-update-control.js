@@ -62,6 +62,7 @@ assert.match(updater, /editor_next_cwd/);
 assert.match(updater, /update_stage="backfill-contribution-graph"/);
 assert.match(updater, /contribution_graph_version/);
 assert.match(updater, /version == "2"/);
+assert.match(updater, /--include-track-readmes/);
 assert.match(updater, /editor_previous_target/);
 assert.match(
   updateService,

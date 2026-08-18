@@ -25,8 +25,10 @@ def git(directory: Path, *arguments: str) -> str:
     ).strip()
 
 
-assert MODULE.editable("program/README.md")
-assert MODULE.editable("planning/README.md")
+assert not MODULE.editable("program/README.md")
+assert not MODULE.editable("planning/README.md")
+assert MODULE.editable("program/README.md", include_track_readmes=True)
+assert MODULE.editable("planning/README.md", include_track_readmes=True)
 assert MODULE.editable("program/knowledge/README.md")
 assert MODULE.editable("planning/cases/README.md")
 assert MODULE.editable("knowledge/cpp/README.md")
@@ -55,10 +57,21 @@ with tempfile.TemporaryDirectory(prefix="gck-attribution-") as temporary:
     revision = git(worktree, "rev-parse", "HEAD")
     git(root, "clone", "--bare", str(worktree), str(bare))
 
+    compatible, deleted = MODULE.changed_paths(
+        str(bare),
+        "",
+        revision,
+    )
+    assert deleted == []
+    assert compatible == [
+        "planning/cases/README.md",
+        "program/knowledge/README.md",
+    ]
     changed, deleted = MODULE.changed_paths(
         str(bare),
         "",
         revision,
+        include_track_readmes=True,
     )
     assert deleted == []
     assert changed == [
@@ -84,6 +97,7 @@ with tempfile.TemporaryDirectory(prefix="gck-attribution-") as temporary:
         str(bare),
         revision,
         next_revision,
+        include_track_readmes=True,
     )
     assert deleted == []
     assert changed == [

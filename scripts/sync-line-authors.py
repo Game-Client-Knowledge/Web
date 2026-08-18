@@ -31,10 +31,16 @@ def git(repo: str, *arguments: str) -> str:
     )
 
 
-def editable(path: str) -> bool:
+def editable(path: str, include_track_readmes: bool = False) -> bool:
     parts = PurePosixPath(path).parts
+    track_readme = (
+        len(parts) == 2
+        and parts[0] in TRACK_ROOTS
+        and parts[1].lower() == "readme.md"
+    )
     return (
         len(parts) >= 2
+        and (include_track_readmes or not track_readme)
         and not any(part.startswith(".") for part in parts)
         and PurePosixPath(path).suffix.lower() in EDITABLE_EXTENSIONS
     )
@@ -106,7 +112,12 @@ def contributors_for_file(
     )
 
 
-def changed_paths(repo: str, previous: str, revision: str) -> tuple[list[str], list[str]]:
+def changed_paths(
+    repo: str,
+    previous: str,
+    revision: str,
+    include_track_readmes: bool = False,
+) -> tuple[list[str], list[str]]:
     if previous and previous != revision:
         output = git(
             repo,
@@ -123,19 +134,26 @@ def changed_paths(repo: str, previous: str, revision: str) -> tuple[list[str], l
             fields = line.split("\t")
             status = fields[0]
             if status.startswith("R") and len(fields) == 3:
-                if editable(fields[1]):
+                if editable(fields[1], include_track_readmes):
                     deleted.add(fields[1])
-                if editable(fields[2]):
+                if editable(fields[2], include_track_readmes):
                     changed.add(fields[2])
             elif len(fields) == 2 and status.startswith("D"):
-                if editable(fields[1]):
+                if editable(fields[1], include_track_readmes):
                     deleted.add(fields[1])
-            elif len(fields) == 2 and editable(fields[1]):
+            elif (
+                len(fields) == 2
+                and editable(fields[1], include_track_readmes)
+            ):
                 changed.add(fields[1])
         return sorted(changed), sorted(deleted)
 
     paths = git(repo, "ls-tree", "-r", "--name-only", revision).splitlines()
-    return sorted(path for path in paths if editable(path)), []
+    return sorted(
+        path
+        for path in paths
+        if editable(path, include_track_readmes)
+    ), []
 
 
 def blame_file(
@@ -258,6 +276,10 @@ def main() -> None:
     parser.add_argument("--content-revision", default="")
     parser.add_argument("--previous", default="")
     parser.add_argument(
+        "--include-track-readmes",
+        action="store_true",
+    )
+    parser.add_argument(
         "--url",
         default=os.getenv(
             "EDITOR_ATTRIBUTION_SYNC_URL",
@@ -273,6 +295,7 @@ def main() -> None:
         arguments.repo,
         arguments.previous,
         arguments.revision,
+        arguments.include_track_readmes,
     )
     files = [
         blame_file(

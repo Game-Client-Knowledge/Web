@@ -597,7 +597,8 @@ if [[ "$contribution_graph_initialized" == "1" ]]; then
     --repo "$CONTENT_GIT_MIRROR" \
     --revision "$mirror_revision" \
     --content-revision "$content_commit" \
-    --previous "$previous_attribution_commit"
+    --previous "$previous_attribution_commit" \
+    --include-track-readmes
 fi
 
 release_id="$(
@@ -726,7 +727,8 @@ if [[ "$contribution_graph_initialized" != "1" ]]; then
   python3 scripts/sync-line-authors.py \
     --repo "$CONTENT_GIT_MIRROR" \
     --revision "$mirror_revision" \
-    --content-revision "$content_commit"
+    --content-revision "$content_commit" \
+    --include-track-readmes
 fi
 
 update_stage="publish-release"
