@@ -527,6 +527,26 @@
     return false;
   }
 
+  function unitIsCurrent(unit) {
+    if (!unit) return false;
+    if (unit.readme && entryMatchesCurrentPage(unit.readme)) {
+      return true;
+    }
+    if ((unit.documents || []).some(function (entry) {
+      return entryMatchesCurrentPage(entry);
+    })) {
+      return true;
+    }
+    const draft = currentDraftPath();
+    if (draft && unit.id) {
+      const unitPath = normalizeRoutePath(unit.id) + "/";
+      if (draft.startsWith(unitPath)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   function addDraftNavigation() {
     const snapshot = state.workspaceSnapshot;
     if (!snapshot) return;
@@ -719,7 +739,7 @@
     const visibleDocuments = unit.documents.filter(function (entry) {
       return !entry.isReadme;
     });
-    if (visibleDocuments.length) {
+    if (visibleDocuments.length && unitIsCurrent(unit)) {
       const list = document.createElement("ol");
       visibleDocuments.forEach(function (entry) {
         const item = document.createElement("li");
