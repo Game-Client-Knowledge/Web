@@ -153,6 +153,39 @@ def test_repository_file_accepts_github_wrapped_base64() -> None:
     )
 
 
+def test_repository_blob_loads_historical_utf8_content() -> None:
+    source = "# Historical\n\nBase revision.\n"
+    settings = SimpleNamespace(
+        github_repo="owner/repository",
+        github_bot_token="bot-token",
+    )
+    client = GitHubClient(settings)
+    client._request = AsyncMock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "sha": "base-sha",
+                "size": len(source.encode("utf-8")),
+                "content": base64.b64encode(
+                    source.encode("utf-8")
+                ).decode("ascii"),
+            },
+        )
+    )
+
+    result = asyncio.run(
+        client.repository_blob("base-sha", "user-token")
+    )
+
+    assert result == source
+    request = client._request.await_args
+    assert request.args[:2] == (
+        "GET",
+        "/repos/owner/repository/git/blobs/base-sha",
+    )
+    assert request.kwargs["token"] == "user-token"
+
+
 def test_external_pull_discovery_uses_bounded_github_queries() -> None:
     settings = SimpleNamespace(github_repo="owner/repository")
     client = GitHubClient(settings)

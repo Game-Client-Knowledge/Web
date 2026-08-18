@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 global.JsDiff = require("diff");
 const {
   normalizeEditorHeadingEscapes,
+  normalizeEditorNumericEscapes,
   preserveSourceFormatting
 } = require(
   "../src/assets/js/markdown-preserve.js"
@@ -84,6 +85,24 @@ assert.equal(
   ),
   "## 1.yyy\n\n正文\n",
   "editing a numbered heading must not persist the editor escape"
+);
+
+assert.equal(
+  normalizeEditorNumericEscapes(
+    "1\\.compact\n\n1\\. ordered literal\n\n> ## 2\\.quoted\n\n```md\n1\\.code\n```\n"
+  ),
+  "1.compact\n\n1\\. ordered literal\n\n> ## 2.quoted\n\n```md\n1\\.code\n```\n",
+  "compact numeric text and quoted headings must drop editor-only escapes"
+);
+
+assert.equal(
+  preserveSourceFormatting(
+    "状态：1.alpha\n",
+    "状态：1.alpha\n",
+    "1\\.beta\n"
+  ),
+  "1.beta\n",
+  "new compact numeric lines must not persist editor-only escapes"
 );
 
 process.stdout.write("Markdown preservation checks passed\n");

@@ -19,7 +19,7 @@
       const value = JSON.parse(storage.getItem(key));
       if (
         !value ||
-        ![1, 2].includes(value.version) ||
+        ![1, 2, 3].includes(value.version) ||
         String(value.userId) !== String(userId) ||
         value.path !== path ||
         typeof value.content !== "string" ||
@@ -41,7 +41,7 @@
 
   function write(storage, userId, path, value) {
     const payload = {
-      version: 2,
+      version: 3,
       userId: String(userId),
       path,
       content: value.content,
@@ -51,6 +51,25 @@
       operation: value.operation === "delete" ? "delete" : "upsert",
       serverRevision: Number(value.serverRevision) || 0,
       conflict: Boolean(value.conflict),
+      lineDiff: Array.isArray(value.lineDiff)
+        ? value.lineDiff.map(function (row) {
+            return {
+              type: row.type,
+              marker: row.marker,
+              oldNumber: row.oldNumber ?? null,
+              newNumber: row.newNumber ?? null,
+              text: String(row.text || " ")
+            };
+          })
+        : [],
+      diffSummary: value.diffSummary &&
+        typeof value.diffSummary === "object"
+        ? {
+            added: Number(value.diffSummary.added) || 0,
+            modified: Number(value.diffSummary.modified) || 0,
+            deleted: Number(value.diffSummary.deleted) || 0
+          }
+        : { added: 0, modified: 0, deleted: 0 },
       updatedAt: value.updatedAt || Date.now()
     };
     try {

@@ -40,7 +40,7 @@
     return groups;
   }
 
-  function normalizeEditorHeadingEscapes(source) {
+  function normalizeEditorNumericEscapes(source) {
     let fence = "";
     return source
       .split("\n")
@@ -57,8 +57,12 @@
           fence = opening[1];
           return line;
         }
-        return line.replace(
-          /^(#{1,6}[ \t]+\d+)\\\.(?=\S|[ \t]|$)/,
+        const heading = line.replace(
+          /^((?:[ \t]*>[ \t]*)*#{1,6}[ \t]+\d+)\\\.(?=\S|[ \t]|$)/,
+          "$1."
+        );
+        return heading.replace(
+          /^([ \t]*\d+)\\\.(?=\S)/,
           "$1."
         );
       })
@@ -131,8 +135,8 @@
       return canonical === edited ? original : edited;
     }
 
-    const normalizedCanonical = normalizeEditorHeadingEscapes(canonical);
-    const normalizedEdited = normalizeEditorHeadingEscapes(edited);
+    const normalizedCanonical = normalizeEditorNumericEscapes(canonical);
+    const normalizedEdited = normalizeEditorNumericEscapes(edited);
     if (normalizedCanonical === normalizedEdited) {
       return original;
     }
@@ -155,7 +159,8 @@
   }
 
   const api = {
-    normalizeEditorHeadingEscapes,
+    normalizeEditorHeadingEscapes: normalizeEditorNumericEscapes,
+    normalizeEditorNumericEscapes,
     preserveSourceFormatting
   };
   root.GCKMarkdown = api;

@@ -908,15 +908,29 @@ async function inspectPage(browser, scenario) {
         const item = Object.entries(localStorage).find(([key]) => {
           return key.startsWith("gck-reader-buffer:v1:");
         });
+        const tree = Object.entries(localStorage).find(([key]) => {
+          return key.startsWith("gck-workspace-tree:v1:");
+        });
+        const buffer = item ? JSON.parse(item[1]) : null;
         return {
           sync: document.body.dataset.editorSyncState,
-          content: item ? JSON.parse(item[1]).content : ""
+          content: buffer?.content || "",
+          version: buffer?.version || 0,
+          lineDiff: buffer?.lineDiff || [],
+          diffSummary: buffer?.diffSummary || {},
+          workspaceRevision: document.body.dataset.workspaceRevision,
+          cachedTree: tree ? JSON.parse(tree[1]) : null
         };
       });
       assert(
         local.sync === "local" &&
           local.content.includes("## 1.autosave-check") &&
-          !local.content.includes("## 1\\.autosave-check"),
+          !local.content.includes("## 1\\.autosave-check") &&
+          local.version === 3 &&
+          local.lineDiff.length > 0 &&
+          Number(local.diffSummary.modified) > 0 &&
+          Boolean(local.workspaceRevision) &&
+          Number(local.cachedTree?.updatedAt) > 0,
         `${scenario.name}: edit was not cached without heading escapes`
       );
       assert(

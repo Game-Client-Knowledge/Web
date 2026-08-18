@@ -166,20 +166,42 @@ class GitHubClient:
         payload = response.json()
         if int(payload.get("size", 0)) > MAX_EDITABLE_FILE_BYTES:
             raise GitHubError("文件超过在线编辑大小限制", 413)
-        try:
-            encoded = "".join(str(payload.get("content", "")).split())
-            content = base64.b64decode(
-                encoded,
-                validate=True,
-            ).decode("utf-8")
-        except (binascii.Error, UnicodeDecodeError) as exc:
-            raise GitHubError("文件不是可编辑的 UTF-8 文本", 422) from exc
+        content = self._decode_text_blob(payload)
         return {
             "path": path,
             "sha": payload["sha"],
             "content": content,
             "html_url": payload.get("html_url"),
         }
+
+    async def repository_blob(
+        self,
+        sha: str,
+        token: str | None = None,
+    ) -> str:
+        response = await self._request(
+            "GET",
+            (
+                f"/repos/{self.settings.github_repo}/git/blobs/"
+                f"{quote(sha, safe='')}"
+            ),
+            token=token or self.settings.github_bot_token or None,
+        )
+        payload = response.json()
+        if int(payload.get("size", 0)) > MAX_EDITABLE_FILE_BYTES:
+            raise GitHubError("文件超过在线编辑大小限制", 413)
+        return self._decode_text_blob(payload)
+
+    @staticmethod
+    def _decode_text_blob(payload: dict[str, Any]) -> str:
+        try:
+            encoded = "".join(str(payload.get("content", "")).split())
+            return base64.b64decode(
+                encoded,
+                validate=True,
+            ).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError) as exc:
+            raise GitHubError("文件不是可编辑的 UTF-8 文本", 422) from exc
 
     async def branch_exists(
         self,

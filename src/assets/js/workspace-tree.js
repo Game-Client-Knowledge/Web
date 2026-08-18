@@ -142,6 +142,15 @@
       updatedAt: change.updated_at || change.updatedAt || "",
       local: Boolean(local),
       conflict: Boolean(change.conflict),
+      lineDiff: Array.isArray(change.lineDiff)
+        ? change.lineDiff.map(function (row) {
+            return { ...row };
+          })
+        : [],
+      diffSummary: change.diffSummary &&
+        typeof change.diffSummary === "object"
+        ? { ...change.diffSummary }
+        : { added: 0, modified: 0, deleted: 0 },
       content:
         typeof change.content === "string" ? change.content : undefined
     };

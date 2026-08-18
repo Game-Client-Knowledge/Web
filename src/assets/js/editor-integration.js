@@ -320,7 +320,19 @@
         revision: Number(change.serverRevision) || 0,
         updated_at: change.updatedAt,
         local: true,
-        conflict: Boolean(change.conflict)
+        conflict: Boolean(change.conflict),
+        base_content:
+          typeof change.baseContent === "string"
+            ? change.baseContent
+            : null,
+        line_diff: Array.isArray(change.lineDiff)
+          ? change.lineDiff
+          : [],
+        diff_summary: change.diffSummary || {
+          added: 0,
+          modified: 0,
+          deleted: 0
+        }
       });
     });
     state.drafts = Array.from(drafts.values()).sort(function (left, right) {
@@ -352,6 +364,19 @@
         state.workspaceSnapshot
       );
     }
+    document.body.dataset.workspaceRevision = String(Date.now());
+    window.dispatchEvent(
+      new CustomEvent("gck:workspace-updated", {
+        detail: {
+          root,
+          changedCount: state.workspaceSnapshot.changedCount,
+          changedPaths: state.drafts.map(function (draft) {
+            return draft.path;
+          }),
+          snapshot: state.workspaceSnapshot
+        }
+      })
+    );
   }
 
   async function discardDraft(draft) {
@@ -1514,11 +1539,55 @@
     }
   }
 
+  function cachedLineDiff(baseContent, nextContent, operation) {
+    if (
+      !window.GCKReaderDiff ||
+      typeof window.GCKReaderDiff.buildLineDiff !== "function"
+    ) {
+      return {
+        rows: [],
+        summary: { added: 0, modified: 0, deleted: 0 }
+      };
+    }
+    const rows = window.GCKReaderDiff
+      .buildLineDiff(
+        typeof baseContent === "string" ? baseContent : "",
+        operation === "delete" ? "" : nextContent || ""
+      )
+      .filter(function (row) {
+        return row.type !== "context";
+      });
+    return {
+      rows,
+      summary: rows.reduce(
+        function (summary, row) {
+          if (row.type === "added") summary.added += 1;
+          else if (row.type === "modified") summary.modified += 1;
+          else if (row.type === "deleted") summary.deleted += 1;
+          return summary;
+        },
+        { added: 0, modified: 0, deleted: 0 }
+      )
+    };
+  }
+
   function writeEditorBuffer(path, value) {
     const buffers = editorBufferApi();
     const userId = editorUserId();
     if (!buffers || !userId) return null;
-    const saved = buffers.write(window.localStorage, userId, path, value);
+    const diff = cachedLineDiff(
+      value.baseContent,
+      value.content,
+      value.operation
+    );
+    const saved = buffers.write(window.localStorage, userId, path, {
+      ...value,
+      lineDiff: diff.rows,
+      diffSummary: diff.summary
+    });
+    if (saved) {
+      refreshEffectiveDrafts();
+    }
     scheduleWorkspaceRender();
     return saved;
   }
@@ -2669,7 +2738,7 @@
         writeEditorBuffer(path, {
           content: "",
           baseSha,
-          baseContent: "",
+          baseContent: null,
           operation: "delete",
           serverRevision: remoteDraft ? remoteDraft.revision : 0,
           updatedAt: Date.now()

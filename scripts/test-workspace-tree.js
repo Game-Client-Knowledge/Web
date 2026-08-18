@@ -54,6 +54,16 @@ const localChanges = [
     content: "# 腾讯一面\n\n第一轮面试内容。\n",
     operation: "upsert",
     baseSha: null,
+    lineDiff: [
+      {
+        type: "added",
+        marker: "+",
+        oldNumber: null,
+        newNumber: 1,
+        text: "# 腾讯一面"
+      }
+    ],
+    diffSummary: { added: 1, modified: 0, deleted: 0 },
     serverRevision: 0
   }
 ];
@@ -77,6 +87,11 @@ assert.deepEqual(
 );
 assert.equal(tree.changedCount, 3);
 assert.equal(mihoyo.readme.baseSha, "mihoyo-readme-sha");
+const tencentRound = tencent.documents.find((item) => {
+  return item.path.endsWith("/01-round.md");
+});
+assert.equal(tencentRound.lineDiff[0].type, "added");
+assert.equal(tencentRound.diffSummary.added, 1);
 
 const deletedEntries = mergeEntries(base, [], [
   {

@@ -35,14 +35,31 @@ const path = "knowledge/cpp/01-cpp98.md";
 const saved = write(storage, 7, path, {
   content: "# C++\n",
   baseSha: "abc123",
+  baseContent: "# C\n",
+  lineDiff: [
+    {
+      type: "modified",
+      marker: "~",
+      oldNumber: null,
+      newNumber: 1,
+      text: "# C++"
+    }
+  ],
+  diffSummary: { added: 0, modified: 1, deleted: 0 },
   serverRevision: 3,
   updatedAt: 1000
 });
 
 assert.equal(AUTO_SYNC_MS, 30000);
 assert.equal(saved.content, "# C++\n");
-assert.equal(saved.version, 2);
+assert.equal(saved.version, 3);
 assert.equal(saved.operation, "upsert");
+assert.equal(saved.lineDiff[0].type, "modified");
+assert.deepEqual(saved.diffSummary, {
+  added: 0,
+  modified: 1,
+  deleted: 0
+});
 assert.deepEqual(read(storage, 7, path), saved);
 assert.deepEqual(list(storage, 7), [saved]);
 assert.equal(read(storage, 8, path), null, "buffers must be user-scoped");

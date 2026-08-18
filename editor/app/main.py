@@ -78,6 +78,7 @@ from .site_updates import (
     queue_update,
     update_status,
 )
+from .text_merge import merge_text
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
@@ -2069,6 +2070,99 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 token=submit_token,
             )
         }
+        merged_paths: list[str] = []
+        merge_conflicts: list[dict[str, Any]] = []
+        merge_updates: list[tuple[str, str, str]] = []
+        for draft in drafts:
+            current = tree.get(draft["path"])
+            base_sha = draft["base_sha"]
+            if not base_sha:
+                if current and draft["operation"] != "delete":
+                    merge_conflicts.append(
+                        {
+                            "path": draft["path"],
+                            "reason": "remote_created",
+                            "message": "远端已创建同名文件",
+                            "remote_sha": current["sha"],
+                        }
+                    )
+                continue
+            if not current:
+                merge_conflicts.append(
+                    {
+                        "path": draft["path"],
+                        "reason": "remote_deleted",
+                        "message": "远端已删除该文件",
+                        "base_sha": base_sha,
+                    }
+                )
+                continue
+            remote_sha = current["sha"]
+            if remote_sha == base_sha:
+                continue
+            if draft["operation"] == "delete":
+                merge_conflicts.append(
+                    {
+                        "path": draft["path"],
+                        "reason": "delete_modified",
+                        "message": "文件在删除草稿创建后已被远端修改",
+                        "base_sha": base_sha,
+                        "remote_sha": remote_sha,
+                    }
+                )
+                continue
+            base_content = await github.repository_blob(
+                base_sha,
+                submit_token,
+            )
+            remote_content = await github.repository_blob(
+                remote_sha,
+                submit_token,
+            )
+            try:
+                merged = merge_text(
+                    base_content,
+                    draft["content"],
+                    remote_content,
+                )
+            except RuntimeError as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail="服务器暂时无法执行三方合并，请稍后重试",
+                ) from exc
+            if merged.conflicted:
+                merge_conflicts.append(
+                    {
+                        "path": draft["path"],
+                        "reason": "content_conflict",
+                        "message": "草稿与远端修改了相同内容",
+                        "base_sha": base_sha,
+                        "remote_sha": remote_sha,
+                    }
+                )
+                continue
+            draft["content"] = merged.content
+            draft["base_sha"] = remote_sha
+            draft["revision"] = int(draft["revision"]) + 1
+            merged_paths.append(draft["path"])
+            merge_updates.append(
+                (merged.content, remote_sha, draft["path"])
+            )
+
+        if merge_conflicts:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "repository_merge_conflict",
+                    "message": (
+                        f"远端目录树已更新，{len(merge_conflicts)} 个文件"
+                        "无法自动合并，请处理冲突后重试"
+                    ),
+                    "base_commit": base_commit_sha,
+                    "conflicts": merge_conflicts,
+                },
+            )
+
         available_roots = set(ALLOWED_ROOTS) | {
             module_root_for_path(path)
             for path in tree
@@ -2154,6 +2248,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
 
         now = utc_now()
+        if merge_updates:
+            with db.connect() as connection:
+                for content, remote_sha, draft_path in merge_updates:
+                    connection.execute(
+                        """
+                        UPDATE drafts
+                        SET content = ?, base_sha = ?,
+                            revision = revision + 1, updated_at = ?
+                        WHERE user_id = ? AND path = ?
+                        """,
+                        (
+                            content,
+                            remote_sha,
+                            now,
+                            user["id"],
+                            draft_path,
+                        ),
+                    )
+
         created_submission = previous is None
         with db.connect() as connection:
             if previous:
@@ -2343,6 +2456,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "pr_number": result.pr_number,
             "pr_url": result.pr_url,
             "overwritten": payload.overwrite,
+            "merged_paths": merged_paths,
             "feedback_email_queued": feedback_email_queued,
         }
 

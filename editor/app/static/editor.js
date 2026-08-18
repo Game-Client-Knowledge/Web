@@ -319,7 +319,19 @@ function mergeReaderBuffersIntoDrafts() {
       revision: change.serverRevision || 0,
       updated_at: change.updatedAt,
       local: true,
-      conflict: Boolean(change.conflict)
+      conflict: Boolean(change.conflict),
+      base_content:
+        typeof change.baseContent === "string"
+          ? change.baseContent
+          : null,
+      line_diff: Array.isArray(change.lineDiff)
+        ? change.lineDiff
+        : [],
+      diff_summary: change.diffSummary || {
+        added: 0,
+        modified: 0,
+        deleted: 0
+      }
     });
   }
   state.drafts = Array.from(drafts.values());
@@ -829,7 +841,39 @@ function renderSourceDiff(baseContent, draft) {
   }
 }
 
+function renderCachedLineDiff(rows) {
+  const target = byId("diffSource");
+  target.replaceChildren();
+  for (const row of rows || []) {
+    const line = document.createElement("div");
+    line.className = `diff-line is-${row.type}`;
+    const oldNumber = document.createElement("span");
+    const newNumber = document.createElement("span");
+    const marker = document.createElement("span");
+    const source = document.createElement("code");
+    oldNumber.textContent = row.oldNumber == null
+      ? ""
+      : String(row.oldNumber);
+    newNumber.textContent = row.newNumber == null
+      ? ""
+      : String(row.newNumber);
+    marker.textContent = row.marker || " ";
+    source.textContent = row.text || " ";
+    line.append(oldNumber, newNumber, marker, source);
+    target.append(line);
+  }
+  if (!target.children.length) {
+    const empty = document.createElement("p");
+    empty.className = "diff-empty";
+    empty.textContent = "源文件内容没有行级变化";
+    target.append(empty);
+  }
+}
+
 async function baseContentForDraft(draft) {
+  if (typeof draft.base_content === "string") {
+    return draft.base_content;
+  }
   if (!draft.base_sha) return "";
   if (state.remoteContent.has(draft.path)) {
     return state.remoteContent.get(draft.path);
@@ -859,6 +903,10 @@ async function showChangeDiff(draft) {
   byId("saveDraftButton").hidden = true;
   byId("diffSource").replaceChildren();
   clearFeedback(byId("editorFeedback"));
+  if (Array.isArray(draft.line_diff) && draft.line_diff.length) {
+    renderCachedLineDiff(draft.line_diff);
+    return;
+  }
   try {
     renderSourceDiff(await baseContentForDraft(draft), draft);
   } catch (error) {
@@ -1647,6 +1695,19 @@ byId("submitForm").custom_head.addEventListener("input", (event) => {
     `web/${slugify(username)}/${slugify(event.currentTarget.value)}`;
 });
 
+function submissionErrorMessage(error) {
+  if (
+    error.detail?.code !== "repository_merge_conflict" ||
+    !Array.isArray(error.detail.conflicts)
+  ) {
+    return error.message;
+  }
+  const paths = error.detail.conflicts
+    .map((conflict) => `${conflict.path}：${conflict.message}`)
+    .join("；");
+  return `${error.detail.message}。${paths}`;
+}
+
 byId("submitForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -1702,7 +1763,11 @@ byId("submitForm").addEventListener("submit", async (event) => {
     const box = byId("submitFeedback");
     box.replaceChildren(
       document.createTextNode(
-        result.overwritten ? "覆盖成功：" : "提交成功："
+        result.overwritten
+          ? "覆盖成功："
+          : result.merged_paths?.length
+            ? `自动合并 ${result.merged_paths.length} 个远端更新后提交成功：`
+            : "提交成功："
       ),
       link
     );
@@ -1715,7 +1780,10 @@ byId("submitForm").addEventListener("submit", async (event) => {
     resetEmptyEditor();
     await Promise.all([loadDrafts(), loadSubmissions()]);
   } catch (error) {
-    feedback(byId("submitFeedback"), error.message);
+    feedback(
+      byId("submitFeedback"),
+      submissionErrorMessage(error)
+    );
   } finally {
     button.disabled = !state.session.can_edit;
     button.textContent = "提交全部更改";

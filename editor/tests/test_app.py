@@ -169,7 +169,7 @@ def test_user_can_create_top_level_module_and_nested_content(
         },
     )
     assert module.status_code == 200, module.text
-    assert module.json()["path"] == "graphics/README.md"
+    assert module.json()["path"] == "program/graphics/README.md"
     assert 'shortTitle: "图形"' in module.json()["content"]
     assert "allowCode: true" in module.json()["content"]
 
@@ -177,7 +177,7 @@ def test_user_can_create_top_level_module_and_nested_content(
         "/api/topics",
         headers={"X-CSRF-Token": csrf},
         json={
-            "root": "graphics",
+            "root": "program/graphics",
             "parent": "",
             "slug": "rendering",
             "title": "渲染基础",
@@ -185,13 +185,13 @@ def test_user_can_create_top_level_module_and_nested_content(
         },
     )
     assert topic.status_code == 200, topic.text
-    assert topic.json()["path"] == "graphics/rendering/README.md"
+    assert topic.json()["path"] == "program/graphics/rendering/README.md"
 
     source = client.put(
         "/api/drafts",
         headers={"X-CSRF-Token": csrf},
         json={
-            "path": "graphics/rendering/demo.cpp",
+            "path": "program/graphics/rendering/demo.cpp",
             "content": "int main() { return 0; }\n",
             "operation": "upsert",
         },
@@ -1385,6 +1385,139 @@ def test_local_submission_uses_user_author_and_expected_main(
         "email": "web-editor+2@users.noreply.chenyurui.top",
     }
     assert call["expected_parent_sha"] == "main-commit-sha"
+
+
+def test_submission_auto_merges_remote_tree_changes(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "merge-submit@example.test",
+            "username": "merge-submit",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    path = "knowledge/cpp/merge-submit.md"
+    base = "# Topic\n\nalpha\n\nmiddle\n\ngamma\n"
+    local = "# Topic\n\nalpha local\n\nmiddle\n\ngamma\n"
+    remote = "# Topic\n\nalpha\n\nmiddle\n\ngamma remote\n"
+    draft = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": path,
+            "content": local,
+            "base_sha": "base-blob",
+            "operation": "upsert",
+        },
+    )
+    assert draft.status_code == 200
+
+    github = client.app.state.github
+    github.main_reference = AsyncMock(
+        return_value={"object": {"sha": "latest-main"}}
+    )
+    github.repository_tree = AsyncMock(
+        return_value=[
+            {"path": path, "sha": "remote-blob", "type": "blob"}
+        ]
+    )
+    github.repository_blob = AsyncMock(side_effect=[base, remote])
+    github.submit = AsyncMock(
+        return_value=SubmissionResult(
+            branch="web/merge-submit/auto-merge",
+            commit_sha="merged-commit",
+            pr_number=81,
+            pr_url="https://github.example/pr/81",
+        )
+    )
+
+    response = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "custom_head": "auto-merge",
+            "title": "docs: merge remote changes",
+            "description": "",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["merged_paths"] == [path]
+    change = github.submit.await_args.kwargs["changes"][0]
+    assert change["base_sha"] == "remote-blob"
+    assert "alpha local" in change["content"]
+    assert "gamma remote" in change["content"]
+
+
+def test_submission_reports_remote_tree_merge_conflict(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "merge-conflict@example.test",
+            "username": "merge-conflict",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    path = "knowledge/cpp/merge-conflict.md"
+    draft = client.put(
+        "/api/drafts",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "path": path,
+            "content": "# Topic\n\nlocal\n",
+            "base_sha": "base-blob",
+            "operation": "upsert",
+        },
+    )
+    assert draft.status_code == 200
+
+    github = client.app.state.github
+    github.main_reference = AsyncMock(
+        return_value={"object": {"sha": "latest-main"}}
+    )
+    github.repository_tree = AsyncMock(
+        return_value=[
+            {"path": path, "sha": "remote-blob", "type": "blob"}
+        ]
+    )
+    github.repository_blob = AsyncMock(
+        side_effect=[
+            "# Topic\n\nbase\n",
+            "# Topic\n\nremote\n",
+        ]
+    )
+    github.submit = AsyncMock()
+
+    response = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "custom_head": "conflict",
+            "title": "docs: conflicting changes",
+            "description": "",
+        },
+    )
+
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["code"] == "repository_merge_conflict"
+    assert detail["conflicts"] == [
+        {
+            "path": path,
+            "reason": "content_conflict",
+            "message": "草稿与远端修改了相同内容",
+            "base_sha": "base-blob",
+            "remote_sha": "remote-blob",
+        }
+    ]
+    github.submit.assert_not_awaited()
+    assert client.get("/api/drafts").json()["items"][0]["path"] == path
 
 
 def test_same_user_can_confirm_submission_branch_overwrite(
