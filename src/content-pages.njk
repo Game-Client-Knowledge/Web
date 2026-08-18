@@ -28,30 +28,42 @@ eleventyComputed:
     >
       {{ unit.title }}
     </a>
-    {% if unit.id == currentUnit.id %}
-      <ol>
-        {% for item in unit.documents %}
-          <li>
-            <a
-              href="{{ item.route | withBase }}"
-              {% if item.id == document.id %}aria-current="page"{% endif %}
-            >
-              <i
-                data-lucide="{% if item.kind == 'code' %}file-code-2{% else %}file-text{% endif %}"
-                aria-hidden="true"
-              ></i>
-              <span>{{ item.title }}</span>
-            </a>
-          </li>
-        {% endfor %}
-      </ol>
-    {% endif %}
     {% if unit.children.length %}
-      <div class="docs-nav-children">
-        {% for child in unit.children %}
-          {{ renderNavigationUnit(child, currentUnit, depth + 1) }}
-        {% endfor %}
-      </div>
+      <details
+        class="docs-nav-subtopics"
+        {% if unit.id in currentUnit.ancestorIds %}open{% endif %}
+      >
+        <summary>
+          <span>子专题</span>
+          <small>{{ unit.children.length }}</small>
+        </summary>
+        <div class="docs-nav-children">
+          {% for child in unit.children %}
+            {{ renderNavigationUnit(child, currentUnit, depth + 1) }}
+          {% endfor %}
+        </div>
+      </details>
+    {% endif %}
+    {% if unit.id == currentUnit.id %}
+      {% set visibleDocuments = unit.documents | rejectattr("isReadme") | list %}
+      {% if visibleDocuments.length %}
+        <ol>
+          {% for item in visibleDocuments %}
+            <li>
+              <a
+                href="{{ item.route | withBase }}"
+                {% if item.id == document.id %}aria-current="page"{% endif %}
+              >
+                <i
+                  data-lucide="{% if item.kind == 'code' %}file-code-2{% else %}file-text{% endif %}"
+                  aria-hidden="true"
+                ></i>
+                <span>{{ item.title }}</span>
+              </a>
+            </li>
+          {% endfor %}
+        </ol>
+      {% endif %}
     {% endif %}
   </section>
 {% endmacro %}

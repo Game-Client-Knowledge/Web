@@ -634,9 +634,29 @@
     }
     appendWorkspaceStatus(title, unit.status, unit.readme.conflict);
     section.append(title);
-    if (unit.documents.length) {
+    if (unit.children.length) {
+      const details = document.createElement("details");
+      details.className = "docs-nav-subtopics";
+      const summary = document.createElement("summary");
+      const summaryText = document.createElement("span");
+      summaryText.textContent = "子专题";
+      const count = document.createElement("small");
+      count.textContent = String(unit.children.length);
+      summary.append(summaryText, count);
+      const children = document.createElement("div");
+      children.className = "docs-nav-children";
+      unit.children.forEach(function (child) {
+        children.append(renderNavigationUnit(child, depth + 1));
+      });
+      details.append(summary, children);
+      section.append(details);
+    }
+    const visibleDocuments = unit.documents.filter(function (entry) {
+      return !entry.isReadme;
+    });
+    if (visibleDocuments.length) {
       const list = document.createElement("ol");
-      unit.documents.forEach(function (entry) {
+      visibleDocuments.forEach(function (entry) {
         const item = document.createElement("li");
         const link = document.createElement("a");
         link.href = workspaceEntryHref(entry);
@@ -655,14 +675,6 @@
         list.append(item);
       });
       section.append(list);
-    }
-    if (unit.children.length) {
-      const children = document.createElement("div");
-      children.className = "docs-nav-children";
-      unit.children.forEach(function (child) {
-        children.append(renderNavigationUnit(child, depth + 1));
-      });
-      section.append(children);
     }
     return section;
   }
@@ -792,7 +804,10 @@
       group.append(details);
       content.append(group);
     }
-    if (unit.documents.length) {
+    const visibleDocuments = unit.documents.filter(function (entry) {
+      return !entry.isReadme;
+    });
+    if (visibleDocuments.length) {
       const group = document.createElement("section");
       group.className = "module-unit-content-group";
       if (unit.children.length) {
@@ -803,7 +818,7 @@
       }
       const list = document.createElement("ol");
       list.className = "module-unit-documents";
-      unit.documents.forEach(function (entry) {
+      visibleDocuments.forEach(function (entry) {
         const item = document.createElement("li");
         item.className = "module-document-row";
         const link = document.createElement("a");

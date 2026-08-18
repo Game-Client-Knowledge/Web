@@ -1289,10 +1289,6 @@ body[data-editor-state="loading"] [data-account-label] {
 
 .module-directory {
   padding-top: 38px;
-  max-height: min(1280px, calc(100vh + 260px));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
 .filter-search {
@@ -1323,23 +1319,15 @@ body[data-editor-state="loading"] [data-account-label] {
 
 .module-unit {
   display: grid;
-  max-height: 430px;
   padding: 26px 0;
   border-bottom: 1px solid var(--line);
   grid-template-columns: minmax(0, 0.9fr) minmax(340px, 1.1fr);
   gap: 48px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
 .module-unit-content {
   min-width: 0;
-  max-height: 360px;
   padding-right: 8px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
 .module-unit-content-group + .module-unit-content-group {
@@ -1849,6 +1837,47 @@ body[data-editor-state="loading"] [data-account-label] {
   color: var(--teal-dark);
   background: var(--teal-soft);
   font-weight: 650;
+}
+
+.docs-nav-subtopics {
+  margin: 5px 0 0 8px;
+}
+
+.docs-nav-subtopics > summary {
+  display: inline-flex;
+  min-height: 28px;
+  padding: 3px 7px;
+  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.docs-nav-subtopics > summary::-webkit-details-marker {
+  display: none;
+}
+
+.docs-nav-subtopics > summary::before {
+  color: var(--teal-dark);
+  content: "›";
+  font-size: 15px;
+  line-height: 1;
+  transition: transform 140ms ease;
+}
+
+.docs-nav-subtopics[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.docs-nav-subtopics > summary small {
+  color: var(--ink-faint);
+  font-size: 10px;
 }
 
 .docs-nav-children {
@@ -4575,17 +4604,11 @@ body.has-comments-open .reader-comments {
     padding-top: 24px;
   }
 
-  .module-directory {
-    max-height: min(980px, calc(100vh + 180px));
-  }
-
   .module-unit {
     display: block;
-    max-height: 560px;
   }
 
   .module-unit-content {
-    max-height: 340px;
     margin-top: 18px;
   }
 

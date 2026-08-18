@@ -639,7 +639,7 @@ async function inspectPage(browser, scenario) {
       ordering.labels.join(",") === "子专题,文件" &&
         ordering.subtopicsOpen === false &&
         ordering.child.includes("C++ 多态") &&
-        ordering.file.includes("C++ 基础知识"),
+        ordering.file.includes("C++98/03"),
       `${scenario.name}: topic/file ordering is ${JSON.stringify(ordering)}`
     );
   }

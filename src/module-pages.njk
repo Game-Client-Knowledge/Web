@@ -80,13 +80,14 @@ eleventyComputed:
             </details>
           </section>
         {% endif %}
-        {% if unit.documents.length %}
+        {% set visibleDocuments = unit.documents | rejectattr("isReadme") | list %}
+        {% if visibleDocuments.length %}
           <section class="module-unit-content-group">
             {% if unit.children.length %}
               <p class="module-unit-content-label">文件</p>
             {% endif %}
             <ol class="module-unit-documents">
-              {% for item in unit.documents %}
+              {% for item in visibleDocuments %}
                 <li class="module-document-row">
                   <a href="{{ item.route | withBase }}">
                     <i
