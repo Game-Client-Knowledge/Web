@@ -573,7 +573,10 @@ def test_preview_uses_reader_content_without_frontmatter(
                 "allowCode: true\n"
                 "---\n"
                 "# Preview title\n\n"
-                "Rendered body.\n"
+                "Rendered body.\n\n"
+                "| Item | Value |\n"
+                "|---|---|\n"
+                "| A | B |\n"
             )
         },
     )
@@ -582,6 +585,9 @@ def test_preview_uses_reader_content_without_frontmatter(
     assert "shortTitle" not in html
     assert "<h1>Preview title</h1>" in html
     assert "Rendered body." in html
+    assert "<table>" in html
+    assert "<th>Item</th>" in html
+    assert "<td>B</td>" in html
 
 
 def test_file_delete_and_discard_change(client: TestClient) -> None:
@@ -1455,6 +1461,58 @@ def test_submission_auto_merges_remote_tree_changes(
     assert change["base_sha"] == "remote-blob"
     assert "alpha local" in change["content"]
     assert "gamma remote" in change["content"]
+
+
+def test_submission_accepts_client_workspace_changes_without_server_drafts(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "local-tree@example.test",
+            "username": "local-tree",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    github = client.app.state.github
+    github.main_reference = AsyncMock(
+        return_value={"object": {"sha": "latest-main"}}
+    )
+    github.repository_tree = AsyncMock(return_value=[])
+    github.submit = AsyncMock(
+        return_value=SubmissionResult(
+            branch="web/local-tree/client-workspace",
+            commit_sha="client-workspace-commit",
+            pr_number=82,
+            pr_url="https://github.example/pr/82",
+        )
+    )
+
+    response = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "custom_head": "client-workspace",
+            "title": "docs: submit local workspace",
+            "base_revision": "cached-main",
+            "changes": [
+                {
+                    "path": "knowledge/cpp/local-tree/README.md",
+                    "content": "# Local tree\n",
+                    "operation": "upsert",
+                    "base_sha": None,
+                    "base_content": "",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert client.get("/api/drafts").json()["items"] == []
+    changes = github.submit.await_args.kwargs["changes"]
+    assert changes[0]["path"] == "knowledge/cpp/local-tree/README.md"
+    assert changes[0]["content"] == "# Local tree\n"
 
 
 def test_submission_reports_remote_tree_merge_conflict(

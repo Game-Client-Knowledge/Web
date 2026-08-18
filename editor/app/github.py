@@ -94,7 +94,12 @@ class GitHubClient:
                 detail = response.json().get("message", response.text)
             except Exception:
                 detail = response.text
-            if (
+            if response.status_code == 401:
+                detail = (
+                    "GitHub 凭证已失效或被撤销；请在个人设置中解绑后"
+                    "重新绑定 GitHub，再次提交"
+                )
+            elif (
                 response.status_code == 403
                 and "personal access token" in str(detail).lower()
             ):
@@ -128,16 +133,17 @@ class GitHubClient:
         *,
         ref: str = "main",
         token: str | None = None,
+        force: bool = False,
     ) -> list[dict[str, Any]]:
         cached = self._tree_cache.get(ref)
         now = time.monotonic()
-        if cached and now - cached[0] < 60:
+        if not force and cached and now - cached[0] < 60:
             return [dict(item) for item in cached[1]]
         lock = self._tree_locks.setdefault(ref, asyncio.Lock())
         async with lock:
             cached = self._tree_cache.get(ref)
             now = time.monotonic()
-            if cached and now - cached[0] < 60:
+            if not force and cached and now - cached[0] < 60:
                 return [dict(item) for item in cached[1]]
             response = await self._request(
                 "GET",

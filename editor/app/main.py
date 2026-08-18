@@ -136,11 +136,24 @@ class PreviewRequest(BaseModel):
     content: str = Field(max_length=MAX_DRAFT_BYTES)
 
 
+class SubmitChangeRequest(BaseModel):
+    path: str = Field(max_length=240)
+    content: str = Field(default="", max_length=MAX_DRAFT_BYTES)
+    operation: str = Field(default="upsert")
+    base_sha: str | None = Field(default=None, max_length=64)
+    base_content: str | None = Field(default=None, max_length=MAX_DRAFT_BYTES)
+
+
 class SubmitRequest(BaseModel):
     custom_head: str = Field(min_length=1, max_length=80)
     title: str = Field(min_length=1, max_length=180)
     description: str = Field(default="", max_length=5000)
     overwrite: bool = False
+    base_revision: str | None = Field(default=None, max_length=64)
+    changes: list[SubmitChangeRequest] = Field(
+        default_factory=list,
+        max_length=MAX_DRAFTS,
+    )
 
 
 class AdminApplicationRequest(BaseModel):
@@ -246,7 +259,10 @@ class SlidingWindowLimiter:
             return True
 
 
-MARKDOWN = MarkdownIt("commonmark", {"html": False, "linkify": True})
+MARKDOWN = MarkdownIt(
+    "commonmark",
+    {"html": False, "linkify": True},
+).enable("table")
 ALLOWED_TAGS = set(bleach.sanitizer.ALLOWED_TAGS) | {
     "h1",
     "h2",
@@ -1513,10 +1529,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/repository/tree")
     async def repository_tree(
+        refresh: bool = False,
         user: dict[str, Any] = Depends(require_editor),
     ) -> dict[str, Any]:
         del user
-        tree = await github.repository_tree()
+        reference, tree = await asyncio.gather(
+            github.main_reference(),
+            github.repository_tree(force=refresh),
+        )
         items = []
         for item in tree:
             if int(item.get("size", 0)) > MAX_EDITABLE_FILE_BYTES:
@@ -1533,7 +1553,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 }
             )
         return {
-            "items": items
+            "revision": str(reference["object"]["sha"]),
+            "items": items,
         }
 
     @app.get("/api/repository/file")
@@ -1935,8 +1956,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         verify_csrf(user, x_csrf_token)
         branch = make_branch_name(user["username"], payload.custom_head)
+        client_changes = [item.model_dump() for item in payload.changes]
         with db.connect() as connection:
-            drafts = [
+            legacy_drafts = [
                 dict(row)
                 for row in connection.execute(
                     """
@@ -1955,8 +1977,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 """,
                 (branch,),
             ).fetchone()
+        drafts = client_changes or legacy_drafts
+        using_legacy_drafts = not client_changes
         if not drafts:
-            raise HTTPException(status_code=422, detail="没有可提交的草稿")
+            raise HTTPException(status_code=422, detail="没有可提交的更改")
+        for draft in drafts:
+            try:
+                draft["path"] = (
+                    validate_repository_path(draft["path"])
+                    if draft["operation"] == "delete"
+                    else validate_content_path(draft["path"])
+                )
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=str(exc),
+                ) from exc
+            if draft["operation"] not in {"upsert", "delete"}:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{draft['path']} 的更改操作无效",
+                )
+            if draft["operation"] == "delete" and not draft["base_sha"]:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{draft['path']} 缺少删除基线",
+                )
+            if draft["operation"] == "upsert":
+                errors = validate_markdown(
+                    draft["path"],
+                    draft["content"],
+                )
+                if errors:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=errors,
+                    )
+            draft.setdefault("revision", 0)
+            draft.setdefault("base_content", None)
         if previous and previous["user_id"] != user["id"]:
             raise HTTPException(
                 status_code=409,
@@ -2285,7 +2343,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
 
         now = utc_now()
-        if merge_updates:
+        if merge_updates and using_legacy_drafts:
             with db.connect() as connection:
                 for (
                     content,
@@ -2450,9 +2508,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     submission_id,
                 ),
             )
-            connection.execute(
-                "DELETE FROM drafts WHERE user_id = ?", (user["id"],)
-            )
+            if using_legacy_drafts:
+                connection.execute(
+                    "DELETE FROM drafts WHERE user_id = ?",
+                    (user["id"],),
+                )
 
         db.audit(
             (
