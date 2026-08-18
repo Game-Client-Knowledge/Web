@@ -60,6 +60,16 @@ order: 40
     "program/graphics/rendering/materials/01-overview.md",
     "# 材质概览\n\n材质系统概览。\n"
   );
+  write(
+    "program/knowledge/interview-roadmap/multiplayer-game/" +
+      "game-synchronization/README.md",
+    "# 游戏同步\n\n状态与输入同步。\n"
+  );
+  write(
+    "program/knowledge/interview-roadmap/multiplayer-game/" +
+      "game-synchronization/01-state.md",
+    "# 状态同步\n\n权威状态同步。\n"
+  );
 
   process.env.CONTENT_REPO_PATH = root;
   process.env.CONTENT_COMMIT = "0123456789abcdef";
@@ -134,6 +144,28 @@ order: 40
         redirect.to === "/program/graphics/rendering/"
     ),
     "program track routes must publish legacy redirects"
+  );
+  assert(
+    catalog.legacyRedirects.some(
+      (redirect) =>
+        redirect.from ===
+          "/program/knowledge/interview-roadmap/game-synchronization/" &&
+        redirect.to ===
+          "/program/knowledge/interview-roadmap/multiplayer-game/" +
+            "game-synchronization/"
+    ),
+    "moved multiplayer topics must preserve their previous program routes"
+  );
+  assert(
+    catalog.legacyRedirects.some(
+      (redirect) =>
+        redirect.from ===
+          "/knowledge/interview-roadmap/game-synchronization/01-state/" &&
+        redirect.to ===
+          "/program/knowledge/interview-roadmap/multiplayer-game/" +
+            "game-synchronization/01-state/"
+    ),
+    "moved multiplayer documents must preserve pre-track legacy routes"
   );
   assert.deepEqual(
     catalog.contributors,
