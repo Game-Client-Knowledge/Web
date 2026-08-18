@@ -351,15 +351,53 @@ body.has-entry-sequence .site-pointer-reticle {
   border-bottom-color: #73cbb4;
 }
 
-.primary-nav .join-nav-link {
-  color: #9ce0cd;
-}
-
 .header-actions {
   display: flex;
   margin-left: auto;
   align-items: center;
   gap: 8px;
+}
+
+.utility-nav {
+  display: flex;
+  height: 38px;
+  align-items: center;
+  gap: 6px;
+}
+
+.utility-nav a {
+  display: inline-flex;
+  min-width: 0;
+  height: 38px;
+  padding: 0 11px;
+  color: #c4d0cc;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 4px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 680;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.utility-nav a[hidden] {
+  display: none !important;
+}
+
+.utility-nav a:hover,
+.utility-nav a[aria-current="page"] {
+  color: #ffffff;
+  background: rgba(22, 123, 109, 0.48);
+  border-color: rgba(156, 224, 205, 0.46);
+}
+
+.utility-nav svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
 }
 
 .account-trigger {
@@ -3878,6 +3916,10 @@ body.has-comments-open .reader-comments {
     width: 108px;
   }
 
+  .utility-nav {
+    margin-left: auto;
+  }
+
   .mobile-menu-trigger {
     display: inline-grid;
   }
@@ -4114,9 +4156,28 @@ body.has-comments-open .reader-comments {
     display: none;
   }
 
+  .utility-nav {
+    gap: 5px;
+  }
+
+  .utility-nav a {
+    width: 32px;
+    height: 36px;
+    padding: 0;
+  }
+
+  .utility-nav a span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
   .account-trigger {
-    width: 38px;
-    min-width: 38px;
+    width: 34px;
+    min-width: 34px;
     padding: 0;
   }
 
@@ -4125,12 +4186,25 @@ body.has-comments-open .reader-comments {
   }
 
   .edit-mode-trigger {
-    width: 38px;
-    min-width: 38px;
+    width: 34px;
+    min-width: 34px;
     padding: 0;
   }
 
   .edit-mode-trigger span {
+    display: none;
+  }
+
+  .search-trigger {
+    width: 34px;
+  }
+
+  .mobile-menu-trigger {
+    width: 34px;
+    height: 34px;
+  }
+
+  .repository-link {
     display: none;
   }
 
@@ -4521,6 +4595,7 @@ body.has-comments-open .reader-comments {
   .primary-button,
   .secondary-button,
   .danger-button,
+  .utility-nav a,
   .search-trigger,
   .intro-search,
   .filter-search,

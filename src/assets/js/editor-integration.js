@@ -137,6 +137,7 @@
     const profile = query("[data-account-user]");
     const githubLogin = query("[data-account-github-login]");
     const registerTab = query('[data-account-tab="register"]');
+    const changeOverview = query("[data-change-overview-link]");
     document.body.dataset.editorState = "ready";
     trigger.disabled = false;
     trigger.removeAttribute("aria-busy");
@@ -163,6 +164,7 @@
 
     if (!state.session || !state.session.authenticated) {
       document.body.classList.remove("can-edit-content");
+      if (changeOverview) changeOverview.hidden = true;
       guest.hidden = false;
       profile.hidden = true;
       trigger.classList.remove("is-authenticated");
@@ -173,6 +175,7 @@
     }
 
     const user = state.session.user;
+    if (changeOverview) changeOverview.hidden = false;
     document.body.classList.toggle(
       "can-edit-content",
       Boolean(state.session.can_edit && !user.must_change_password)

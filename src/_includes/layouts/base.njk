@@ -132,17 +132,30 @@
               {{ module.shortTitle }}
             </a>
           {% endfor %}
-          <a href="{{ site.editorUrl }}">在线编辑</a>
-          <a
-            href="{{ '/contribute/' | withBase }}"
-            {% if pageKind == "contribute" %}aria-current="page"{% endif %}
-          >
-            更新规范
-          </a>
-          <a class="join-nav-link" href="{{ site.joinUrl }}">加入共建</a>
         </nav>
 
         <div class="header-actions">
+          <nav class="utility-nav" aria-label="快捷入口">
+            <a
+              href="{{ site.editorUrl }}"
+              data-change-overview-link
+              hidden
+            >
+              <i data-lucide="list-tree" aria-hidden="true"></i>
+              <span>更改总览</span>
+            </a>
+            <a
+              href="{{ '/contribute/' | withBase }}"
+              {% if pageKind == "contribute" %}aria-current="page"{% endif %}
+            >
+              <i data-lucide="notebook-tabs" aria-hidden="true"></i>
+              <span>更新规范</span>
+            </a>
+            <a href="{{ site.joinUrl }}">
+              <i data-lucide="user-plus" aria-hidden="true"></i>
+              <span>加入共建</span>
+            </a>
+          </nav>
           <button
             class="search-trigger"
             type="button"
@@ -154,7 +167,7 @@
             <kbd>⌘ K</kbd>
           </button>
           <a
-            class="icon-button"
+            class="icon-button repository-link"
             href="{{ site.repositoryUrl }}"
             aria-label="打开内容仓库"
             title="内容仓库"
@@ -205,18 +218,6 @@
             {{ module.title }}
           </a>
         {% endfor %}
-        <a href="{{ site.editorUrl }}">
-          <i data-lucide="square-pen" aria-hidden="true"></i>
-          在线编辑
-        </a>
-        <a href="{{ '/contribute/' | withBase }}">
-          <i data-lucide="notebook-tabs" aria-hidden="true"></i>
-          更新规范
-        </a>
-        <a href="{{ site.joinUrl }}">
-          <i data-lucide="user-plus" aria-hidden="true"></i>
-          加入共建
-        </a>
       </nav>
     </header>
 
