@@ -229,9 +229,9 @@ assert.ok(
   })
 );
 
-const low = brightnessPresentation(2, "document", false);
-const medium = brightnessPresentation(10, "document", false);
-const high = brightnessPresentation(28, "document", false);
+const low = brightnessPresentation(5, "document", false, 100);
+const medium = brightnessPresentation(25, "document", false, 100);
+const high = brightnessPresentation(90, "document", false, 100);
 assert.ok(low.alpha < medium.alpha && medium.alpha < high.alpha);
 assert.ok(low.radius < medium.radius && medium.radius < high.radius);
 assert.ok(
@@ -240,12 +240,20 @@ assert.ok(
 );
 assert.ok(high.luminous > medium.luminous * 3);
 assert.ok(
-  brightnessPresentation(10, "document", true).haloAlpha >
+  brightnessPresentation(25, "document", true, 100).haloAlpha >
     medium.haloAlpha
 );
 assert.ok(
-  brightnessPresentation(10, "contributor", false).radius >
+  brightnessPresentation(25, "contributor", false, 100).radius >
     medium.radius
+);
+assert.equal(
+  brightnessPresentation(140, "document", false, 100).brightness,
+  100
+);
+assert.equal(
+  brightnessPresentation(40, "document", false, 80).luminous,
+  brightnessPresentation(50, "document", false, 100).luminous
 );
 
 console.log("Homepage star illumination checks passed");

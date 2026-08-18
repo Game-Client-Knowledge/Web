@@ -604,6 +604,10 @@ async function loadOverview() {
     String(data.settings.home_star_label_duration_ms / 1000);
   byId("visualSettingsForm").home_star_brightness_variation_enabled.checked =
     data.settings.home_star_brightness_variation_enabled;
+  byId("visualSettingsForm").home_star_brightness_initial.value =
+    String(data.settings.home_star_brightness_initial);
+  byId("visualSettingsForm").home_star_brightness_max.value =
+    String(data.settings.home_star_brightness_max);
   byId("visualSettingsForm").home_star_brightness_variation_amount.value =
     String(data.settings.home_star_brightness_variation_amount);
   byId("visualSettingsForm").home_star_brightness_transition_seconds.value =
@@ -729,6 +733,12 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         ),
         home_star_brightness_variation_enabled:
           form.home_star_brightness_variation_enabled.checked,
+        home_star_brightness_initial: Number(
+          form.home_star_brightness_initial.value
+        ),
+        home_star_brightness_max: Number(
+          form.home_star_brightness_max.value
+        ),
         home_star_brightness_variation_amount: Number(
           form.home_star_brightness_variation_amount.value
         ),
@@ -794,6 +804,10 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         saved.home_star_label_duration_ms,
       home_star_brightness_variation_enabled:
         saved.home_star_brightness_variation_enabled,
+      home_star_brightness_initial:
+        saved.home_star_brightness_initial,
+      home_star_brightness_max:
+        saved.home_star_brightness_max,
       home_star_brightness_variation_amount:
         saved.home_star_brightness_variation_amount,
       home_star_brightness_transition_ms:

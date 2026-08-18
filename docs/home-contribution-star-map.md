@@ -177,7 +177,7 @@ The resulting set is highlighted and a fixed coverage panel reports:
 - highlighted document stars and percentage.
 - covered relations and percentage of the complete relation set.
 - the clicked root star's rendered logical brightness at activation, on the
-  `[0, 30]` scale.
+  configured `[0, maximum]` scale.
 
 Relation coverage always counts every real edge whose two endpoint stars are
 highlighted. It is independent from rendering. Active highlighting supports:
@@ -203,8 +203,9 @@ while normal star movement continues.
 
 ## Brightness Rules
 
-Rules execute from the highest numeric priority to the lowest. Brightness
-starts at `10` and is clamped to `[0, 30]`.
+Rules execute from the highest numeric priority to the lowest. The initial
+brightness and maximum brightness are administrator-configurable. Defaults are
+`10` and `100`; the initial value cannot exceed the maximum.
 
 | Rule | Formula |
 | --- | --- |
@@ -223,9 +224,9 @@ administrator controls the offset magnitude, interpolation duration, and
 reselection interval. Random colors are disabled by default; disabled stars
 render white.
 
-The `[0, 30]` logical brightness is converted through a perceptual power curve,
-`luminous = (brightness / 30)^1.55`. The result controls core opacity, core
-radius, glow blur, and a translucent outer halo. High values are therefore
+The configured logical range is converted through a perceptual power curve,
+`luminous = (brightness / maximum)^1.55`. The result controls core opacity,
+core radius, glow blur, and a translucent outer halo. High values are therefore
 materially brighter instead of merely a fraction larger. Selection adds a
 bounded highlight boost without replacing the underlying brightness.
 
@@ -240,6 +241,7 @@ bounded highlight boost without replacing the underlying brightness.
 - illumination rule and N-level depth;
 - active relation rendering (`single_path`, `minimal_tree`, or `full`);
 - relation-highlight and moving-label durations;
+- initial and maximum logical brightness;
 - brightness variation enablement, magnitude, transition, and interval;
 - random color enablement;
 - enabled brightness rules and priorities.

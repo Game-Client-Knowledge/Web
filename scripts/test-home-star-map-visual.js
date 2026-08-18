@@ -53,6 +53,8 @@ async function runScenario(browser, scenario) {
     home_star_reference_relation_style: "dashed",
     home_star_contributor_relation_style: "glow",
     home_star_brightness_variation_enabled: true,
+    home_star_brightness_initial: 25,
+    home_star_brightness_max: 100,
     home_star_brightness_variation_amount: 3,
     home_star_brightness_transition_ms: 500,
     home_star_brightness_interval_ms: 800,
@@ -121,6 +123,8 @@ async function runScenario(browser, scenario) {
       illuminationRule: canvas.dataset.illuminationRule,
       illuminationDepth: Number(canvas.dataset.illuminationDepth),
       graphDirection: canvas.dataset.graphDirection,
+      brightnessInitial: Number(canvas.dataset.brightnessInitial),
+      brightnessMax: Number(canvas.dataset.brightnessMax),
       activeEdgeMode: canvas.dataset.activeEdgeMode,
       width: rectangle.width,
       height: rectangle.height,
@@ -144,6 +148,8 @@ async function runScenario(browser, scenario) {
   assert.equal(metrics.illuminationRule, "depth_contributor_terminal");
   assert.equal(metrics.illuminationDepth, 2);
   assert.equal(metrics.graphDirection, "directed");
+  assert.equal(metrics.brightnessInitial, 25);
+  assert.equal(metrics.brightnessMax, 100);
   assert.equal(metrics.activeEdgeMode, "single_path");
   assert.ok(metrics.nonblank > 10, `${scenario.name}: canvas is blank`);
   assert.ok(metrics.overflow <= 1, `${scenario.name}: horizontal overflow`);
@@ -214,8 +220,9 @@ async function runScenario(browser, scenario) {
   );
   assert.ok(
     selectionMetrics.brightness > 0 &&
-      selectionMetrics.brightness <= 30
+      selectionMetrics.brightness <= metrics.brightnessMax
   );
+  assert.match(coverage, /\/ 100/);
   assert.equal(
     selectionMetrics.relationCoverage,
     selectionMetrics.totalEdges
@@ -276,6 +283,8 @@ async function runScenario(browser, scenario) {
             home_star_scope: "hero",
             home_star_relation_visibility: "near",
             home_star_graph_direction: "directed",
+            home_star_brightness_initial: 25,
+            home_star_brightness_max: 100,
             home_star_active_edge_mode: "single_path",
             home_star_illumination_rule:
               "depth_contributor_terminal",

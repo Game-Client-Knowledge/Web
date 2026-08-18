@@ -11,6 +11,8 @@
     home_star_reference_relation_style: "dashed",
     home_star_contributor_relation_style: "solid",
     home_star_brightness_variation_enabled: false,
+    home_star_brightness_initial: 10,
+    home_star_brightness_max: 100,
     home_star_brightness_variation_amount: 2,
     home_star_brightness_transition_ms: 900,
     home_star_brightness_interval_ms: 2400,
@@ -307,6 +309,25 @@
 
   function normalizeSettings(value) {
     const merged = { ...defaults, ...(value || {}) };
+    const brightnessMax = Math.max(
+      1,
+      Math.min(
+        100,
+        Number(merged.home_star_brightness_max) || 100
+      )
+    );
+    const rawBrightnessInitial = Number(
+      merged.home_star_brightness_initial
+    );
+    const brightnessInitial = Math.max(
+      0,
+      Math.min(
+        brightnessMax,
+        Number.isFinite(rawBrightnessInitial)
+          ? rawBrightnessInitial
+          : defaults.home_star_brightness_initial
+      )
+    );
     const validRules = Array.isArray(merged.home_star_brightness_rules)
       ? merged.home_star_brightness_rules
       : defaults.home_star_brightness_rules;
@@ -326,6 +347,8 @@
       )
         ? merged.home_star_relation_visibility
         : defaults.home_star_relation_visibility,
+      home_star_brightness_initial: brightnessInitial,
+      home_star_brightness_max: brightnessMax,
       home_star_brightness_variation_amount: Math.max(
         0,
         Math.min(20, Number(merged.home_star_brightness_variation_amount) || 0)
@@ -386,8 +409,8 @@
     return Math.max(0, (Date.now() - timestamp) / 86400000);
   }
 
-  function starBrightness(star, rules) {
-    let brightness = Number(star.brightness || 10);
+  function starBrightness(star, rules, initialBrightness, maxBrightness) {
+    let brightness = initialBrightness;
     for (const rule of rules) {
       const metrics = star.metrics || {};
       if (
@@ -430,7 +453,7 @@
         brightness *= Math.max(0.62, 0.76 + recency * 0.44);
       }
     }
-    return Math.max(0, Math.min(30, brightness));
+    return Math.max(0, Math.min(maxBrightness, brightness));
   }
 
   function createLegacyMap(runtimeSettings) {
@@ -601,7 +624,9 @@
       vy: source.kind === "document" ? (random() - 0.5) * 0.18 : 0,
       baseBrightness: starBrightness(
         source,
-        runtimeSettings.home_star_brightness_rules
+        runtimeSettings.home_star_brightness_rules,
+        runtimeSettings.home_star_brightness_initial,
+        runtimeSettings.home_star_brightness_max
       ),
       variationFrom: 0,
       variationTo: 0,
@@ -779,7 +804,10 @@
     function currentBrightness(star, time) {
       return Math.max(
         0,
-        Math.min(30, star.baseBrightness + variation(star, time))
+        Math.min(
+          runtimeSettings.home_star_brightness_max,
+          star.baseBrightness + variation(star, time)
+        )
       );
     }
 
@@ -789,7 +817,8 @@
       const presentation = illumination.brightnessPresentation(
         brightness,
         star.kind,
-        selected
+        selected,
+        runtimeSettings.home_star_brightness_max
       );
 
       // Soft glow from a pre-rendered radial gradient sprite. This avoids
@@ -946,7 +975,8 @@
       ).length;
       panel.hidden = false;
       panel.querySelector("[data-star-coverage-brightness]").textContent =
-        `${selectedBrightness.toFixed(1)} / 30`;
+        `${selectedBrightness.toFixed(1)} / ` +
+        `${runtimeSettings.home_star_brightness_max}`;
       panel.querySelector("[data-star-coverage-total]").textContent =
         `${selectedIds.size} / ${stars.length} · ` +
         percentage(selectedIds.size, stars.length);
@@ -1108,6 +1138,12 @@
     );
     canvas.dataset.graphDirection =
       runtimeSettings.home_star_graph_direction;
+    canvas.dataset.brightnessInitial = String(
+      runtimeSettings.home_star_brightness_initial
+    );
+    canvas.dataset.brightnessMax = String(
+      runtimeSettings.home_star_brightness_max
+    );
     canvas.dataset.selectedCount = "0";
     canvas.dataset.selectedBrightness = "0";
     canvas.dataset.selectedRelationCount = "0";

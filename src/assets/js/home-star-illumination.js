@@ -349,9 +349,16 @@
     };
   }
 
-  function brightnessPresentation(value, kind, selected) {
-    const brightness = Math.max(0, Math.min(30, Number(value) || 0));
-    const normalized = brightness / 30;
+  function brightnessPresentation(value, kind, selected, maxValue = 100) {
+    const maximum = Math.max(
+      1,
+      Math.min(100, Number(maxValue) || 100)
+    );
+    const brightness = Math.max(
+      0,
+      Math.min(maximum, Number(value) || 0)
+    );
+    const normalized = brightness / maximum;
     const luminous = Math.pow(normalized, 1.55);
     const radius =
       kind === "contributor"
@@ -359,6 +366,7 @@
         : 0.7 + Math.pow(normalized, 0.78) * 2.55;
     return {
       brightness,
+      maximum,
       luminous,
       radius: radius + (selected ? 0.8 : 0),
       alpha: Math.min(1, 0.3 + luminous * 0.7 + (selected ? 0.1 : 0)),

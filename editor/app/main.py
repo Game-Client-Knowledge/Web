@@ -268,6 +268,16 @@ class VisualSettingsRequest(BaseModel):
     home_star_reference_relation_style: str = "dashed"
     home_star_contributor_relation_style: str = "solid"
     home_star_brightness_variation_enabled: bool = False
+    home_star_brightness_initial: float = Field(
+        default=10.0,
+        ge=0,
+        le=100,
+    )
+    home_star_brightness_max: float = Field(
+        default=100.0,
+        ge=1,
+        le=100,
+    )
     home_star_brightness_variation_amount: float = Field(
         default=2.0,
         ge=0,
@@ -886,6 +896,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         if graph_direction not in {"directed", "undirected"}:
             graph_direction = "directed"
+        brightness_max = max(
+            1,
+            min(
+                100,
+                setting_float("home_star_brightness_max", 100),
+            ),
+        )
+        brightness_initial = max(
+            0,
+            min(
+                brightness_max,
+                setting_float("home_star_brightness_initial", 10),
+            ),
+        )
         active_edge_mode = db.setting(
             "home_star_active_edge_mode", "single_path"
         )
@@ -930,6 +954,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 == "1"
             ),
+            "home_star_brightness_initial": brightness_initial,
+            "home_star_brightness_max": brightness_max,
             "home_star_brightness_variation_amount": max(
                 0,
                 min(
@@ -3353,6 +3379,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "undirected",
         }:
             raise HTTPException(status_code=422, detail="星图方向模式无效")
+        if (
+            payload.home_star_brightness_initial
+            > payload.home_star_brightness_max
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="星图初始亮度不能超过最大亮度",
+            )
         if payload.home_star_active_edge_mode not in {
             "full",
             "minimal_tree",
@@ -3433,6 +3467,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "1"
                 if payload.home_star_brightness_variation_enabled
                 else "0"
+            ),
+            "home_star_brightness_initial": str(
+                payload.home_star_brightness_initial
+            ),
+            "home_star_brightness_max": str(
+                payload.home_star_brightness_max
             ),
             "home_star_brightness_variation_amount": str(
                 payload.home_star_brightness_variation_amount

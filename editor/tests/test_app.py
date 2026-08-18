@@ -284,6 +284,8 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert payload["config"]["home_content_mask_enabled"] is False
     assert payload["config"]["home_content_idle_timeout_seconds"] == 30
     assert payload["config"]["home_star_graph_direction"] == "directed"
+    assert payload["config"]["home_star_brightness_initial"] == 10
+    assert payload["config"]["home_star_brightness_max"] == 100
     assert payload["config"]["home_star_illumination_rule"] == "bfs"
     assert payload["config"]["home_star_illumination_depth"] == 3
     assert payload["config"]["home_star_selection_duration_ms"] == 3000
@@ -1035,6 +1037,8 @@ def test_admin_can_configure_client_visual_effects(
             "home_star_selection_duration_ms": 4500,
             "home_star_label_duration_ms": 6500,
             "home_star_brightness_variation_enabled": True,
+            "home_star_brightness_initial": 25,
+            "home_star_brightness_max": 80,
             "home_star_brightness_variation_amount": 4.5,
             "home_star_brightness_transition_ms": 1200,
             "home_star_brightness_interval_ms": 3000,
@@ -1078,6 +1082,8 @@ def test_admin_can_configure_client_visual_effects(
         "home_star_selection_duration_ms": 4500,
         "home_star_label_duration_ms": 6500,
         "home_star_brightness_variation_enabled": True,
+        "home_star_brightness_initial": 25,
+        "home_star_brightness_max": 80,
         "home_star_brightness_variation_amount": 4.5,
         "home_star_brightness_transition_ms": 1200,
         "home_star_brightness_interval_ms": 3000,
@@ -1120,6 +1126,8 @@ def test_admin_can_configure_client_visual_effects(
     assert config["home_star_selection_duration_ms"] == 4500
     assert config["home_star_label_duration_ms"] == 6500
     assert config["home_star_brightness_variation_enabled"] is True
+    assert config["home_star_brightness_initial"] == 25
+    assert config["home_star_brightness_max"] == 80
     assert config["home_star_brightness_variation_amount"] == 4.5
     assert config["home_star_brightness_rules"][0] == {
         "id": "contributor_contribution_count",
@@ -1238,6 +1246,20 @@ def test_admin_can_configure_client_visual_effects(
         },
     )
     assert invalid_graph_direction.status_code == 422
+
+    invalid_brightness_range = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "catalog_background_style": "circuit",
+            "reader_background_style": "blueprint",
+            "pointer_effect_enabled": True,
+            "home_intro_enabled": True,
+            "home_star_brightness_initial": 81,
+            "home_star_brightness_max": 80,
+        },
+    )
+    assert invalid_brightness_range.status_code == 422
 
     invalid_active_edges = client.put(
         "/api/admin/visual-settings",

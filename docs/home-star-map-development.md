@@ -302,8 +302,10 @@ array. Active pruning only changes selected-edge emphasis.
 
 ## 9. Brightness Pipeline
 
-Logical brightness starts at `10`, executes enabled rules in descending
-priority, and is clamped to `[0, 30]`.
+Logical brightness starts at `home_star_brightness_initial`, executes enabled
+rules in descending priority, and is clamped to
+`[0, home_star_brightness_max]`. Defaults are `10` and `100`. The backend
+rejects an initial value greater than the maximum.
 
 The runtime stores:
 
@@ -323,7 +325,7 @@ When a star is activated, the coverage panel records its current rendered
 logical brightness, including the interpolated variation at that instant:
 
 ```text
-Root brightness 26.8 / 30
+Root brightness 26.8 / 100
 ```
 
 It is a snapshot for the activation record. It does not keep changing while
@@ -391,6 +393,8 @@ Main settings:
 | `home_star_active_edge_mode` | `single_path`, `minimal_tree`, `full` |
 | `home_star_selection_duration_ms` | `500..60000` |
 | `home_star_label_duration_ms` | `500..60000` |
+| `home_star_brightness_initial` | `0..100`, not above maximum |
+| `home_star_brightness_max` | `1..100` |
 | `home_star_brightness_variation_amount` | `0..20` |
 | `home_star_brightness_transition_ms` | `100..10000` |
 | `home_star_brightness_interval_ms` | `200..30000` |

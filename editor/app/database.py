@@ -540,6 +540,8 @@ class Database:
                 "home_star_reference_relation_style": "dashed",
                 "home_star_contributor_relation_style": "solid",
                 "home_star_brightness_variation_enabled": "0",
+                "home_star_brightness_initial": "10",
+                "home_star_brightness_max": "100",
                 "home_star_brightness_variation_amount": "2",
                 "home_star_brightness_transition_ms": "900",
                 "home_star_brightness_interval_ms": "2400",
