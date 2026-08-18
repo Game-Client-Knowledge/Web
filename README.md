@@ -59,3 +59,4 @@ no website code or manifest change.
 - [Join page](./docs/join-page.md)
 - [Web editing and GitHub contribution design](./docs/web-editing-and-contribution.md)
 - [Code reading workspace](./docs/code-reading-workspace.md)
+- [Home star map development guide](./docs/home-star-map-development.md)

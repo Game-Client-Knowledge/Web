@@ -1,5 +1,8 @@
 # Homepage Contribution Star Map
 
+Engineering changes and debugging procedures are documented in
+[Home Star Map Development Guide](./home-star-map-development.md).
+
 ## Purpose
 
 The homepage supports two interchangeable background engines:

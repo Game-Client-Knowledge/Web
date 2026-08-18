@@ -1,0 +1,573 @@
+# Home Star Map Development Guide
+
+## 1. Scope
+
+This document is the engineering record for the homepage contribution star
+map. It explains where the graph comes from, how it is transformed, how the
+Canvas renderer consumes it, and how to modify the feature without breaking
+revision consistency, contribution attribution, or production deployment.
+
+For the user-facing behavior and formulas, see
+[Homepage Contribution Star Map](./home-contribution-star-map.md).
+
+The current implementation has four explicit layers:
+
+1. build-time content graph generation;
+2. revision-matched contribution data;
+3. pure graph algorithms;
+4. Canvas rendering and administration settings.
+
+Keeping those layers separate is the main design constraint. Graph facts must
+not depend on star positions, and visual pruning must not change graph
+coverage.
+
+## 2. End-to-End Data Flow
+
+```mermaid
+flowchart LR
+  Content["Content repository<br/>Markdown + code"] --> Loader["lib/content-loader.js"]
+  Git["Git history"] --> Stats["lib/content-statistics.js"]
+  Loader --> Builder["lib/home-star-graph.js"]
+  Stats --> Builder
+  Builder --> Catalog["catalog.homeStarGraph"]
+  Catalog --> HTML["src/index.njk<br/>embedded JSON"]
+
+  Git --> Sync["scripts/sync-line-authors.py"]
+  Sync --> DB["SQLite<br/>document_contributors"]
+  DB --> API["Editor contribution graph v2"]
+  API --> Cache["revision-keyed localStorage cache"]
+
+  HTML --> Runtime["home-star-map.js"]
+  Cache --> Runtime
+  Runtime --> Algorithms["home-star-illumination.js"]
+  Algorithms --> Canvas["Canvas 2D renderer"]
+  Settings["Admin visual settings"] --> Runtime
+```
+
+The static graph is always available and is the fallback. The server graph
+only replaces contribution identities and contribution edges when its content
+revision matches the embedded static revision.
+
+## 3. Source Ownership
+
+| File | Responsibility |
+| --- | --- |
+| `lib/content-loader.js` | Scans tracks, modules, topics, Markdown, and readable code routes. |
+| `lib/content-statistics.js` | Aggregates Git identities, activity, and file-level contribution history. |
+| `lib/home-star-graph.js` | Converts catalog data into stable stars and typed relations. |
+| `src/index.njk` | Embeds `catalog.homeStarGraph` into `window.GCK_HOME_STAR_GRAPH`. |
+| `src/assets/js/home-star-illumination.js` | Pure adjacency, traversal, coverage, tree, path, and brightness presentation algorithms. |
+| `src/assets/js/home-star-map.js` | Revision cache merge, simulation state, Canvas drawing, clicks, labels, and coverage panel. |
+| `src/assets/js/site-visuals.js` | Caches first-frame visual settings to prevent reload flicker. |
+| `editor/app/comments.py` | Persists and serves the revisioned contributor-document graph. |
+| `editor/app/main.py` | Validates and exposes star-map settings. |
+| `editor/app/database.py` | Installs default settings without overwriting existing administrator choices. |
+| `editor/app/static/admin.html` | Declares administration controls. |
+| `editor/app/static/admin.js` | Loads, saves, and locally caches administration values. |
+| `scripts/sync-line-authors.py` | Incrementally synchronizes line and document contributors from Git. |
+| `deploy/server/update-site.sh` | Builds an immutable release and synchronizes attribution before publication. |
+
+## 4. Embedded Graph Contract
+
+`buildHomeStarGraph()` returns:
+
+```js
+{
+  version: 3,
+  revision: "full-content-commit",
+  generatedAt: "ISO-8601 timestamp",
+  stars: [],
+  edges: []
+}
+```
+
+The graph version describes the embedded data contract. Increment it when star
+identity, edge identity, or aggregation semantics change. It is independent
+from the editor contribution graph version.
+
+### 4.1 Star Types
+
+Contributor star:
+
+```js
+{
+  id: "contributor:<canonical-id>",
+  kind: "contributor",
+  contributorId: "<canonical-id>",
+  name: "public display name",
+  brightness: 10,
+  metrics: {
+    contributionCount: 0,
+    commitCount: 0,
+    lastActiveAt: ""
+  }
+}
+```
+
+Document or code-system star:
+
+```js
+{
+  id: "document:<representative-source-path>",
+  kind: "document",
+  resourceKind: "document" | "code_system",
+  sourcePath: "representative/source/path",
+  sourcePaths: ["all/member/paths"],
+  systemPath: "program/code/ecs",
+  title: "ECS Project",
+  route: "/program/code/ecs/",
+  trackKey: "program",
+  moduleKey: "program/code",
+  clusterKey: "program/code",
+  brightness: 10,
+  metrics: {
+    contributorCount: 0,
+    referenceDegree: 0,
+    lastContributedAt: ""
+  }
+}
+```
+
+`sourcePaths` is important. The editor service still returns file-granular
+contribution links, so the browser uses this list to fold those links back into
+the same code-system star.
+
+### 4.2 Edge Types
+
+```js
+{
+  type: "strong" | "reference" | "contribution",
+  source: "<star-id>",
+  target: "<star-id>",
+  commitCount: 0,
+  lastContributedAt: ""
+}
+```
+
+Direction is semantic:
+
+| Type | Direction |
+| --- | --- |
+| `strong` | Bidirectional, stored once |
+| `reference` | Referrer to referenced content |
+| `contribution` | Contributor to content |
+
+Strong-edge identity sorts endpoints. Reference and contribution identity keep
+endpoint order. This preserves reciprocal references as two distinct facts.
+
+## 5. Code-System Aggregation
+
+The `code` module uses systems rather than files as star granularity.
+
+```text
+program/code/
+├── README.md                 module star
+├── project-convention.md     independent document star
+├── ecs/                      one code-system star
+│   ├── README.md             title and destination route
+│   ├── project-a/
+│   └── src/
+└── rendering/                another code-system star
+```
+
+The immediate child below `<track>/code/` is the system boundary. Every
+readable descendant is folded into that system:
+
+- the immediate `README.md` supplies the preferred title and route;
+- member contribution counts are accumulated;
+- the newest member contribution becomes the system activity time;
+- member references become system references;
+- references between members of the same system are discarded as self-edges;
+- `bin` and `obj` descendants are excluded;
+- files directly under `code/` remain independent.
+
+Do not derive systems from `code-project.json`. A system may contain multiple
+projects, and the requested boundary is the content directory immediately
+below `code`.
+
+## 6. Contributor Identity and Revision Rules
+
+Contributor IDs must remain stable across Git aliases:
+
+1. a matching website account uses `user:<database-id>`;
+2. a GitHub noreply identity uses its normalized GitHub login;
+3. another identity uses normalized email;
+4. name is only a final fallback.
+
+One canonical ID has one display name. Website usernames win. Otherwise, the
+most recent valid Git name in the target revision wins.
+
+The browser accepts the editor graph only when:
+
+```text
+editor graph revision == embedded content revision
+```
+
+Prefix matching is allowed because some clients use the seven-character
+revision while the service stores the full SHA. A mismatched or `syncing:`
+revision must never replace embedded contribution data.
+
+The browser cache key is:
+
+```text
+gck-contribution-graph:v1:<content-revision>
+```
+
+Changing draft content does not mutate this cache.
+
+## 7. Directed and Undirected Graphs
+
+`home_star_graph_direction` controls adjacency and arrow rendering:
+
+- `directed`: reference and contribution relations follow source to target;
+- `undirected`: every relation is traversable both ways for compatibility.
+
+Strong relations are always inserted into both outgoing and incoming
+adjacency, even in directed mode.
+
+`buildGraph()` creates both maps:
+
+```js
+{
+  outgoing: Map<starId, Neighbor[]>,
+  incoming: Map<starId, Neighbor[]>
+}
+```
+
+Traversal chooses one of:
+
+- `outgoing`;
+- `incoming`;
+- `both`.
+
+This is preferable to reversing edges at call sites because filtering by
+relation type and contributor-terminal behavior remain centralized.
+
+### 7.1 Illumination Rules
+
+| ID | Traversal |
+| --- | --- |
+| `bfs` | All reachable outgoing edges |
+| `depth` | Outgoing edges up to N levels |
+| `reverse_depth` | Incoming edges up to N levels |
+| `bidirectional_depth` | Incoming and outgoing edges up to N levels |
+| `bfs_contributor_terminal` | Outgoing BFS; a reached contributor does not propagate |
+| `depth_contributor_terminal` | Depth-limited version of the same rule |
+| `direct_neighbors` | One outgoing level |
+| `strong_component` | Strong edges only |
+| `reference_depth` | Outgoing reference edges only |
+| `reference_sources_depth` | Incoming reference edges only |
+
+A directly clicked contributor is allowed to propagate. This preserves the
+explicit user interaction requirement while preventing a contributor reached
+from a document from becoming an automatic hub in terminal modes.
+
+In undirected mode, incoming and outgoing maps are equivalent, so all rules
+retain the original undirected behavior.
+
+## 8. Coverage and Active Visual Pruning
+
+Three sets must not be conflated:
+
+```text
+all edges
+  -> traversal selects stars
+  -> covered edges have both endpoints selected
+  -> visual edges are a pruned subset of covered edges
+```
+
+Coverage always uses all real graph edges whose endpoints are selected. It is
+not recalculated from the rendered line subset.
+
+Active edge modes:
+
+| Mode | Rendering |
+| --- | --- |
+| `full` | Every covered edge |
+| `minimal_tree` | Relation-prioritized Kruskal tree |
+| `single_path` | Longest path in the minimal tree |
+
+The tree preference is:
+
+```text
+strong -> reference -> contribution -> screen distance -> stable edge ID
+```
+
+The algorithm never creates a synthetic edge. Direction affects traversal and
+arrowheads, while tree connectivity is intentionally evaluated over the
+selected underlying relations as an undirected visual simplification.
+
+Normal `always` and `near` rendering continues to inspect the complete edge
+array. Active pruning only changes selected-edge emphasis.
+
+## 9. Brightness Pipeline
+
+Logical brightness starts at `10`, executes enabled rules in descending
+priority, and is clamped to `[0, 30]`.
+
+The runtime stores:
+
+```js
+baseBrightness + interpolated random variation
+```
+
+The rendered value drives:
+
+- core radius;
+- alpha;
+- white-hot center;
+- glow radius and opacity;
+- selected-star boost.
+
+When a star is activated, the coverage panel records its current rendered
+logical brightness, including the interpolated variation at that instant:
+
+```text
+Root brightness 26.8 / 30
+```
+
+It is a snapshot for the activation record. It does not keep changing while
+the panel remains visible.
+
+## 10. Rendering Lifecycle
+
+`home-star-map.js` follows this lifecycle:
+
+1. read first-frame cached settings;
+2. merge a revision-matched contribution graph when available;
+3. calculate base brightness;
+4. assign deterministic positions, velocity, and color;
+5. render complete normal relations according to visibility;
+6. apply traversal after a click;
+7. calculate relation coverage;
+8. prune only the active visual relations;
+9. clear relation state and labels on independent timers.
+
+Contributor stars are static. Document and code-system stars move.
+
+In directed mode:
+
+- reference and contribution edges receive one arrowhead;
+- strong edges receive arrowheads at both ends.
+
+The renderer skips arrowheads on very short edges because there is not enough
+space to distinguish direction without covering the star core.
+
+Useful Canvas datasets for browser tests:
+
+```text
+data-star-count
+data-document-count
+data-contributor-count
+data-code-system-count
+data-edge-count
+data-contribution-edge-count
+data-graph-direction
+data-illumination-rule
+data-illumination-depth
+data-active-edge-mode
+data-selected-count
+data-selected-brightness
+data-selected-relation-count
+data-selected-relation-coverage
+data-active-visual-edge-count
+```
+
+## 11. Administration Contract
+
+The star map is configured through:
+
+```text
+PUT /editor/api/admin/visual-settings
+```
+
+Main settings:
+
+| Setting | Values or range |
+| --- | --- |
+| `home_background_style` | `old_star_map`, `contribution_star_map` |
+| `home_star_scope` | `hero`, `full` |
+| `home_star_relation_visibility` | `always`, `near`, `hidden` |
+| `home_star_graph_direction` | `directed`, `undirected` |
+| `home_star_*_relation_style` | `solid`, `dashed`, `glow` |
+| `home_star_illumination_rule` | Rule IDs in section 7.1 |
+| `home_star_illumination_depth` | `1..20` |
+| `home_star_active_edge_mode` | `single_path`, `minimal_tree`, `full` |
+| `home_star_selection_duration_ms` | `500..60000` |
+| `home_star_label_duration_ms` | `500..60000` |
+| `home_star_brightness_variation_amount` | `0..20` |
+| `home_star_brightness_transition_ms` | `100..10000` |
+| `home_star_brightness_interval_ms` | `200..30000` |
+
+Adding a setting requires all of these updates:
+
+1. Pydantic request model;
+2. default database setting;
+3. resolved public payload;
+4. validation and persistence;
+5. admin HTML;
+6. admin load/save JavaScript;
+7. first-frame cache in `site-visuals.js`;
+8. frontend normalization;
+9. backend and visual tests.
+
+Missing the first-frame cache causes a visible reload flash. Missing the public
+payload makes the admin value appear saved while the homepage still uses its
+default.
+
+## 12. Development Workflows
+
+### 12.1 Change Star Granularity
+
+1. Modify `uniqueDocuments()` in `lib/home-star-graph.js`.
+2. Preserve a stable representative `sourcePath`.
+3. Preserve every underlying path in `sourcePaths`.
+4. Update build-time and browser contribution folding.
+5. Increment `GRAPH_VERSION`.
+6. Update graph and visual tests.
+
+### 12.2 Add a Relation Type
+
+1. Define source and target semantics.
+2. Add a stable direction-aware edge ID.
+3. Decide whether traversal is one-way or bidirectional.
+4. Add style and color handling.
+5. Add relation priority for minimal-tree rendering.
+6. Add reciprocal-edge and coverage tests.
+
+### 12.3 Add an Illumination Rule
+
+1. Add the ID to `RULES` in `home-star-illumination.js`.
+2. Implement it through `ruleOptions()` when possible.
+3. Add it to `STAR_ILLUMINATION_RULE_IDS` in FastAPI.
+4. Add the admin option.
+5. Test directed and undirected behavior.
+6. Confirm contributor-terminal semantics if contributors can be reached.
+
+Prefer expressing a rule as:
+
+```text
+traversal direction + relation filter + depth + propagation boundary
+```
+
+This keeps the BFS implementation shared.
+
+### 12.4 Change Active Visual Simplification
+
+Do not change `selectedIds` or `coverageEdges`. Add a new branch in
+`relationPlan()` that transforms `coverageEdges` into `visualEdges`, then
+expose it through the backend allowlist and administration UI.
+
+## 13. Verification
+
+Focused checks:
+
+```bash
+npm run test:home-star-graph
+npm run test:home-star-illumination
+PYTHONPATH=editor python -m pytest editor/tests/test_app.py
+```
+
+Complete gate:
+
+```bash
+CONTENT_REPO_PATH=/absolute/path/to/Game-Client-Knowledge npm run check
+```
+
+Visual check after building:
+
+```bash
+python3 -m http.server 8088 --directory _site
+STAR_MAP_BASE_URL=http://127.0.0.1:8088 \
+  node scripts/test-home-star-map-visual.js
+```
+
+The visual test covers:
+
+- hero desktop;
+- full-page desktop;
+- full-page mobile;
+- nonblank Canvas pixels;
+- graph direction and algorithm settings;
+- code-system folding;
+- contribution-edge folding;
+- relation and brightness records;
+- active visual pruning;
+- independent relation and label timers;
+- browser errors and horizontal overflow.
+
+Do not hardcode production star or edge counts. They change with content,
+references, systems, and contributors. Assert structural invariants instead.
+
+## 14. Production Release
+
+The production updater resolves pushed immutable Web and content commits,
+runs the complete build gate, synchronizes attribution, stages static and
+editor releases, and switches symlinks atomically.
+
+After pushing `main`, request a full site update from the administration page
+or its existing update request mechanism. Verify:
+
+```bash
+cat /var/www/game-client-knowledge/current/.release-source
+cat /opt/game-client-knowledge-editor/current/.web-commit
+systemctl is-active game-client-knowledge-editor
+```
+
+Then inspect:
+
+```text
+https://knowledge.chenyurui.top/editor/api/config
+```
+
+and run the star-map visual test against the production URL.
+
+## 15. Common Failure Modes
+
+### Contribution edges disappear
+
+Check that the static content revision and editor graph revision match. Also
+check whether a new aggregate star includes every member in `sourcePaths`.
+
+### A document activates unrelated contributors
+
+Confirm directed mode is enabled and contribution edges are stored as
+`contributor -> document`. Do not reverse them to make a single test pass.
+
+### Reciprocal references collapse into one edge
+
+Reference edge IDs must preserve source-target order. Only strong-edge identity
+sorts endpoints.
+
+### Code projects create too many stars
+
+Confirm aggregation uses the immediate child below `code`, not each project,
+manifest, source directory, or file.
+
+### Coverage drops after simplifying lines
+
+Coverage must use `coverageEdges`; the Canvas must use `visualEdges`. Never
+derive coverage from the active rendered edge set.
+
+### The admin value saves but reload uses another value
+
+Trace the complete setting chain from the request model to the public config,
+then to `site-visuals.js` and `normalizeSettings()`.
+
+### Deployment reports current while the admin UI is old
+
+Compare both the static `.release-source` and editor `.web-commit`. A full site
+update must publish both.
+
+## 16. Implementation History
+
+| Commit | Milestone |
+| --- | --- |
+| `593a664` | Made logical brightness visibly affect star rendering. |
+| `19477b3` | Enforced one display name per contributor identity. |
+| `496d1f3` | Added complete relation coverage and active visual pruning. |
+| `7c5e97d` | Folded `code` content into one star per system directory. |
+| `2400205` | Added directed traversal, arrowheads, reverse rules, and root brightness records. |
+
+These commits are useful investigation anchors. The current source and tests,
+not the historical diff, remain authoritative.
