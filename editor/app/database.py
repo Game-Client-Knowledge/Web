@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS drafts (
     operation TEXT NOT NULL DEFAULT 'upsert' CHECK(operation IN ('upsert', 'delete')),
     content TEXT NOT NULL DEFAULT '',
     base_sha TEXT,
+    base_content TEXT,
     revision INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -285,6 +286,16 @@ class Database:
                     ADD COLUMN email_notifications_enabled
                     INTEGER NOT NULL DEFAULT 1
                     """
+                )
+            draft_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(drafts)"
+                ).fetchall()
+            }
+            if "base_content" not in draft_columns:
+                connection.execute(
+                    "ALTER TABLE drafts ADD COLUMN base_content TEXT"
                 )
             oauth_columns = {
                 row["name"]

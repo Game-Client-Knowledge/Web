@@ -355,6 +355,10 @@ async function syncReaderBuffer(change, retried) {
         content: change.operation === "delete" ? "" : change.content,
         operation: change.operation || "upsert",
         base_sha: change.baseSha || null,
+        base_content:
+          typeof change.baseContent === "string"
+            ? change.baseContent
+            : null,
         base_revision: change.serverRevision || 0
       })
     });
@@ -383,7 +387,7 @@ async function syncReaderBuffer(change, retried) {
     ) {
       const patch = window.JsDiff.createPatch(
         change.path,
-        change.baseContent,
+        change.syncBaseContent || change.baseContent,
         change.content,
         "",
         ""
@@ -393,7 +397,7 @@ async function syncReaderBuffer(change, retried) {
         const updated = {
           ...change,
           content: merged,
-          baseContent: remote.content,
+          syncBaseContent: remote.content,
           serverRevision: remote.revision,
           conflict: false,
           updatedAt: Date.now()
@@ -902,6 +906,10 @@ async function showChangeDiff(draft) {
   byId("markDeleteButton").hidden = true;
   byId("saveDraftButton").hidden = true;
   byId("diffSource").replaceChildren();
+  const loading = document.createElement("p");
+  loading.className = "diff-empty";
+  loading.textContent = "正在读取基线并计算行级差异…";
+  byId("diffSource").append(loading);
   clearFeedback(byId("editorFeedback"));
   if (Array.isArray(draft.line_diff) && draft.line_diff.length) {
     renderCachedLineDiff(draft.line_diff);
@@ -910,6 +918,10 @@ async function showChangeDiff(draft) {
   try {
     renderSourceDiff(await baseContentForDraft(draft), draft);
   } catch (error) {
+    const failed = document.createElement("p");
+    failed.className = "diff-empty is-error";
+    failed.textContent = "无法生成行级差异：" + error.message;
+    byId("diffSource").replaceChildren(failed);
     feedback(byId("editorFeedback"), error.message);
   }
 }
@@ -987,9 +999,24 @@ async function openDraft(draft, forceEditor = false) {
     draftId: draft.id,
     path: draft.path,
     baseSha: draft.base_sha,
+    baseContent:
+      typeof draft.base_content === "string"
+        ? draft.base_content
+        : null,
     content: draft.content,
     operation: draft.operation
   };
+  if (
+    draft.base_sha &&
+    state.active.baseContent === null &&
+    (state.workspaceView !== "changes" || forceEditor)
+  ) {
+    try {
+      state.active.baseContent = await baseContentForDraft(draft);
+    } catch {
+      // Diff view will show an explicit baseline loading error if needed.
+    }
+  }
   if (state.workspaceView === "changes" && !forceEditor) {
     await showChangeDiff(draft);
     renderResources();
@@ -1148,6 +1175,7 @@ async function openResource(path) {
       draftId: null,
       path: file.path,
       baseSha: file.sha,
+      baseContent: file.content,
       content: file.content,
       operation: "upsert",
       openStartedAt
@@ -1215,6 +1243,7 @@ async function saveActiveDraft() {
         path: byId("filePath").value,
         content: serializedContent,
         base_sha: state.active.baseSha,
+        base_content: state.active.baseContent,
         operation: "upsert"
       })
     });
@@ -1225,6 +1254,10 @@ async function saveActiveDraft() {
     state.active.path = saved.path;
     state.active.content = saved.content;
     state.active.operation = saved.operation;
+    state.active.baseContent =
+      typeof saved.base_content === "string"
+        ? saved.base_content
+        : state.active.baseContent;
     state.active.originalContent = saved.content;
     state.active.canonicalContent = canonicalContent;
     feedback(byId("editorFeedback"), "草稿已保存到个人工作区", "success");
@@ -1299,6 +1332,7 @@ async function markActiveFileDeleted() {
         path: state.active.path,
         content: "",
         base_sha: state.active.baseSha,
+        base_content: state.active.baseContent,
         operation: "delete"
       })
     });
@@ -1612,6 +1646,7 @@ byId("fileForm").addEventListener("submit", async (event) => {
     draftId: null,
     path: payload.path,
     baseSha: null,
+    baseContent: "",
     content: `# ${payload.title}\n\n`,
     operation: "upsert"
   };

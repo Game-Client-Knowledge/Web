@@ -1622,7 +1622,7 @@
     }
     const patch = window.JsDiff.createPatch(
       change.path,
-      change.baseContent,
+      change.syncBaseContent || change.baseContent,
       change.content,
       "",
       ""
@@ -1640,6 +1640,10 @@
           path: change.path,
           content: change.operation === "delete" ? "" : change.content,
           base_sha: change.baseSha || null,
+          base_content:
+            typeof change.baseContent === "string"
+              ? change.baseContent
+              : null,
           base_revision: Number(change.serverRevision) || 0,
           operation: change.operation || "upsert"
         })
@@ -1650,7 +1654,7 @@
         removeEditorBuffer(change.path);
       } else {
         latest.serverRevision = saved.revision;
-        latest.baseContent = saved.content;
+        latest.syncBaseContent = saved.content;
         writeEditorBuffer(change.path, latest);
       }
       refreshEffectiveDrafts();
@@ -1700,7 +1704,7 @@
           const updated = {
             ...change,
             content: merged,
-            baseContent: remote.content,
+            syncBaseContent: remote.content,
             serverRevision: remote.revision,
             conflict: false,
             updatedAt: Date.now()
@@ -2132,7 +2136,8 @@
     const cached = writeEditorBuffer(path, {
         content: content.serialized,
         baseSha: panel.dataset.baseSha || null,
-        baseContent: panel.lastSyncedContent,
+        baseContent: panel.repositoryBaseContent,
+        syncBaseContent: panel.lastSyncedContent,
         operation: "upsert",
         serverRevision: panel.serverRevision,
         updatedAt: Date.now()
@@ -2180,7 +2185,8 @@
       path,
       content: contentAtRequest,
       baseSha: panel.dataset.baseSha || null,
-      baseContent: panel.lastSyncedContent,
+      baseContent: panel.repositoryBaseContent,
+      syncBaseContent: panel.lastSyncedContent,
       operation: "upsert",
       serverRevision: panel.serverRevision,
       updatedAt: Date.now()
@@ -2206,6 +2212,10 @@
         panel.serverRevision = saved.revision;
         panel.lastSyncedContent = saved.content;
         panel.originalContent = saved.content;
+        panel.repositoryBaseContent =
+          typeof saved.base_content === "string"
+            ? saved.base_content
+            : panel.repositoryBaseContent;
         panel.canonicalContent = canonicalAtRequest;
         if (panel.titleElement) {
           panel.documentParts = splitMarkdownDocument(saved.content);
@@ -2328,6 +2338,27 @@
         );
         source.sourceType = "repository-api";
       }
+      let repositoryBaseContent =
+        cached && typeof cached.baseContent === "string"
+          ? cached.baseContent
+          : typeof source.base_content === "string"
+            ? source.base_content
+            : remoteDraft
+              ? null
+              : source.content;
+      if (
+        repositoryBaseContent === null &&
+        remoteDraft &&
+        remoteDraft.base_sha
+      ) {
+        const deployedBase = await loadDeployedSource(sourcePath);
+        if (
+          deployedBase &&
+          deployedBase.sha === remoteDraft.base_sha
+        ) {
+          repositoryBaseContent = deployedBase.content;
+        }
+      }
       const editorContent = cached ? cached.content : source.content;
       panel.dataset.baseSha =
         (cached && cached.baseSha) ||
@@ -2340,6 +2371,7 @@
         : cached
           ? cached.serverRevision
           : 0;
+      panel.repositoryBaseContent = repositoryBaseContent;
       panel.lastSyncedContent = source.content;
       panel.renderedContent = draft ? draft.content : source.content;
       panel.bufferedContent = editorContent;
@@ -2419,6 +2451,7 @@
           path: path,
           content: serializedContent,
           base_sha: panel.dataset.baseSha || null,
+          base_content: panel.repositoryBaseContent,
           operation: "upsert"
         })
       });
@@ -2476,7 +2509,8 @@
       const deleted = writeEditorBuffer(path, {
         content: "",
         baseSha: remoteSha,
-        baseContent: panel.lastSyncedContent || "",
+        baseContent: panel.repositoryBaseContent,
+        syncBaseContent: panel.lastSyncedContent || "",
         operation: "delete",
         serverRevision: remoteDraft ? remoteDraft.revision : 0,
         updatedAt: Date.now()

@@ -108,6 +108,7 @@ class PasswordRequest(BaseModel):
 class DraftRequest(BaseModel):
     path: str = Field(max_length=240)
     content: str = Field(default="", max_length=MAX_DRAFT_BYTES)
+    base_content: str | None = Field(default=None, max_length=MAX_DRAFT_BYTES)
     operation: str = Field(default="upsert")
     base_sha: str | None = Field(default=None, max_length=64)
     base_revision: int | None = Field(default=None, ge=0)
@@ -809,8 +810,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 dict(row)
                 for row in connection.execute(
                     """
-                    SELECT id, path, operation, content, base_sha, revision,
-                           created_at, updated_at
+                    SELECT id, path, operation, content, base_sha,
+                           base_content, revision, created_at, updated_at
                     FROM drafts WHERE user_id = ?
                     ORDER BY updated_at DESC
                     """,
@@ -1676,19 +1677,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 and existing["operation"] == payload.operation
                 and existing["content"] == next_content
                 and existing["base_sha"] == payload.base_sha
+                and (
+                    payload.base_content is None
+                    or existing["base_content"] == payload.base_content
+                )
             ):
                 return dict(existing)
             connection.execute(
                 """
                 INSERT INTO drafts(
                     user_id, path, operation, content, base_sha,
-                    revision, created_at, updated_at
+                    base_content, revision, created_at, updated_at
                 )
-                VALUES(?, ?, ?, ?, ?, 1, ?, ?)
+                VALUES(?, ?, ?, ?, ?, ?, 1, ?, ?)
                 ON CONFLICT(user_id, path) DO UPDATE SET
                     operation = excluded.operation,
                     content = excluded.content,
                     base_sha = excluded.base_sha,
+                    base_content = COALESCE(
+                        drafts.base_content,
+                        excluded.base_content
+                    ),
                     revision = drafts.revision + 1,
                     updated_at = excluded.updated_at
                 """,
@@ -1698,6 +1707,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     payload.operation,
                     next_content,
                     payload.base_sha,
+                    payload.base_content,
                     now,
                     now,
                 ),
@@ -2072,7 +2082,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
         merged_paths: list[str] = []
         merge_conflicts: list[dict[str, Any]] = []
-        merge_updates: list[tuple[str, str, str]] = []
+        merge_updates: list[tuple[str, str, str, str]] = []
         for draft in drafts:
             current = tree.get(draft["path"])
             base_sha = draft["base_sha"]
@@ -2111,10 +2121,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     }
                 )
                 continue
-            base_content = await github.repository_blob(
-                base_sha,
-                submit_token,
-            )
+            base_content = draft["base_content"]
+            if base_content is None:
+                base_content = await github.repository_blob(
+                    base_sha,
+                    submit_token,
+                )
             remote_content = await github.repository_blob(
                 remote_sha,
                 submit_token,
@@ -2143,10 +2155,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 continue
             draft["content"] = merged.content
             draft["base_sha"] = remote_sha
+            draft["base_content"] = remote_content
             draft["revision"] = int(draft["revision"]) + 1
             merged_paths.append(draft["path"])
             merge_updates.append(
-                (merged.content, remote_sha, draft["path"])
+                (
+                    merged.content,
+                    remote_sha,
+                    remote_content,
+                    draft["path"],
+                )
             )
 
         if merge_conflicts:
@@ -2250,17 +2268,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         now = utc_now()
         if merge_updates:
             with db.connect() as connection:
-                for content, remote_sha, draft_path in merge_updates:
+                for (
+                    content,
+                    remote_sha,
+                    remote_content,
+                    draft_path,
+                ) in merge_updates:
                     connection.execute(
                         """
                         UPDATE drafts
-                        SET content = ?, base_sha = ?,
+                        SET content = ?, base_sha = ?, base_content = ?,
                             revision = revision + 1, updated_at = ?
                         WHERE user_id = ? AND path = ?
                         """,
                         (
                             content,
                             remote_sha,
+                            remote_content,
                             now,
                             user["id"],
                             draft_path,

@@ -253,6 +253,8 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
         json={
             "path": "knowledge/cpp/bootstrap/README.md",
             "content": "# Bootstrap\n\nImmediate draft content.\n",
+            "base_content": "# Bootstrap\n\nOriginal content.\n",
+            "base_sha": "bootstrap-base-sha",
             "operation": "upsert",
         },
     )
@@ -282,6 +284,9 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert [item["path"] for item in payload["drafts"]] == [
         "knowledge/cpp/bootstrap/README.md"
     ]
+    assert payload["drafts"][0]["base_content"] == (
+        "# Bootstrap\n\nOriginal content.\n"
+    )
     assert "Immediate draft content." in payload["active_draft_html"]
 
 

@@ -48,6 +48,14 @@
       baseSha: value.baseSha || null,
       baseContent:
         typeof value.baseContent === "string" ? value.baseContent : null,
+      syncBaseContent:
+        typeof value.syncBaseContent === "string"
+          ? value.syncBaseContent
+          : (
+              typeof value.baseContent === "string"
+                ? value.baseContent
+                : null
+            ),
       operation: value.operation === "delete" ? "delete" : "upsert",
       serverRevision: Number(value.serverRevision) || 0,
       conflict: Boolean(value.conflict),

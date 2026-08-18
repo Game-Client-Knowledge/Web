@@ -1081,6 +1081,11 @@ a[aria-disabled="true"] {
   text-align: center;
 }
 
+.diff-empty.is-error {
+  color: var(--git-deleted);
+  background: var(--git-deleted-soft);
+}
+
 .deletion-notice {
   display: flex;
   min-height: 540px;

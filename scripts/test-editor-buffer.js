@@ -36,6 +36,7 @@ const saved = write(storage, 7, path, {
   content: "# C++\n",
   baseSha: "abc123",
   baseContent: "# C\n",
+  syncBaseContent: "# C+\n",
   lineDiff: [
     {
       type: "modified",
@@ -55,6 +56,7 @@ assert.equal(saved.content, "# C++\n");
 assert.equal(saved.version, 3);
 assert.equal(saved.operation, "upsert");
 assert.equal(saved.lineDiff[0].type, "modified");
+assert.equal(saved.syncBaseContent, "# C+\n");
 assert.deepEqual(saved.diffSummary, {
   added: 0,
   modified: 1,
