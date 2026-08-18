@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from markdown_it import MarkdownIt
 from pydantic import BaseModel, Field
 
-from .comments import create_comments_router
+from .comments import contribution_graph_payload, create_comments_router
 from .config import Settings
 from .database import Database, utc_now
 from .github import (
@@ -87,6 +87,20 @@ OAUTH_STATE_COOKIE = "gck_editor_oauth_state"
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MAX_DRAFT_BYTES = 512 * 1024
 MAX_DRAFTS = 1000
+STAR_BRIGHTNESS_RULE_IDS = {
+    "contributor_contribution_count",
+    "contributor_recent_activity",
+    "document_reference_degree",
+    "document_contributor_count",
+    "document_recent_activity",
+}
+DEFAULT_STAR_BRIGHTNESS_RULES = [
+    {"id": "contributor_contribution_count", "priority": 500},
+    {"id": "contributor_recent_activity", "priority": 400},
+    {"id": "document_reference_degree", "priority": 300},
+    {"id": "document_contributor_count", "priority": 200},
+    {"id": "document_recent_activity", "priority": 100},
+]
 
 
 class RegisterRequest(BaseModel):
@@ -205,6 +219,11 @@ class SiteUpdateRequest(BaseModel):
     mode: str
 
 
+class StarBrightnessRuleRequest(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    priority: int = Field(default=100, ge=-10000, le=10000)
+
+
 class VisualSettingsRequest(BaseModel):
     catalog_background_style: str = "circuit"
     reader_background_style: str = "blueprint"
@@ -224,6 +243,36 @@ class VisualSettingsRequest(BaseModel):
     )
     home_intro_lock_scroll: bool = True
     home_intro_contributor_limit: int = Field(default=8, ge=1, le=10)
+    home_background_style: str = "old_star_map"
+    home_star_scope: str = "hero"
+    home_star_relation_visibility: str = "near"
+    home_star_strong_relation_style: str = "solid"
+    home_star_reference_relation_style: str = "dashed"
+    home_star_contributor_relation_style: str = "solid"
+    home_star_brightness_variation_enabled: bool = False
+    home_star_brightness_variation_amount: float = Field(
+        default=2.0,
+        ge=0,
+        le=20,
+    )
+    home_star_brightness_transition_ms: int = Field(
+        default=900,
+        ge=100,
+        le=10000,
+    )
+    home_star_brightness_interval_ms: int = Field(
+        default=2400,
+        ge=200,
+        le=30000,
+    )
+    home_star_color_random_enabled: bool = False
+    home_star_brightness_rules: list[StarBrightnessRuleRequest] = Field(
+        default_factory=lambda: [
+            StarBrightnessRuleRequest(**item)
+            for item in DEFAULT_STAR_BRIGHTNESS_RULES
+        ],
+        max_length=20,
+    )
 
 
 class ExternalUrgeRequest(BaseModel):
@@ -755,6 +804,102 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "home_intro_scroll_duration_ms": scroll,
         }
 
+    def resolved_star_brightness_rules() -> list[dict[str, Any]]:
+        try:
+            parsed = json.loads(
+                db.setting(
+                    "home_star_brightness_rules",
+                    json.dumps(DEFAULT_STAR_BRIGHTNESS_RULES),
+                )
+            )
+        except (TypeError, json.JSONDecodeError):
+            parsed = DEFAULT_STAR_BRIGHTNESS_RULES
+        rules: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in parsed if isinstance(parsed, list) else []:
+            rule_id = str(item.get("id", "")) if isinstance(item, dict) else ""
+            if rule_id not in STAR_BRIGHTNESS_RULE_IDS or rule_id in seen:
+                continue
+            try:
+                priority = max(
+                    -10000,
+                    min(10000, int(item.get("priority", 100))),
+                )
+            except (TypeError, ValueError):
+                priority = 100
+            seen.add(rule_id)
+            rules.append({"id": rule_id, "priority": priority})
+        return rules
+
+    def star_visual_payload() -> dict[str, Any]:
+        def setting_int(key: str, default: int) -> int:
+            try:
+                return int(db.setting(key, str(default)))
+            except (TypeError, ValueError):
+                return default
+
+        def setting_float(key: str, default: float) -> float:
+            try:
+                return float(db.setting(key, str(default)))
+            except (TypeError, ValueError):
+                return default
+
+        return {
+            "home_background_style": db.setting(
+                "home_background_style", "old_star_map"
+            ),
+            "home_star_scope": db.setting("home_star_scope", "hero"),
+            "home_star_relation_visibility": db.setting(
+                "home_star_relation_visibility", "near"
+            ),
+            "home_star_strong_relation_style": db.setting(
+                "home_star_strong_relation_style", "solid"
+            ),
+            "home_star_reference_relation_style": db.setting(
+                "home_star_reference_relation_style", "dashed"
+            ),
+            "home_star_contributor_relation_style": db.setting(
+                "home_star_contributor_relation_style", "solid"
+            ),
+            "home_star_brightness_variation_enabled": (
+                db.setting(
+                    "home_star_brightness_variation_enabled", "0"
+                )
+                == "1"
+            ),
+            "home_star_brightness_variation_amount": max(
+                0,
+                min(
+                    20,
+                    setting_float(
+                        "home_star_brightness_variation_amount", 2
+                    ),
+                ),
+            ),
+            "home_star_brightness_transition_ms": max(
+                100,
+                min(
+                    10000,
+                    setting_int(
+                        "home_star_brightness_transition_ms", 900
+                    ),
+                ),
+            ),
+            "home_star_brightness_interval_ms": max(
+                200,
+                min(
+                    30000,
+                    setting_int(
+                        "home_star_brightness_interval_ms", 2400
+                    ),
+                ),
+            ),
+            "home_star_color_random_enabled": (
+                db.setting("home_star_color_random_enabled", "0") == "1"
+            ),
+            "home_star_brightness_rules": resolved_star_brightness_rules(),
+        }
+
     def config_payload() -> dict[str, Any]:
         intro_mode = resolved_home_intro_mode()
         intro_timing = resolved_home_intro_timing()
@@ -803,6 +948,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "home_intro_contributor_limit": int(
                 db.setting("home_intro_contributor_limit", "8")
             ),
+            **star_visual_payload(),
+            "contribution_graph": contribution_graph_payload(db),
             "repository": settings.github_repo,
         }
 
@@ -1552,9 +1699,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "size": item.get("size", 0),
                 }
             )
+        revision = str(reference["object"]["sha"])
+        contribution_graph = contribution_graph_payload(db)
+        graph_revision = str(contribution_graph.get("revision") or "")
+        graph_matches_tree = bool(
+            graph_revision
+            and (
+                graph_revision.startswith(revision)
+                or revision.startswith(graph_revision)
+            )
+        )
         return {
-            "revision": str(reference["object"]["sha"]),
+            "revision": revision,
             "items": items,
+            "contribution_graph": (
+                contribution_graph if graph_matches_tree else None
+            ),
         }
 
     @app.get("/api/repository/file")
@@ -2897,6 +3057,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "home_intro_contributor_limit": int(
                     db.setting("home_intro_contributor_limit", "8")
                 ),
+                **star_visual_payload(),
                 "smtp_enabled": smtp.smtp_enabled,
                 "github_oauth_enabled": settings.github_oauth_enabled,
                 "github_submission_enabled": settings.github_submission_enabled,
@@ -3075,6 +3236,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         if intro_mode not in {"off", "always", "revisit", "first"}:
             raise HTTPException(status_code=422, detail="入场动画策略无效")
+        if payload.home_background_style not in {
+            "old_star_map",
+            "contribution_star_map",
+        }:
+            raise HTTPException(status_code=422, detail="主页背景样式无效")
+        if payload.home_star_scope not in {"hero", "full"}:
+            raise HTTPException(status_code=422, detail="主页星图范围无效")
+        if payload.home_star_relation_visibility not in {
+            "always",
+            "near",
+            "hidden",
+        }:
+            raise HTTPException(status_code=422, detail="星图联系显示模式无效")
+        relation_styles = {
+            payload.home_star_strong_relation_style,
+            payload.home_star_reference_relation_style,
+            payload.home_star_contributor_relation_style,
+        }
+        if not relation_styles.issubset({"solid", "dashed", "glow"}):
+            raise HTTPException(status_code=422, detail="星图联系样式无效")
+        rule_ids = [
+            rule.id for rule in payload.home_star_brightness_rules
+        ]
+        if (
+            len(rule_ids) != len(set(rule_ids))
+            or not set(rule_ids).issubset(STAR_BRIGHTNESS_RULE_IDS)
+        ):
+            raise HTTPException(status_code=422, detail="星图亮度规则无效")
         current_timing = resolved_home_intro_timing()
         split_timing = (
             payload.home_intro_assembly_duration_ms is not None
@@ -3119,6 +3308,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_intro_contributor_limit": str(
                 payload.home_intro_contributor_limit
+            ),
+            "home_background_style": payload.home_background_style,
+            "home_star_scope": payload.home_star_scope,
+            "home_star_relation_visibility": (
+                payload.home_star_relation_visibility
+            ),
+            "home_star_strong_relation_style": (
+                payload.home_star_strong_relation_style
+            ),
+            "home_star_reference_relation_style": (
+                payload.home_star_reference_relation_style
+            ),
+            "home_star_contributor_relation_style": (
+                payload.home_star_contributor_relation_style
+            ),
+            "home_star_brightness_variation_enabled": (
+                "1"
+                if payload.home_star_brightness_variation_enabled
+                else "0"
+            ),
+            "home_star_brightness_variation_amount": str(
+                payload.home_star_brightness_variation_amount
+            ),
+            "home_star_brightness_transition_ms": str(
+                payload.home_star_brightness_transition_ms
+            ),
+            "home_star_brightness_interval_ms": str(
+                payload.home_star_brightness_interval_ms
+            ),
+            "home_star_color_random_enabled": (
+                "1" if payload.home_star_color_random_enabled else "0"
+            ),
+            "home_star_brightness_rules": json.dumps(
+                [
+                    rule.model_dump()
+                    for rule in payload.home_star_brightness_rules
+                ],
+                ensure_ascii=False,
             ),
         }
         with db.connect() as connection:

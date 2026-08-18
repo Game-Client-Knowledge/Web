@@ -286,6 +286,9 @@
   }
 
   async function setupKnowledgeField() {
+    if (window.GCK_HOME_STAR_MAP_ENGINE) {
+      return;
+    }
     const canvas = document.querySelector("[data-knowledge-field]");
     const context = canvas && canvas.getContext("2d");
     if (!canvas || !context) {

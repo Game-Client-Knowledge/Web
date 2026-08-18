@@ -149,6 +149,104 @@
           </select>
         </label>
         <label>
+          主页背景
+          <select name="home_background_style">
+            <option value="old_star_map">Old Star Map</option>
+            <option value="contribution_star_map">贡献关系星图</option>
+          </select>
+        </label>
+        <label>
+          贡献星图范围
+          <select name="home_star_scope">
+            <option value="hero">仅上半部分</option>
+            <option value="full">全屏背景</option>
+          </select>
+        </label>
+        <label>
+          联系显示
+          <select name="home_star_relation_visibility">
+            <option value="always">始终显示</option>
+            <option value="near">靠近时显示</option>
+            <option value="hidden">常态隐藏</option>
+          </select>
+        </label>
+        <label>
+          动星强联系
+          <select name="home_star_strong_relation_style">
+            <option value="solid">实线</option>
+            <option value="dashed">虚线</option>
+            <option value="glow">脉冲辉光</option>
+          </select>
+        </label>
+        <label>
+          动星引用联系
+          <select name="home_star_reference_relation_style">
+            <option value="dashed">虚线</option>
+            <option value="solid">实线</option>
+            <option value="glow">脉冲辉光</option>
+          </select>
+        </label>
+        <label>
+          静星贡献联系
+          <select name="home_star_contributor_relation_style">
+            <option value="solid">实线</option>
+            <option value="dashed">虚线</option>
+            <option value="glow">脉冲辉光</option>
+          </select>
+        </label>
+        <label class="check-label">
+          <input name="home_star_brightness_variation_enabled" type="checkbox">
+          随机浮动星星亮度
+        </label>
+        <label class="check-label">
+          <input name="home_star_color_random_enabled" type="checkbox">
+          随机星星颜色
+        </label>
+        <label>
+          亮度浮动值
+          <input
+            name="home_star_brightness_variation_amount"
+            type="number"
+            min="0"
+            max="20"
+            step="0.5"
+            required
+          >
+        </label>
+        <label>
+          浮动演算时长（秒）
+          <input
+            name="home_star_brightness_transition_seconds"
+            type="number"
+            min="0.1"
+            max="10"
+            step="0.1"
+            required
+          >
+        </label>
+        <label>
+          浮动间隔（秒）
+          <input
+            name="home_star_brightness_interval_seconds"
+            type="number"
+            min="0.2"
+            max="30"
+            step="0.1"
+            required
+          >
+        </label>
+        <fieldset class="star-rule-editor">
+          <legend>星星亮度规则</legend>
+          <div id="starBrightnessRuleList" class="star-rule-list"></div>
+          <div class="star-rule-add">
+            <select id="starBrightnessRuleCatalog" aria-label="可添加亮度规则"></select>
+            <button id="addStarBrightnessRule" class="secondary-button" type="button">
+              <i data-lucide="plus" aria-hidden="true"></i>
+              添加规则
+            </button>
+          </div>
+        </fieldset>
+        <label>
           粒子重组时长（秒）
           <input
             name="home_intro_assembly_duration_seconds"

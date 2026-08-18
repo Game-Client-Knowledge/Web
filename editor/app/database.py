@@ -176,6 +176,15 @@ CREATE TABLE IF NOT EXISTS line_authors (
     PRIMARY KEY(path, line_number)
 );
 
+CREATE TABLE IF NOT EXISTS document_contributors (
+    path TEXT NOT NULL REFERENCES content_revisions(path) ON DELETE CASCADE,
+    contributor_id TEXT NOT NULL,
+    contributor_name TEXT NOT NULL,
+    commit_count INTEGER NOT NULL DEFAULT 1,
+    last_contributed_at TEXT NOT NULL,
+    PRIMARY KEY(path, contributor_id)
+);
+
 CREATE TABLE IF NOT EXISTS comments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     path TEXT NOT NULL,
@@ -222,6 +231,8 @@ CREATE INDEX IF NOT EXISTS idx_external_pr_tokens_expiry
 ON external_pr_action_tokens(expires_at);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_line_authors_user ON line_authors(user_id);
+CREATE INDEX IF NOT EXISTS idx_document_contributors_id
+ON document_contributors(contributor_id, path);
 CREATE INDEX IF NOT EXISTS idx_comments_path
 ON comments(path, start_line, created_at);
 CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id, created_at);
@@ -520,6 +531,25 @@ class Database:
                 ),
                 "home_intro_lock_scroll": "1",
                 "home_intro_contributor_limit": "8",
+                "home_background_style": "old_star_map",
+                "home_star_scope": "hero",
+                "home_star_relation_visibility": "near",
+                "home_star_strong_relation_style": "solid",
+                "home_star_reference_relation_style": "dashed",
+                "home_star_contributor_relation_style": "solid",
+                "home_star_brightness_variation_enabled": "0",
+                "home_star_brightness_variation_amount": "2",
+                "home_star_brightness_transition_ms": "900",
+                "home_star_brightness_interval_ms": "2400",
+                "home_star_color_random_enabled": "0",
+                "home_star_brightness_rules": (
+                    '[{"id":"contributor_contribution_count",'
+                    '"priority":500},'
+                    '{"id":"contributor_recent_activity","priority":400},'
+                    '{"id":"document_reference_degree","priority":300},'
+                    '{"id":"document_contributor_count","priority":200},'
+                    '{"id":"document_recent_activity","priority":100}]'
+                ),
             }.items():
                 connection.execute(
                     """

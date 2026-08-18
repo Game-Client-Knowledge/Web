@@ -342,6 +342,19 @@ def test_line_attribution_and_comment_threads(client: TestClient) -> None:
         },
     )
     assert sync.status_code == 200, sync.text
+    graph = client.get("/api/config").json()["contribution_graph"]
+    assert graph["revision"] == "a" * 40
+    assert graph["links"] == [
+        {
+            "path": "knowledge/cpp/example.md",
+            "contributor_id": graph["links"][0]["contributor_id"],
+            "contributor_name": "Line Author",
+            "commit_count": 1,
+            "last_contributed_at": graph["links"][0][
+                "last_contributed_at"
+            ],
+        }
+    ]
 
     created = client.post(
         "/api/comments",
@@ -926,6 +939,27 @@ def test_admin_can_configure_client_visual_effects(
             "home_intro_hold_duration_ms": 900,
             "home_intro_lock_scroll": False,
             "home_intro_contributor_limit": 10,
+            "home_background_style": "contribution_star_map",
+            "home_star_scope": "full",
+            "home_star_relation_visibility": "hidden",
+            "home_star_strong_relation_style": "glow",
+            "home_star_reference_relation_style": "dashed",
+            "home_star_contributor_relation_style": "solid",
+            "home_star_brightness_variation_enabled": True,
+            "home_star_brightness_variation_amount": 4.5,
+            "home_star_brightness_transition_ms": 1200,
+            "home_star_brightness_interval_ms": 3000,
+            "home_star_color_random_enabled": True,
+            "home_star_brightness_rules": [
+                {
+                    "id": "contributor_contribution_count",
+                    "priority": 900,
+                },
+                {
+                    "id": "document_reference_degree",
+                    "priority": 300,
+                },
+            ],
         },
     )
     assert response.status_code == 200, response.text
@@ -940,6 +974,27 @@ def test_admin_can_configure_client_visual_effects(
         "home_intro_hold_duration_ms": 900,
         "home_intro_lock_scroll": False,
         "home_intro_contributor_limit": 10,
+        "home_background_style": "contribution_star_map",
+        "home_star_scope": "full",
+        "home_star_relation_visibility": "hidden",
+        "home_star_strong_relation_style": "glow",
+        "home_star_reference_relation_style": "dashed",
+        "home_star_contributor_relation_style": "solid",
+        "home_star_brightness_variation_enabled": True,
+        "home_star_brightness_variation_amount": 4.5,
+        "home_star_brightness_transition_ms": 1200,
+        "home_star_brightness_interval_ms": 3000,
+        "home_star_color_random_enabled": True,
+        "home_star_brightness_rules": [
+            {
+                "id": "contributor_contribution_count",
+                "priority": 900,
+            },
+            {
+                "id": "document_reference_degree",
+                "priority": 300,
+            },
+        ],
     }
     config = client.get("/api/config").json()
     assert config["catalog_background_style"] == "constellation"
@@ -952,6 +1007,16 @@ def test_admin_can_configure_client_visual_effects(
     assert config["home_intro_hold_duration_ms"] == 900
     assert config["home_intro_lock_scroll"] is False
     assert config["home_intro_contributor_limit"] == 10
+    assert config["home_background_style"] == "contribution_star_map"
+    assert config["home_star_scope"] == "full"
+    assert config["home_star_relation_visibility"] == "hidden"
+    assert config["home_star_strong_relation_style"] == "glow"
+    assert config["home_star_brightness_variation_enabled"] is True
+    assert config["home_star_brightness_variation_amount"] == 4.5
+    assert config["home_star_brightness_rules"][0] == {
+        "id": "contributor_contribution_count",
+        "priority": 900,
+    }
 
     legacy_timing = client.put(
         "/api/admin/visual-settings",

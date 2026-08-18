@@ -166,6 +166,33 @@
     }
   }
 
+  function cacheContributionGraph(value, revision) {
+    if (!value || !value.revision || !revision) return;
+    const graphRevision = String(value.revision);
+    const treeRevision = String(revision);
+    if (
+      !graphRevision.startsWith(treeRevision) &&
+      !treeRevision.startsWith(graphRevision)
+    ) {
+      return;
+    }
+    try {
+      for (const key of new Set([
+        graphRevision,
+        graphRevision.slice(0, 7),
+        treeRevision,
+        treeRevision.slice(0, 7)
+      ])) {
+        window.localStorage.setItem(
+          `gck-contribution-graph:v1:${key}`,
+          JSON.stringify(value)
+        );
+      }
+    } catch {
+      // The embedded baseline graph remains available when storage is full.
+    }
+  }
+
   function takeGithubAuthError() {
     const url = new URL(window.location.href);
     const code = url.searchParams.get("github_auth_error");
@@ -1802,6 +1829,10 @@
       ) {
         throw new Error("远端目录树响应不完整");
       }
+      cacheContributionGraph(
+        payload.contribution_graph,
+        payload.revision
+      );
       applyWorkspaceState(
         window.GCKWorkspaceStore.syncBase(
           window.localStorage,

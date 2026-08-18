@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import secrets
@@ -30,12 +31,25 @@ class AttributionFile(BaseModel):
     commit: str = Field(min_length=7, max_length=64)
     line_count: int = Field(ge=0)
     lines: list[AttributionLine] = Field(max_length=10000)
+    contributors: list["DocumentContributor"] = Field(
+        default_factory=list,
+        max_length=1000,
+    )
+
+
+class DocumentContributor(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=200)
+    commit_count: int = Field(default=1, ge=1)
+    last_contributed_at: str = Field(default="", max_length=64)
 
 
 class AttributionSyncRequest(BaseModel):
     revision: str = Field(min_length=7, max_length=64)
     files: list[AttributionFile] = Field(max_length=100)
     deleted: list[str] = Field(default_factory=list, max_length=1000)
+    start: bool = True
+    complete: bool = True
 
 
 class RenderSegment(BaseModel):
@@ -138,6 +152,29 @@ def _comment_url(settings: Settings, path: str, comment_id: int) -> str:
     return f"{origin}/{quote(route)}/?comment={comment_id}"
 
 
+def contribution_graph_payload(db: Database) -> dict[str, Any]:
+    with db.connect() as connection:
+        revision = connection.execute(
+            """
+            SELECT value FROM settings
+            WHERE key = 'contribution_graph_revision'
+            """
+        ).fetchone()
+        rows = connection.execute(
+            """
+            SELECT path, contributor_id, contributor_name,
+                   commit_count, last_contributed_at
+            FROM document_contributors
+            ORDER BY path, contributor_name COLLATE NOCASE
+            """
+        ).fetchall()
+    return {
+        "version": 1,
+        "revision": revision["value"] if revision else "",
+        "links": [dict(row) for row in rows],
+    }
+
+
 def create_comments_router(
     db: Database,
     settings: Settings,
@@ -174,6 +211,17 @@ def create_comments_router(
         lines = 0
         now = utc_now()
         with db.connect() as connection:
+            if payload.start:
+                connection.execute(
+                    """
+                    INSERT INTO settings(key, value, updated_at)
+                    VALUES('contribution_graph_revision', ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_at = excluded.updated_at
+                    """,
+                    (f"syncing:{payload.revision}", now),
+                )
             for raw_path in payload.deleted:
                 try:
                     path = validate_content_path(raw_path)
@@ -207,6 +255,10 @@ def create_comments_router(
                 )
                 connection.execute(
                     "DELETE FROM line_authors WHERE path = ?",
+                    (path,),
+                )
+                connection.execute(
+                    "DELETE FROM document_contributors WHERE path = ?",
                     (path,),
                 )
                 for line in item.lines:
@@ -251,9 +303,62 @@ def create_comments_router(
                             user["id"] if user else None,
                         ),
                     )
+                contributors = item.contributors
+                if not contributors:
+                    inferred: dict[str, DocumentContributor] = {}
+                    for line in item.lines:
+                        email = line.email.strip().lower()
+                        identity = email or line.name.strip().lower()
+                        contributor_id = hashlib.sha256(
+                            identity.encode("utf-8")
+                        ).hexdigest()[:12]
+                        inferred.setdefault(
+                            contributor_id,
+                            DocumentContributor(
+                                id=contributor_id,
+                                name=line.name,
+                                commit_count=1,
+                                last_contributed_at=now,
+                            ),
+                        )
+                    contributors = list(inferred.values())
+                connection.executemany(
+                    """
+                    INSERT INTO document_contributors(
+                        path, contributor_id, contributor_name,
+                        commit_count, last_contributed_at
+                    )
+                    VALUES(?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            path,
+                            contributor.id,
+                            contributor.name,
+                            contributor.commit_count,
+                            contributor.last_contributed_at or now,
+                        )
+                        for contributor in contributors
+                    ],
+                )
                 files += 1
                 lines += len(item.lines)
+            if payload.complete:
+                connection.execute(
+                    """
+                    INSERT INTO settings(key, value, updated_at)
+                    VALUES('contribution_graph_revision', ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_at = excluded.updated_at
+                    """,
+                    (payload.revision, now),
+                )
         return {"files": files, "lines": lines, "deleted": len(payload.deleted)}
+
+    @router.get("/contribution-graph")
+    def contribution_graph() -> dict[str, Any]:
+        return contribution_graph_payload(db)
 
     @router.get("/comments")
     def comments(request: Request, path: str) -> dict[str, Any]:

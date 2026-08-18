@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -35,6 +36,70 @@ def editable(path: str) -> bool:
         len(parts) >= 2
         and not any(part.startswith(".") for part in parts)
         and PurePosixPath(path).suffix.lower() in EDITABLE_EXTENSIONS
+    )
+
+
+def normalized_identity(value: str) -> str:
+    return " ".join(value.strip().lower().split())
+
+
+def contributor_id(name: str, email: str) -> str:
+    normalized_name = normalized_identity(name)
+    normalized_email = normalized_identity(email)
+    github_match = re.fullmatch(
+        r"\d+\+([^@]+)@users\.noreply\.github\.com",
+        normalized_email,
+    )
+    tokens = [
+        f"name:{normalized_name}" if normalized_name else "",
+        f"email:{normalized_email}" if normalized_email else "",
+        f"github:{github_match.group(1)}" if github_match else "",
+    ]
+    identity = "\n".join(sorted(token for token in tokens if token))
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12]
+
+
+def contributors_for_file(
+    repo: str,
+    revision: str,
+    path: str,
+) -> list[dict[str, object]]:
+    output = git(
+        repo,
+        "log",
+        "--follow",
+        "--no-merges",
+        "--format=%x1e%cI%x1f%aN%x1f%aE",
+        revision,
+        "--",
+        path,
+    )
+    contributors: dict[str, dict[str, object]] = {}
+    for block in output.split("\x1e"):
+        fields = block.strip().split("\x1f")
+        if len(fields) != 3:
+            continue
+        timestamp, name, email = fields
+        identity = contributor_id(name, email)
+        item = contributors.setdefault(
+            identity,
+            {
+                "id": identity,
+                "name": name.strip() or "Unknown",
+                "commit_count": 0,
+                "last_contributed_at": "",
+            },
+        )
+        item["commit_count"] = int(item["commit_count"]) + 1
+        if timestamp > str(item["last_contributed_at"]):
+            item["last_contributed_at"] = timestamp
+            item["name"] = name.strip() or str(item["name"])
+    return sorted(
+        contributors.values(),
+        key=lambda item: (
+            -int(item["commit_count"]),
+            str(item["name"]).lower(),
+        ),
     )
 
 
@@ -106,6 +171,7 @@ def blame_file(
         "commit": content_revision,
         "line_count": len(lines),
         "lines": lines,
+        "contributors": contributors_for_file(repo, revision, path),
     }
 
 
@@ -160,6 +226,8 @@ def upload(
                 "revision": revision,
                 "files": batch,
                 "deleted": deleted if index == 0 else [],
+                "start": index == 0,
+                "complete": index == len(batches) - 1,
             },
         )
         uploaded_files += int(result.get("files", 0))

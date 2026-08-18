@@ -1537,6 +1537,74 @@ dialog::backdrop {
   justify-self: start;
 }
 
+.star-rule-editor {
+  min-width: 0;
+  margin: 0;
+  padding: 16px 0 4px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  grid-column: 1 / -1;
+}
+
+.star-rule-editor legend {
+  padding: 0 10px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.star-rule-list {
+  display: grid;
+}
+
+.star-rule-row {
+  display: grid;
+  min-width: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 130px 36px;
+  gap: 14px;
+}
+
+.star-rule-row > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.star-rule-row strong {
+  font-size: 12px;
+}
+
+.star-rule-row span {
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.star-rule-row label {
+  display: grid;
+  color: var(--ink-soft);
+  font-size: 10px;
+  gap: 3px;
+}
+
+.star-rule-row input {
+  min-width: 0;
+}
+
+.star-rule-add {
+  display: flex;
+  margin-top: 12px;
+  align-items: center;
+  gap: 10px;
+}
+
+.star-rule-add select {
+  width: min(100%, 340px);
+}
+
 .section-actions {
   display: flex;
   align-items: center;
@@ -1866,6 +1934,24 @@ dialog::backdrop {
 
   .visual-settings-form {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .star-rule-row {
+    align-items: end;
+    grid-template-columns: minmax(0, 1fr) 110px 36px;
+  }
+
+  .star-rule-row > div {
+    grid-column: 1 / -1;
+  }
+
+  .star-rule-add {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .star-rule-add select {
+    width: 100%;
   }
 
   .smtp-grid {

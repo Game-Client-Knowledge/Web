@@ -138,7 +138,29 @@
             settings.home_intro_hold_duration_ms,
           home_intro_lock_scroll: settings.home_intro_lock_scroll,
           home_intro_contributor_limit:
-            settings.home_intro_contributor_limit
+            settings.home_intro_contributor_limit,
+          home_background_style: settings.home_background_style,
+          home_star_scope: settings.home_star_scope,
+          home_star_relation_visibility:
+            settings.home_star_relation_visibility,
+          home_star_strong_relation_style:
+            settings.home_star_strong_relation_style,
+          home_star_reference_relation_style:
+            settings.home_star_reference_relation_style,
+          home_star_contributor_relation_style:
+            settings.home_star_contributor_relation_style,
+          home_star_brightness_variation_enabled:
+            settings.home_star_brightness_variation_enabled,
+          home_star_brightness_variation_amount:
+            settings.home_star_brightness_variation_amount,
+          home_star_brightness_transition_ms:
+            settings.home_star_brightness_transition_ms,
+          home_star_brightness_interval_ms:
+            settings.home_star_brightness_interval_ms,
+          home_star_color_random_enabled:
+            settings.home_star_color_random_enabled,
+          home_star_brightness_rules:
+            settings.home_star_brightness_rules
         })
       );
       window.localStorage.setItem(

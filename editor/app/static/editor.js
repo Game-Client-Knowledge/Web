@@ -1291,6 +1291,30 @@ async function syncRemoteWorkspace(options = {}) {
     ) {
       throw new Error("远端目录树响应不完整");
     }
+    if (payload.contribution_graph?.revision) {
+      const graphRevision = String(payload.contribution_graph.revision);
+      const treeRevision = String(payload.revision);
+      if (
+        graphRevision.startsWith(treeRevision) ||
+        treeRevision.startsWith(graphRevision)
+      ) {
+        try {
+          for (const key of new Set([
+            graphRevision,
+            graphRevision.slice(0, 7),
+            treeRevision,
+            treeRevision.slice(0, 7)
+          ])) {
+            localStorage.setItem(
+              `gck-contribution-graph:v1:${key}`,
+              JSON.stringify(payload.contribution_graph)
+            );
+          }
+        } catch {
+          // The static baseline graph remains available without local storage.
+        }
+      }
+    }
     const workspace = store.syncBase(
       window.localStorage,
       userId,

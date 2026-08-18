@@ -1,0 +1,145 @@
+# Homepage Contribution Star Map
+
+## Purpose
+
+The homepage supports two interchangeable background engines:
+
+- `old_star_map`: the original proximity-based moving star field.
+- `contribution_star_map`: a content and contributor graph rendered as stars.
+
+The contribution map can occupy only the existing hero height or remain fixed
+behind the complete homepage. Full-page mode replaces the former white lower
+surface with translucent dark content bands so the graph remains visible.
+
+## Graph Model
+
+The build creates `catalog.homeStarGraph` from the authoritative content Git
+revision. The graph is embedded in the homepage and does not fetch the content
+tree at runtime.
+
+### Stars
+
+| Kind | Motion | Source | Default brightness |
+| --- | --- | --- | --- |
+| Contributor | Static | Contributors across all tracks | `10` |
+| Document | Moving | Every readable Markdown route | `10` |
+
+Contributor records expose names and aggregate activity only. Email addresses
+are never included in the browser payload.
+
+### Edges
+
+| Type | Rule | Default style |
+| --- | --- | --- |
+| Strong | Documents share the same smallest source directory | Solid |
+| Reference | One Markdown document links to another readable document | Dashed |
+| Contribution | A contributor changed the document at least once | Solid |
+
+The smallest-directory rule deliberately separates a parent topic from its
+child topics. Direct files under a parent are connected to each other; files
+inside one child topic are connected to each other; the two groups do not gain
+a strong edge merely because they share a larger module.
+
+The browser stores adjacency with `Map<starId, Set<starId>>`. Drawing keeps the
+edge type so each relation can use an independent visual style.
+
+## Versioned Contribution Cache
+
+The existing line-attribution service also maintains
+`document_contributors`. The deployment updater already calculates changed and
+deleted paths between content revisions, so the same pass now:
+
+1. Rebuilds contributor membership only for changed documents.
+2. Removes deleted documents through the existing revision cascade.
+3. Marks the graph revision as `syncing:<revision>` before the first batch.
+4. Publishes the new revision only after the final batch succeeds.
+
+Clients accept server contribution links only when their revision matches the
+embedded content revision. During synchronization or failure they continue to
+use the complete embedded baseline graph.
+
+The existing authenticated `/api/repository/tree` response includes the graph
+only when its revision matches the returned tree SHA. Both browser workspaces
+cache that payload under its full and seven-character revisions during
+**Sync remote**. This adds no graph-specific request. A later homepage load can
+reuse it only after the static baseline advances to the same revision.
+
+On the first deployment of this schema, `update-site.sh` detects the missing
+graph revision and ignores the old attribution cursor once. This forces a full
+backfill. Later deployments resume incremental processing.
+
+The accepted server graph is cached in `localStorage` under the content
+revision. No draft or current-tree edit is sent to this cache; unpublished
+changes remain client-only under the dual-tree editor model.
+
+## Rendering And Interaction
+
+`src/assets/js/home-star-map.js` owns the Canvas 2D simulation.
+
+- Contributor stars remain stationary.
+- Document stars receive deterministic random positions and velocities.
+- `always` draws all known edges.
+- `near` draws an edge only when its related stars are within the proximity
+  threshold.
+- `hidden` suppresses normal edges.
+- A selected connected component always draws its internal edges, regardless
+  of distance.
+
+Clicking a star shows a label that follows it for three seconds. Clicking the
+same document star or its label again navigates to the document. Contributor
+labels show the public contributor name.
+
+When edge visibility is not `always`, clicking a star runs BFS over all edge
+types. The complete connected component is highlighted and a fixed coverage
+panel reports:
+
+- highlighted stars and percentage of all stars;
+- highlighted contributor stars and percentage;
+- highlighted document stars and percentage.
+
+## Brightness Rules
+
+Rules execute from the highest numeric priority to the lowest. Brightness
+starts at `10` and is clamped to `[0, 30]`.
+
+| Rule | Formula |
+| --- | --- |
+| Contributor contribution count | Add `min(12, log2(1 + changedLines) * 1.35)` |
+| Contributor recent activity | Multiply by `max(0.55, 0.72 + exp(-days / 120) * 0.5)` |
+| Document reference degree | Add `min(8, sqrt(referenceDegree) * 2.1)` |
+| Document contributor count | Add `min(7, log2(1 + contributors) * 2)` |
+| Document recent activity | Multiply by `max(0.62, 0.76 + exp(-days / 180) * 0.44)` |
+
+Administrators can enable, remove, and prioritize these rules. Because
+addition and multiplication are both used, priority can intentionally change
+the result.
+
+Optional random variation interpolates between bounded offsets. The
+administrator controls the offset magnitude, interpolation duration, and
+reselection interval. Random colors are disabled by default; disabled stars
+render white.
+
+## Administration Settings
+
+`PUT /api/admin/visual-settings` persists:
+
+- homepage background engine and hero/full scope;
+- relation visibility;
+- strong, reference, and contribution styles (`solid`, `dashed`, `glow`);
+- brightness variation enablement, magnitude, transition, and interval;
+- random color enablement;
+- enabled brightness rules and priorities.
+
+The existing public bootstrap carries these values. The same values are saved
+in the homepage visual-settings cache so a reload uses the selected background
+from its first rendered frame.
+
+## Verification
+
+- `npm run test:home-star-graph` validates smallest-directory grouping,
+  Markdown references, and contributor edges.
+- `editor/tests/test_app.py` validates persistence, public propagation,
+  versioned contribution links, and administrator input validation.
+- `scripts/test-home-star-map-visual.js` checks hero/full desktop and full
+  mobile rendering, nonblank Canvas pixels, star/edge counts, horizontal
+  overflow, BFS coverage, labels, and screenshots.

@@ -524,7 +524,33 @@ WEB_COMMIT="$web_commit" \
 
 update_stage="sync-line-authors"
 previous_attribution_commit=""
-if [[ -f "$ATTRIBUTION_STATE_FILE" ]]; then
+contribution_graph_initialized="$(
+  python3 - "$EDITOR_DB_PATH" <<'PY'
+import sqlite3
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    print(0)
+    raise SystemExit
+try:
+    with sqlite3.connect(path) as connection:
+        table = connection.execute(
+            "SELECT 1 FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'document_contributors'"
+        ).fetchone()
+        revision = connection.execute(
+            "SELECT value FROM settings "
+            "WHERE key = 'contribution_graph_revision'"
+        ).fetchone() if table else None
+except sqlite3.Error:
+    table = None
+    revision = None
+print(1 if table and revision and revision[0] else 0)
+PY
+)"
+if [[ "$contribution_graph_initialized" == "1" && -f "$ATTRIBUTION_STATE_FILE" ]]; then
   candidate="$(cat "$ATTRIBUTION_STATE_FILE")"
   mapped_reference="refs/gck-upstream/${candidate}"
   if git --git-dir="$CONTENT_GIT_MIRROR" show-ref \

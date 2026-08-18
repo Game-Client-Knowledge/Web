@@ -1,0 +1,894 @@
+(function () {
+  "use strict";
+
+  window.GCK_HOME_STAR_MAP_ENGINE = true;
+
+  const defaults = {
+    home_background_style: "old_star_map",
+    home_star_scope: "hero",
+    home_star_relation_visibility: "near",
+    home_star_strong_relation_style: "solid",
+    home_star_reference_relation_style: "dashed",
+    home_star_contributor_relation_style: "solid",
+    home_star_brightness_variation_enabled: false,
+    home_star_brightness_variation_amount: 2,
+    home_star_brightness_transition_ms: 900,
+    home_star_brightness_interval_ms: 2400,
+    home_star_color_random_enabled: false,
+    home_star_brightness_rules: [
+      { id: "contributor_contribution_count", priority: 500 },
+      { id: "contributor_recent_activity", priority: 400 },
+      { id: "document_reference_degree", priority: 300 },
+      { id: "document_contributor_count", priority: 200 },
+      { id: "document_recent_activity", priority: 100 }
+    ]
+  };
+  const graph = window.GCK_HOME_STAR_GRAPH;
+  const canvas = document.querySelector("[data-knowledge-field]");
+  const hero = canvas && canvas.closest(".library-intro");
+  if (!canvas || !hero || !graph) return;
+
+  const context = canvas.getContext("2d");
+  if (!context) return;
+
+  const reducedMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)"
+  ).matches;
+  const palette = ["#ffffff", "#9ce0cd", "#f0bd78", "#ef8e78", "#8fc9ff"];
+  const relationColors = {
+    strong: "132, 220, 196",
+    reference: "238, 190, 111",
+    contribution: "239, 142, 120"
+  };
+  const cachePrefix = "gck-contribution-graph:v1:";
+  let settings = { ...defaults };
+  let cleanup = function () {};
+  let ready = false;
+
+  function hashSeed(value) {
+    let hash = 2166136261;
+    for (const character of String(value || "")) {
+      hash ^= character.charCodeAt(0);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  }
+
+  function seededRandom(seed) {
+    let value = seed >>> 0;
+    return function () {
+      value += 0x6d2b79f5;
+      let result = value;
+      result = Math.imul(result ^ (result >>> 15), result | 1);
+      result ^= result + Math.imul(result ^ (result >>> 7), result | 61);
+      return ((result ^ (result >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function normalizeName(value) {
+    return String(value || "").trim().toLocaleLowerCase("en").replace(/\s+/g, " ");
+  }
+
+  function matchingRevision(value) {
+    const expected = String(
+      window.GCK_CONFIG && window.GCK_CONFIG.contentVersion || ""
+    );
+    const actual = String(value || "");
+    return Boolean(
+      expected &&
+      actual &&
+      (actual.startsWith(expected) || expected.startsWith(actual))
+    );
+  }
+
+  function cacheContributionGraph(value) {
+    if (!value || !matchingRevision(value.revision)) return;
+    try {
+      window.localStorage.setItem(
+        `${cachePrefix}${window.GCK_CONFIG.contentVersion}`,
+        JSON.stringify(value)
+      );
+    } catch {
+      // The embedded graph remains authoritative without local storage.
+    }
+  }
+
+  function readContributionGraph() {
+    try {
+      const value = JSON.parse(
+        window.localStorage.getItem(
+          `${cachePrefix}${window.GCK_CONFIG.contentVersion}`
+        ) || "null"
+      );
+      return value && matchingRevision(value.revision) ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function graphWithCachedContributions(source, cached) {
+    if (!cached || !Array.isArray(cached.links)) return source;
+    const result = {
+      ...source,
+      stars: source.stars.map((star) => ({
+        ...star,
+        metrics: { ...(star.metrics || {}) }
+      })),
+      edges: source.edges.filter((edge) => edge.type !== "contribution")
+    };
+    const documents = new Map(
+      result.stars
+        .filter((star) => star.kind === "document")
+        .map((star) => [star.sourcePath, star])
+    );
+    const contributors = new Map(
+      result.stars
+        .filter((star) => star.kind === "contributor")
+        .map((star) => [normalizeName(star.name), star])
+    );
+    const contributorSets = new Map();
+
+    for (const link of cached.links) {
+      const documentStar = documents.get(link.path);
+      if (!documentStar) continue;
+      const name = String(link.contributor_name || "Unknown");
+      const normalized = normalizeName(name);
+      let contributorStar = contributors.get(normalized);
+      if (!contributorStar) {
+        contributorStar = {
+          id: `contributor:server:${link.contributor_id}`,
+          kind: "contributor",
+          contributorId: link.contributor_id,
+          name,
+          brightness: 10,
+          metrics: {
+            contributionCount: 0,
+            commitCount: Number(link.commit_count || 0),
+            lastActiveAt: link.last_contributed_at || ""
+          }
+        };
+        result.stars.push(contributorStar);
+        contributors.set(normalized, contributorStar);
+      }
+      result.edges.push({
+        type: "contribution",
+        source: contributorStar.id,
+        target: documentStar.id,
+        commitCount: Number(link.commit_count || 0),
+        lastContributedAt: link.last_contributed_at || ""
+      });
+      if (!contributorSets.has(link.path)) {
+        contributorSets.set(link.path, new Set());
+      }
+      contributorSets.get(link.path).add(contributorStar.id);
+      if (
+        link.last_contributed_at &&
+        link.last_contributed_at >
+          String(documentStar.metrics.lastContributedAt || "")
+      ) {
+        documentStar.metrics.lastContributedAt = link.last_contributed_at;
+      }
+    }
+    for (const documentStar of documents.values()) {
+      documentStar.metrics.contributorCount =
+        contributorSets.get(documentStar.sourcePath)?.size || 0;
+    }
+    return result;
+  }
+
+  function normalizeSettings(value) {
+    const merged = { ...defaults, ...(value || {}) };
+    const validRules = Array.isArray(merged.home_star_brightness_rules)
+      ? merged.home_star_brightness_rules
+      : defaults.home_star_brightness_rules;
+    return {
+      ...merged,
+      home_background_style: [
+        "old_star_map",
+        "contribution_star_map"
+      ].includes(merged.home_background_style)
+        ? merged.home_background_style
+        : defaults.home_background_style,
+      home_star_scope: ["hero", "full"].includes(merged.home_star_scope)
+        ? merged.home_star_scope
+        : defaults.home_star_scope,
+      home_star_relation_visibility: ["always", "near", "hidden"].includes(
+        merged.home_star_relation_visibility
+      )
+        ? merged.home_star_relation_visibility
+        : defaults.home_star_relation_visibility,
+      home_star_brightness_variation_amount: Math.max(
+        0,
+        Math.min(20, Number(merged.home_star_brightness_variation_amount) || 0)
+      ),
+      home_star_brightness_transition_ms: Math.max(
+        100,
+        Math.min(10000, Number(merged.home_star_brightness_transition_ms) || 900)
+      ),
+      home_star_brightness_interval_ms: Math.max(
+        200,
+        Math.min(30000, Number(merged.home_star_brightness_interval_ms) || 2400)
+      ),
+      home_star_brightness_rules: validRules
+        .filter((rule) => rule && rule.id)
+        .map((rule) => ({
+          id: rule.id,
+          priority: Number(rule.priority) || 0
+        }))
+        .sort((left, right) => right.priority - left.priority)
+    };
+  }
+
+  function daysSince(value) {
+    const timestamp = new Date(value || "").getTime();
+    if (!Number.isFinite(timestamp)) return 3650;
+    return Math.max(0, (Date.now() - timestamp) / 86400000);
+  }
+
+  function starBrightness(star, rules) {
+    let brightness = Number(star.brightness || 10);
+    for (const rule of rules) {
+      const metrics = star.metrics || {};
+      if (
+        rule.id === "contributor_contribution_count" &&
+        star.kind === "contributor"
+      ) {
+        brightness += Math.min(
+          12,
+          Math.log2(1 + Number(metrics.contributionCount || 0)) * 1.35
+        );
+      } else if (
+        rule.id === "contributor_recent_activity" &&
+        star.kind === "contributor"
+      ) {
+        const recency = Math.exp(-daysSince(metrics.lastActiveAt) / 120);
+        brightness *= Math.max(0.55, 0.72 + recency * 0.5);
+      } else if (
+        rule.id === "document_reference_degree" &&
+        star.kind === "document"
+      ) {
+        brightness += Math.min(
+          8,
+          Math.sqrt(Number(metrics.referenceDegree || 0)) * 2.1
+        );
+      } else if (
+        rule.id === "document_contributor_count" &&
+        star.kind === "document"
+      ) {
+        brightness += Math.min(
+          7,
+          Math.log2(1 + Number(metrics.contributorCount || 0)) * 2
+        );
+      } else if (
+        rule.id === "document_recent_activity" &&
+        star.kind === "document"
+      ) {
+        const recency = Math.exp(
+          -daysSince(metrics.lastContributedAt) / 180
+        );
+        brightness *= Math.max(0.62, 0.76 + recency * 0.44);
+      }
+    }
+    return Math.max(0, Math.min(30, brightness));
+  }
+
+  function createLegacyMap(runtimeSettings) {
+    document.body.classList.remove("home-stars-full", "home-stars-hero");
+    document.body.classList.add("home-stars-old");
+    if (canvas.parentElement !== hero) hero.prepend(canvas);
+    canvas.dataset.starMap = "old";
+    const random = seededRandom(hashSeed(graph.revision));
+    let width = 1;
+    let height = 1;
+    let ratio = 1;
+    let frame = 0;
+    let nodes = [];
+    let disposed = false;
+    const pointer = { x: 0, y: 0, active: false };
+
+    function resize() {
+      const rectangle = hero.getBoundingClientRect();
+      width = Math.max(1, Math.round(rectangle.width));
+      height = Math.max(1, Math.round(rectangle.height));
+      ratio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      const count = Math.max(
+        24,
+        Math.min(width < 700 ? 36 : 68, Math.round(width * height / 15000))
+      );
+      nodes = Array.from({ length: count }, (_, index) => ({
+        x: random() * width,
+        y: random() * height,
+        vx: (random() - 0.5) * 0.22,
+        vy: (random() - 0.5) * 0.22,
+        radius: 0.8 + random() * 1.4,
+        depth: 0.25 + random() * 0.75,
+        color: ["#9ce0cd", "#eea868", "#e5c970", "#ffffff"][index % 4]
+      }));
+      draw();
+    }
+
+    function draw() {
+      context.clearRect(0, 0, width, height);
+      const limit = width < 700 ? 92 : 132;
+      for (let left = 0; left < nodes.length; left += 1) {
+        for (let right = left + 1; right < nodes.length; right += 1) {
+          const distance = Math.hypot(
+            nodes[left].x - nodes[right].x,
+            nodes[left].y - nodes[right].y
+          );
+          if (distance >= limit) continue;
+          context.strokeStyle =
+            `rgba(132, 197, 179, ${0.2 * (1 - distance / limit)})`;
+          context.lineWidth = 0.7;
+          context.beginPath();
+          context.moveTo(nodes[left].x, nodes[left].y);
+          context.lineTo(nodes[right].x, nodes[right].y);
+          context.stroke();
+        }
+      }
+      for (const node of nodes) {
+        const offsetX = runtimeSettings.pointer_effect_enabled && pointer.active
+          ? (pointer.x - width / 2) * node.depth * 0.012
+          : 0;
+        const offsetY = runtimeSettings.pointer_effect_enabled && pointer.active
+          ? (pointer.y - height / 2) * node.depth * 0.012
+          : 0;
+        context.fillStyle = node.color;
+        context.beginPath();
+        context.arc(node.x + offsetX, node.y + offsetY, node.radius, 0, Math.PI * 2);
+        context.fill();
+        if (reducedMotion) continue;
+        node.x += node.vx;
+        node.y += node.vy;
+        if (node.x < -4) node.x = width + 4;
+        if (node.x > width + 4) node.x = -4;
+        if (node.y < -4) node.y = height + 4;
+        if (node.y > height + 4) node.y = -4;
+      }
+    }
+
+    function animate() {
+      frame = 0;
+      if (disposed || document.hidden) return;
+      draw();
+      frame = window.requestAnimationFrame(animate);
+    }
+    function pointerMove(event) {
+      const rectangle = hero.getBoundingClientRect();
+      pointer.x = event.clientX - rectangle.left;
+      pointer.y = event.clientY - rectangle.top;
+      pointer.active = true;
+    }
+    function pointerLeave() {
+      pointer.active = false;
+    }
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(hero);
+    if (runtimeSettings.pointer_effect_enabled) {
+      hero.addEventListener("pointermove", pointerMove);
+      hero.addEventListener("pointerleave", pointerLeave);
+    }
+    resize();
+    if (!reducedMotion) frame = window.requestAnimationFrame(animate);
+    return function () {
+      disposed = true;
+      if (frame) window.cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+      hero.removeEventListener("pointermove", pointerMove);
+      hero.removeEventListener("pointerleave", pointerLeave);
+      document.body.classList.remove("home-stars-old");
+    };
+  }
+
+  function createCoveragePanel() {
+    const panel = document.createElement("aside");
+    panel.className = "star-coverage-panel";
+    panel.hidden = true;
+    panel.setAttribute("aria-live", "polite");
+    panel.innerHTML =
+      "<span>Connection coverage</span>" +
+      "<strong data-star-coverage-total></strong>" +
+      "<dl>" +
+      "<div><dt>静星</dt><dd data-star-coverage-contributors></dd></div>" +
+      "<div><dt>动星</dt><dd data-star-coverage-documents></dd></div>" +
+      "</dl>";
+    document.body.append(panel);
+    return panel;
+  }
+
+  function createLabel() {
+    const label = document.createElement("button");
+    label.type = "button";
+    label.className = "star-map-label";
+    label.hidden = true;
+    document.body.append(label);
+    return label;
+  }
+
+  function createContributionMap(runtimeSettings) {
+    document.body.classList.remove("home-stars-old");
+    document.body.classList.toggle(
+      "home-stars-full",
+      runtimeSettings.home_star_scope === "full"
+    );
+    document.body.classList.toggle(
+      "home-stars-hero",
+      runtimeSettings.home_star_scope === "hero"
+    );
+    if (runtimeSettings.home_star_scope === "full") {
+      document.body.prepend(canvas);
+    } else if (canvas.parentElement !== hero) {
+      hero.prepend(canvas);
+    }
+    canvas.dataset.starMap = "contribution";
+    canvas.dataset.starScope = runtimeSettings.home_star_scope;
+
+    const cached = readContributionGraph();
+    const sourceGraph = graphWithCachedContributions(graph, cached);
+    const random = seededRandom(hashSeed(`${graph.revision}:contribution-stars`));
+    const stars = sourceGraph.stars.map((source, index) => ({
+      ...source,
+      metrics: { ...(source.metrics || {}) },
+      x: 0,
+      y: 0,
+      vx: source.kind === "document" ? (random() - 0.5) * 0.18 : 0,
+      vy: source.kind === "document" ? (random() - 0.5) * 0.18 : 0,
+      baseBrightness: starBrightness(
+        source,
+        runtimeSettings.home_star_brightness_rules
+      ),
+      variationFrom: 0,
+      variationTo: 0,
+      variationStartedAt: 0,
+      color: runtimeSettings.home_star_color_random_enabled
+        ? palette[Math.floor(random() * palette.length)]
+        : "#ffffff",
+      index
+    }));
+    const starById = new Map(stars.map((star) => [star.id, star]));
+    const edges = sourceGraph.edges.filter((edge) => {
+      return starById.has(edge.source) && starById.has(edge.target);
+    });
+    const adjacency = new Map(stars.map((star) => [star.id, new Set()]));
+    for (const edge of edges) {
+      adjacency.get(edge.source).add(edge.target);
+      adjacency.get(edge.target).add(edge.source);
+    }
+
+    const panel = createCoveragePanel();
+    const label = createLabel();
+    let width = 1;
+    let height = 1;
+    let ratio = 1;
+    let frame = 0;
+    let disposed = false;
+    let selectedRoot = "";
+    let selectedIds = new Set();
+    let labelStar = null;
+    let labelExpiresAt = 0;
+    let labelTimer = 0;
+    let lastVariationAt = 0;
+
+    function positionStars(initial) {
+      const contributors = stars.filter((star) => star.kind === "contributor");
+      const documents = stars.filter((star) => star.kind === "document");
+      contributors.forEach((star, index) => {
+        const angle =
+          index * (Math.PI * (3 - Math.sqrt(5))) - Math.PI / 2;
+        const radius =
+          Math.min(width, height) * (0.2 + (index % 3) * 0.055);
+        star.x = width * 0.5 + Math.cos(angle) * radius;
+        star.y = height * 0.5 + Math.sin(angle) * radius;
+      });
+      documents.forEach((star) => {
+        if (initial || !Number.isFinite(star.x) || !Number.isFinite(star.y)) {
+          star.x = 18 + random() * Math.max(1, width - 36);
+          star.y = 18 + random() * Math.max(1, height - 36);
+        } else {
+          star.x = Math.max(12, Math.min(width - 12, star.x));
+          star.y = Math.max(12, Math.min(height - 12, star.y));
+        }
+      });
+    }
+
+    function resize() {
+      const rectangle =
+        runtimeSettings.home_star_scope === "full"
+          ? { width: window.innerWidth, height: window.innerHeight }
+          : hero.getBoundingClientRect();
+      const oldWidth = width;
+      const oldHeight = height;
+      width = Math.max(1, Math.round(rectangle.width));
+      height = Math.max(1, Math.round(rectangle.height));
+      ratio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      if (oldWidth <= 1 || oldHeight <= 1) {
+        positionStars(true);
+      } else {
+        for (const star of stars) {
+          star.x = star.x / oldWidth * width;
+          star.y = star.y / oldHeight * height;
+        }
+        positionStars(false);
+      }
+      draw(performance.now());
+    }
+
+    function relationStyle(type) {
+      if (type === "reference") {
+        return runtimeSettings.home_star_reference_relation_style;
+      }
+      if (type === "contribution") {
+        return runtimeSettings.home_star_contributor_relation_style;
+      }
+      return runtimeSettings.home_star_strong_relation_style;
+    }
+
+    function applyLineStyle(type, alpha, time) {
+      const style = relationStyle(type);
+      context.strokeStyle = `rgba(${relationColors[type]}, ${alpha})`;
+      context.lineWidth = style === "glow" ? 1.35 : 0.8;
+      context.setLineDash(style === "dashed" ? [5, 6] : []);
+      context.shadowColor =
+        style === "glow" ? `rgba(${relationColors[type]}, 0.75)` : "transparent";
+      context.shadowBlur =
+        style === "glow" ? 5 + Math.sin(time * 0.003) * 1.5 : 0;
+    }
+
+    function drawEdges(time) {
+      const visibility = runtimeSettings.home_star_relation_visibility;
+      const distanceLimit = width < 700 ? 100 : 150;
+      for (const edge of edges) {
+        const source = starById.get(edge.source);
+        const target = starById.get(edge.target);
+        const distance = Math.hypot(source.x - target.x, source.y - target.y);
+        const highlighted =
+          selectedIds.has(source.id) && selectedIds.has(target.id);
+        const visible =
+          highlighted ||
+          visibility === "always" ||
+          (visibility === "near" && distance <= distanceLimit);
+        if (!visible) continue;
+        const alpha = highlighted
+          ? 0.78
+          : visibility === "always"
+            ? 0.18
+            : 0.28 * (1 - distance / distanceLimit);
+        applyLineStyle(edge.type, Math.max(0.05, alpha), time);
+        context.beginPath();
+        context.moveTo(source.x, source.y);
+        context.lineTo(target.x, target.y);
+        context.stroke();
+      }
+      context.setLineDash([]);
+      context.shadowBlur = 0;
+    }
+
+    function variation(star, time) {
+      if (
+        reducedMotion ||
+        !runtimeSettings.home_star_brightness_variation_enabled
+      ) {
+        return 0;
+      }
+      const progress = Math.max(
+        0,
+        Math.min(
+          1,
+          (time - star.variationStartedAt) /
+            runtimeSettings.home_star_brightness_transition_ms
+        )
+      );
+      const eased = progress * progress * (3 - 2 * progress);
+      return (
+        star.variationFrom +
+        (star.variationTo - star.variationFrom) * eased
+      );
+    }
+
+    function updateVariations(time) {
+      if (
+        !runtimeSettings.home_star_brightness_variation_enabled ||
+        time - lastVariationAt < runtimeSettings.home_star_brightness_interval_ms
+      ) {
+        return;
+      }
+      lastVariationAt = time;
+      for (const star of stars) {
+        star.variationFrom = variation(star, time);
+        star.variationTo =
+          (random() * 2 - 1) *
+          runtimeSettings.home_star_brightness_variation_amount;
+        star.variationStartedAt = time;
+      }
+    }
+
+    function drawStar(star, time) {
+      const brightness = Math.max(
+        0,
+        Math.min(30, star.baseBrightness + variation(star, time))
+      );
+      const selected = selectedIds.has(star.id);
+      const radius =
+        star.kind === "contributor"
+          ? 1.5 + brightness * 0.12
+          : 0.65 + brightness * 0.085;
+      const alpha = Math.max(0.22, Math.min(1, 0.34 + brightness / 22));
+      context.fillStyle = star.color;
+      context.globalAlpha = alpha;
+      context.shadowColor = star.color;
+      context.shadowBlur = selected ? 15 : Math.max(2, brightness * 0.35);
+      context.beginPath();
+      context.arc(star.x, star.y, radius, 0, Math.PI * 2);
+      context.fill();
+      if (star.kind === "contributor") {
+        context.strokeStyle = star.color;
+        context.lineWidth = selected ? 1.3 : 0.75;
+        context.beginPath();
+        context.moveTo(star.x - radius * 2.4, star.y);
+        context.lineTo(star.x + radius * 2.4, star.y);
+        context.moveTo(star.x, star.y - radius * 2.4);
+        context.lineTo(star.x, star.y + radius * 2.4);
+        context.stroke();
+      }
+      context.globalAlpha = 1;
+      context.shadowBlur = 0;
+    }
+
+    function moveDocuments() {
+      if (reducedMotion) return;
+      for (const star of stars) {
+        if (star.kind !== "document") continue;
+        star.x += star.vx;
+        star.y += star.vy;
+        if (star.x < 8 || star.x > width - 8) {
+          star.vx *= -1;
+          star.x = Math.max(8, Math.min(width - 8, star.x));
+        }
+        if (star.y < 8 || star.y > height - 8) {
+          star.vy *= -1;
+          star.y = Math.max(8, Math.min(height - 8, star.y));
+        }
+      }
+    }
+
+    function canvasOffset() {
+      const rectangle = canvas.getBoundingClientRect();
+      return { left: rectangle.left, top: rectangle.top };
+    }
+
+    function updateLabel(time) {
+      if (!labelStar || time >= labelExpiresAt) {
+        label.hidden = true;
+        labelStar = null;
+        return;
+      }
+      const offset = canvasOffset();
+      label.hidden = false;
+      const labelWidth = label.offsetWidth || 180;
+      const labelHeight = label.offsetHeight || 34;
+      const x = Math.max(
+        8,
+        Math.min(
+          window.innerWidth - labelWidth - 8,
+          offset.left + labelStar.x + 10
+        )
+      );
+      const y = Math.max(
+        8,
+        Math.min(
+          window.innerHeight - labelHeight - 8,
+          offset.top + labelStar.y - 18
+        )
+      );
+      label.style.transform =
+        `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+    }
+
+    function draw(time) {
+      context.clearRect(0, 0, width, height);
+      updateVariations(time);
+      drawEdges(time);
+      for (const star of stars) drawStar(star, time);
+      moveDocuments();
+      updateLabel(time);
+    }
+
+    function animate(time) {
+      frame = 0;
+      if (disposed || document.hidden) return;
+      draw(time);
+      frame = window.requestAnimationFrame(animate);
+    }
+
+    function componentFrom(startId) {
+      const visited = new Set([startId]);
+      const queue = [startId];
+      while (queue.length) {
+        const current = queue.shift();
+        for (const neighbor of adjacency.get(current) || []) {
+          if (visited.has(neighbor)) continue;
+          visited.add(neighbor);
+          queue.push(neighbor);
+        }
+      }
+      return visited;
+    }
+
+    function percentage(value, total) {
+      return total ? `${(value / total * 100).toFixed(1)}%` : "0.0%";
+    }
+
+    function updateCoverage() {
+      if (!selectedRoot || runtimeSettings.home_star_relation_visibility === "always") {
+        panel.hidden = true;
+        return;
+      }
+      const contributors = stars.filter(
+        (star) => star.kind === "contributor"
+      );
+      const documents = stars.filter((star) => star.kind === "document");
+      const litContributors = contributors.filter((star) =>
+        selectedIds.has(star.id)
+      ).length;
+      const litDocuments = documents.filter((star) =>
+        selectedIds.has(star.id)
+      ).length;
+      panel.hidden = false;
+      panel.querySelector("[data-star-coverage-total]").textContent =
+        `${selectedIds.size} / ${stars.length} · ` +
+        percentage(selectedIds.size, stars.length);
+      panel.querySelector("[data-star-coverage-contributors]").textContent =
+        `${litContributors} / ${contributors.length} · ` +
+        percentage(litContributors, contributors.length);
+      panel.querySelector("[data-star-coverage-documents]").textContent =
+        `${litDocuments} / ${documents.length} · ` +
+        percentage(litDocuments, documents.length);
+    }
+
+    function showLabel(star, now) {
+      const secondClick = labelStar === star && now < labelExpiresAt;
+      if (secondClick && star.kind === "document" && star.route) {
+        window.location.assign(star.route);
+        return;
+      }
+      labelStar = star;
+      label.textContent = star.kind === "document" ? star.title : star.name;
+      label.dataset.starKind = star.kind;
+      labelExpiresAt = now + 3000;
+      window.clearTimeout(labelTimer);
+      labelTimer = window.setTimeout(() => {
+        label.hidden = true;
+        labelStar = null;
+      }, 3000);
+      updateLabel(now);
+    }
+
+    function selectStar(star, now) {
+      showLabel(star, now);
+      selectedRoot = star.id;
+      selectedIds =
+        runtimeSettings.home_star_relation_visibility === "always"
+          ? new Set()
+          : componentFrom(star.id);
+      updateCoverage();
+      if (reducedMotion) draw(now);
+    }
+
+    function hitTest(event) {
+      const rectangle = canvas.getBoundingClientRect();
+      const x = event.clientX - rectangle.left;
+      const y = event.clientY - rectangle.top;
+      let nearest = null;
+      let nearestDistance = Infinity;
+      for (const star of stars) {
+        const distance = Math.hypot(star.x - x, star.y - y);
+        const limit = star.kind === "contributor" ? 13 : 9;
+        if (distance <= limit && distance < nearestDistance) {
+          nearest = star;
+          nearestDistance = distance;
+        }
+      }
+      return nearest;
+    }
+
+    function documentClick(event) {
+      if (event.target === label) return;
+      if (
+        event.target.closest(
+          "a, button, input, select, textarea, summary, [role='button']"
+        )
+      ) {
+        return;
+      }
+      const rectangle = canvas.getBoundingClientRect();
+      if (
+        event.clientX < rectangle.left ||
+        event.clientX > rectangle.right ||
+        event.clientY < rectangle.top ||
+        event.clientY > rectangle.bottom
+      ) {
+        return;
+      }
+      const star = hitTest(event);
+      if (star) {
+        event.preventDefault();
+        selectStar(star, performance.now());
+      }
+    }
+
+    function labelClick() {
+      if (labelStar) selectStar(labelStar, performance.now());
+    }
+
+    const resizeObserver =
+      runtimeSettings.home_star_scope === "hero"
+        ? new ResizeObserver(resize)
+        : null;
+    if (resizeObserver) resizeObserver.observe(hero);
+    else window.addEventListener("resize", resize);
+    document.addEventListener("click", documentClick, true);
+    label.addEventListener("click", labelClick);
+    resize();
+    canvas.dataset.starCount = String(stars.length);
+    canvas.dataset.edgeCount = String(edges.length);
+    canvas.dataset.contributorCount = String(
+      stars.filter((star) => star.kind === "contributor").length
+    );
+    canvas.dataset.documentCount = String(
+      stars.filter((star) => star.kind === "document").length
+    );
+    if (!reducedMotion) frame = window.requestAnimationFrame(animate);
+
+    return function () {
+      disposed = true;
+      if (frame) window.cancelAnimationFrame(frame);
+      window.clearTimeout(labelTimer);
+      if (resizeObserver) resizeObserver.disconnect();
+      else window.removeEventListener("resize", resize);
+      document.removeEventListener("click", documentClick, true);
+      label.removeEventListener("click", labelClick);
+      label.remove();
+      panel.remove();
+      document.body.classList.remove("home-stars-full", "home-stars-hero");
+      if (canvas.parentElement !== hero) hero.prepend(canvas);
+    };
+  }
+
+  function apply(nextSettings) {
+    settings = normalizeSettings(nextSettings);
+    cleanup();
+    cleanup =
+      settings.home_background_style === "contribution_star_map"
+        ? createContributionMap(settings)
+        : createLegacyMap(settings);
+  }
+
+  window.addEventListener("gck:visual-settings", (event) => {
+    const detail = event.detail || {};
+    if (detail.contribution_graph) {
+      cacheContributionGraph(detail.contribution_graph);
+    }
+    settings = normalizeSettings({ ...settings, ...detail });
+    if (ready) apply(settings);
+  });
+
+  Promise.all([
+    window.GCK_VISUAL_SETTINGS || Promise.resolve({}),
+    window.GCK_HOME_INTRO_READY || Promise.resolve("skipped")
+  ]).then(([resolved]) => {
+    settings = normalizeSettings({ ...settings, ...(resolved || {}) });
+    if (resolved && resolved.contribution_graph) {
+      cacheContributionGraph(resolved.contribution_graph);
+    }
+    ready = true;
+    apply(settings);
+  });
+})();

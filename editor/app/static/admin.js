@@ -3,9 +3,38 @@ const state = {
   csrf: "",
   smtp: null,
   smtpTemplates: [],
+  starBrightnessRules: [],
   autoCloseDays: 7,
   siteUpdateTimer: 0
 };
+
+const STAR_BRIGHTNESS_RULES = [
+  {
+    id: "contributor_contribution_count",
+    label: "静星贡献数",
+    description: "贡献行数越多，基础亮度越高。"
+  },
+  {
+    id: "contributor_recent_activity",
+    label: "静星近期活跃度",
+    description: "近期贡献会放大亮度，长期不活跃会衰减。"
+  },
+  {
+    id: "document_reference_degree",
+    label: "动星引用度",
+    description: "被引用或引用其他内容越多，亮度越高。"
+  },
+  {
+    id: "document_contributor_count",
+    label: "动星贡献者数",
+    description: "参与该文档的贡献者越多，亮度越高。"
+  },
+  {
+    id: "document_recent_activity",
+    label: "动星近期活跃度",
+    description: "近期更新文档更亮，长期未更新会衰减。"
+  }
+];
 
 const byId = (id) => document.getElementById(id);
 
@@ -93,6 +122,70 @@ function renderIntegrations(settings) {
 
 function shortCommit(value) {
   return value ? value.slice(0, 12) : "未知";
+}
+
+function renderStarBrightnessRules() {
+  const target = byId("starBrightnessRuleList");
+  const catalog = byId("starBrightnessRuleCatalog");
+  target.replaceChildren();
+  state.starBrightnessRules
+    .sort((left, right) => right.priority - left.priority)
+    .forEach((rule) => {
+      const definition = STAR_BRIGHTNESS_RULES.find(
+        (item) => item.id === rule.id
+      );
+      if (!definition) return;
+      const row = document.createElement("div");
+      row.className = "star-rule-row";
+      const copy = document.createElement("div");
+      const title = document.createElement("strong");
+      const description = document.createElement("span");
+      title.textContent = definition.label;
+      description.textContent = definition.description;
+      copy.append(title, description);
+      const priorityLabel = document.createElement("label");
+      priorityLabel.textContent = "优先级";
+      const priority = document.createElement("input");
+      priority.type = "number";
+      priority.min = "-10000";
+      priority.max = "10000";
+      priority.step = "10";
+      priority.value = String(rule.priority);
+      priority.addEventListener("change", () => {
+        rule.priority = Number(priority.value) || 0;
+        renderStarBrightnessRules();
+      });
+      priorityLabel.append(priority);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "icon-button";
+      remove.title = "移除规则";
+      remove.setAttribute("aria-label", `移除${definition.label}`);
+      remove.innerHTML = '<i data-lucide="trash-2" aria-hidden="true"></i>';
+      remove.addEventListener("click", () => {
+        state.starBrightnessRules = state.starBrightnessRules.filter(
+          (item) => item.id !== rule.id
+        );
+        renderStarBrightnessRules();
+      });
+      row.append(copy, priorityLabel, remove);
+      target.append(row);
+    });
+
+  const enabled = new Set(
+    state.starBrightnessRules.map((rule) => rule.id)
+  );
+  catalog.replaceChildren();
+  STAR_BRIGHTNESS_RULES.filter((rule) => !enabled.has(rule.id)).forEach(
+    (rule) => {
+      const option = document.createElement("option");
+      option.value = rule.id;
+      option.textContent = rule.label;
+      catalog.append(option);
+    }
+  );
+  byId("addStarBrightnessRule").disabled = !catalog.options.length;
+  refreshIcons(target);
 }
 
 function formatUpdateTime(value) {
@@ -481,6 +574,32 @@ async function loadOverview() {
     data.settings.catalog_background_style;
   byId("visualSettingsForm").reader_background_style.value =
     data.settings.reader_background_style;
+  byId("visualSettingsForm").home_background_style.value =
+    data.settings.home_background_style;
+  byId("visualSettingsForm").home_star_scope.value =
+    data.settings.home_star_scope;
+  byId("visualSettingsForm").home_star_relation_visibility.value =
+    data.settings.home_star_relation_visibility;
+  byId("visualSettingsForm").home_star_strong_relation_style.value =
+    data.settings.home_star_strong_relation_style;
+  byId("visualSettingsForm").home_star_reference_relation_style.value =
+    data.settings.home_star_reference_relation_style;
+  byId("visualSettingsForm").home_star_contributor_relation_style.value =
+    data.settings.home_star_contributor_relation_style;
+  byId("visualSettingsForm").home_star_brightness_variation_enabled.checked =
+    data.settings.home_star_brightness_variation_enabled;
+  byId("visualSettingsForm").home_star_brightness_variation_amount.value =
+    String(data.settings.home_star_brightness_variation_amount);
+  byId("visualSettingsForm").home_star_brightness_transition_seconds.value =
+    String(data.settings.home_star_brightness_transition_ms / 1000);
+  byId("visualSettingsForm").home_star_brightness_interval_seconds.value =
+    String(data.settings.home_star_brightness_interval_ms / 1000);
+  byId("visualSettingsForm").home_star_color_random_enabled.checked =
+    data.settings.home_star_color_random_enabled;
+  state.starBrightnessRules = (
+    data.settings.home_star_brightness_rules || []
+  ).map((rule) => ({ id: rule.id, priority: Number(rule.priority) || 0 }));
+  renderStarBrightnessRules();
   byId("visualSettingsForm").pointer_effect_enabled.checked =
     data.settings.pointer_effect_enabled;
   byId("visualSettingsForm").home_intro_mode.value =
@@ -539,6 +658,20 @@ byId("settingsForm").addEventListener("submit", async (event) => {
   }
 });
 
+byId("addStarBrightnessRule").addEventListener("click", () => {
+  const catalog = byId("starBrightnessRuleCatalog");
+  if (!catalog.value) return;
+  const lowest = state.starBrightnessRules.reduce(
+    (value, rule) => Math.min(value, rule.priority),
+    100
+  );
+  state.starBrightnessRules.push({
+    id: catalog.value,
+    priority: lowest - 100
+  });
+  renderStarBrightnessRules();
+});
+
 byId("visualSettingsForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -548,6 +681,32 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
       body: JSON.stringify({
         catalog_background_style: form.catalog_background_style.value,
         reader_background_style: form.reader_background_style.value,
+        home_background_style: form.home_background_style.value,
+        home_star_scope: form.home_star_scope.value,
+        home_star_relation_visibility:
+          form.home_star_relation_visibility.value,
+        home_star_strong_relation_style:
+          form.home_star_strong_relation_style.value,
+        home_star_reference_relation_style:
+          form.home_star_reference_relation_style.value,
+        home_star_contributor_relation_style:
+          form.home_star_contributor_relation_style.value,
+        home_star_brightness_variation_enabled:
+          form.home_star_brightness_variation_enabled.checked,
+        home_star_brightness_variation_amount: Number(
+          form.home_star_brightness_variation_amount.value
+        ),
+        home_star_brightness_transition_ms: Math.round(
+          Number(form.home_star_brightness_transition_seconds.value) * 1000
+        ),
+        home_star_brightness_interval_ms: Math.round(
+          Number(form.home_star_brightness_interval_seconds.value) * 1000
+        ),
+        home_star_color_random_enabled:
+          form.home_star_color_random_enabled.checked,
+        home_star_brightness_rules: state.starBrightnessRules.map(
+          (rule) => ({ id: rule.id, priority: rule.priority })
+        ),
         pointer_effect_enabled: form.pointer_effect_enabled.checked,
         home_intro_enabled: form.home_intro_mode.value !== "off",
         home_intro_mode: form.home_intro_mode.value,
@@ -572,7 +731,27 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
       home_intro_hold_duration_ms: saved.home_intro_hold_duration_ms,
       home_intro_lock_scroll: saved.home_intro_lock_scroll,
       home_intro_contributor_limit:
-        saved.home_intro_contributor_limit
+        saved.home_intro_contributor_limit,
+      home_background_style: saved.home_background_style,
+      home_star_scope: saved.home_star_scope,
+      home_star_relation_visibility: saved.home_star_relation_visibility,
+      home_star_strong_relation_style:
+        saved.home_star_strong_relation_style,
+      home_star_reference_relation_style:
+        saved.home_star_reference_relation_style,
+      home_star_contributor_relation_style:
+        saved.home_star_contributor_relation_style,
+      home_star_brightness_variation_enabled:
+        saved.home_star_brightness_variation_enabled,
+      home_star_brightness_variation_amount:
+        saved.home_star_brightness_variation_amount,
+      home_star_brightness_transition_ms:
+        saved.home_star_brightness_transition_ms,
+      home_star_brightness_interval_ms:
+        saved.home_star_brightness_interval_ms,
+      home_star_color_random_enabled:
+        saved.home_star_color_random_enabled,
+      home_star_brightness_rules: saved.home_star_brightness_rules
     };
     try {
       window.localStorage.setItem(
