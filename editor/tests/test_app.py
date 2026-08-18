@@ -14,11 +14,12 @@ from fastapi.testclient import TestClient
 
 from app.analytics import DEVICE_COOKIE
 from app.config import Settings
-from app.github import GitHubError, SubmissionResult
+from app.github import BranchConflictError, GitHubError, SubmissionResult
 from app.main import create_app
 from app.pr_lifecycle import issue_external_urge_token
 
 TEST_BOOTSTRAP_PASSWORD = "test-bootstrap-password"
+TEST_BASE_COMMIT = "a" * 40
 
 
 def make_settings(tmp_path: Path, *, oauth: bool = False) -> Settings:
@@ -79,6 +80,28 @@ def login(client: TestClient, identifier: str, password: str) -> dict:
     )
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def git_submission(
+    username: str,
+    head: str,
+    title: str,
+    changes: list[dict],
+    *,
+    body: str = "",
+    force_update: bool = False,
+) -> dict:
+    return {
+        "base_commit": TEST_BASE_COMMIT,
+        "branch": f"web/{username}/{head}",
+        "commit_message": title,
+        "pr_title": title,
+        "pr_body": body,
+        "pr_base": "main",
+        "draft": True,
+        "force_update": force_update,
+        "changes": changes,
+    }
 
 
 def test_bootstrap_admin_must_change_password(client: TestClient) -> None:
@@ -1638,7 +1661,7 @@ def test_drafts_are_isolated_by_user(client: TestClient) -> None:
     assert client.get("/api/drafts").json()["items"] == []
 
 
-def test_local_submission_uses_user_author_and_expected_main(
+def test_local_submission_uses_user_author_and_base_commit(
     client: TestClient,
 ) -> None:
     registered = client.post(
@@ -1650,22 +1673,8 @@ def test_local_submission_uses_user_author_and_expected_main(
         },
     ).json()
     csrf = registered["csrf_token"]
-    draft = client.put(
-        "/api/drafts",
-        headers={"X-CSRF-Token": csrf},
-        json={
-            "path": "knowledge/cpp/author/README.md",
-            "content": "# Author\n",
-            "operation": "upsert",
-        },
-    )
-    assert draft.status_code == 200
 
     github = client.app.state.github
-    github.main_reference = AsyncMock(
-        return_value={"object": {"sha": "main-commit-sha"}}
-    )
-    github.repository_tree = AsyncMock(return_value=[])
     github.submit = AsyncMock(
         return_value=SubmissionResult(
             branch="web/author-user/add-author",
@@ -1678,25 +1687,32 @@ def test_local_submission_uses_user_author_and_expected_main(
     response = client.post(
         "/api/submit",
         headers={"X-CSRF-Token": csrf},
-        json={
-            "custom_head": "add-author",
-            "title": "docs: add author topic",
-            "description": "Test submission",
-        },
+        json=git_submission(
+            "author-user",
+            "add-author",
+            "docs: add author topic",
+            [
+                {
+                    "path": "knowledge/cpp/author/README.md",
+                    "content": "# Author\n",
+                    "operation": "upsert",
+                }
+            ],
+            body="Test submission",
+        ),
     )
     assert response.status_code == 200, response.text
     assert response.json()["branch"] == "web/author-user/add-author"
-    assert client.get("/api/drafts").json()["items"] == []
 
     call = github.submit.await_args.kwargs
     assert call["author"] == {
         "name": "author-user",
         "email": "web-editor+2@users.noreply.chenyurui.top",
     }
-    assert call["expected_parent_sha"] == "main-commit-sha"
+    assert call["base_commit"] == TEST_BASE_COMMIT
 
 
-def test_submission_auto_merges_remote_tree_changes(
+def test_submission_keeps_base_commit_and_does_not_premerge_main(
     client: TestClient,
 ) -> None:
     registered = client.post(
@@ -1709,31 +1725,12 @@ def test_submission_auto_merges_remote_tree_changes(
     ).json()
     csrf = registered["csrf_token"]
     path = "knowledge/cpp/merge-submit.md"
-    base = "# Topic\n\nalpha\n\nmiddle\n\ngamma\n"
     local = "# Topic\n\nalpha local\n\nmiddle\n\ngamma\n"
-    remote = "# Topic\n\nalpha\n\nmiddle\n\ngamma remote\n"
-    draft = client.put(
-        "/api/drafts",
-        headers={"X-CSRF-Token": csrf},
-        json={
-            "path": path,
-            "content": local,
-            "base_sha": "base-blob",
-            "operation": "upsert",
-        },
-    )
-    assert draft.status_code == 200
 
     github = client.app.state.github
-    github.main_reference = AsyncMock(
-        return_value={"object": {"sha": "latest-main"}}
-    )
-    github.repository_tree = AsyncMock(
-        return_value=[
-            {"path": path, "sha": "remote-blob", "type": "blob"}
-        ]
-    )
-    github.repository_blob = AsyncMock(side_effect=[base, remote])
+    github.main_reference = AsyncMock()
+    github.repository_tree = AsyncMock()
+    github.repository_blob = AsyncMock()
     github.submit = AsyncMock(
         return_value=SubmissionResult(
             branch="web/merge-submit/auto-merge",
@@ -1746,19 +1743,21 @@ def test_submission_auto_merges_remote_tree_changes(
     response = client.post(
         "/api/submit",
         headers={"X-CSRF-Token": csrf},
-        json={
-            "custom_head": "auto-merge",
-            "title": "docs: merge remote changes",
-            "description": "",
-        },
+        json=git_submission(
+            "merge-submit",
+            "base-commit",
+            "docs: keep historical base",
+            [{"path": path, "content": local, "operation": "upsert"}],
+        ),
     )
 
     assert response.status_code == 200, response.text
-    assert response.json()["merged_paths"] == [path]
     change = github.submit.await_args.kwargs["changes"][0]
-    assert change["base_sha"] == "remote-blob"
-    assert "alpha local" in change["content"]
-    assert "gamma remote" in change["content"]
+    assert change["content"] == local
+    assert github.submit.await_args.kwargs["base_commit"] == TEST_BASE_COMMIT
+    github.main_reference.assert_not_awaited()
+    github.repository_tree.assert_not_awaited()
+    github.repository_blob.assert_not_awaited()
 
 
 def test_submission_accepts_client_workspace_changes_without_server_drafts(
@@ -1790,30 +1789,91 @@ def test_submission_accepts_client_workspace_changes_without_server_drafts(
     response = client.post(
         "/api/submit",
         headers={"X-CSRF-Token": csrf},
-        json={
-            "custom_head": "client-workspace",
-            "title": "docs: submit local workspace",
-            "base_revision": "cached-main",
-            "changes": [
+        json=git_submission(
+            "local-tree",
+            "client-workspace",
+            "docs: submit local workspace",
+            [
                 {
                     "path": "knowledge/cpp/local-tree/README.md",
                     "content": "# Local tree\n",
                     "operation": "upsert",
-                    "base_sha": None,
-                    "base_content": "",
                 }
             ],
-        },
+        ),
     )
 
     assert response.status_code == 200, response.text
-    assert client.get("/api/drafts").json()["items"] == []
     changes = github.submit.await_args.kwargs["changes"]
     assert changes[0]["path"] == "knowledge/cpp/local-tree/README.md"
     assert changes[0]["content"] == "# Local tree\n"
 
 
-def test_submission_rejects_partial_markdown_workspace_snapshot(
+def test_submission_keeps_server_security_boundaries(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "protocol-security@example.test",
+            "username": "protocol-security",
+            "password": "local-password-123",
+        },
+    ).json()
+    csrf = registered["csrf_token"]
+    github = client.app.state.github
+    github.submit = AsyncMock()
+    valid_change = {
+        "path": "knowledge/cpp/security.md",
+        "content": "# Security\n",
+        "operation": "upsert",
+    }
+
+    wrong_namespace = git_submission(
+        "protocol-security",
+        "safe",
+        "docs: security",
+        [valid_change],
+    )
+    wrong_namespace["branch"] = "web/another-user/safe"
+    response = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": csrf},
+        json=wrong_namespace,
+    )
+    assert response.status_code == 422
+
+    wrong_base = git_submission(
+        "protocol-security",
+        "safe",
+        "docs: security",
+        [valid_change],
+    )
+    wrong_base["pr_base"] = "release"
+    response = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": csrf},
+        json=wrong_base,
+    )
+    assert response.status_code == 422
+
+    duplicate = git_submission(
+        "protocol-security",
+        "safe",
+        "docs: security",
+        [valid_change, valid_change],
+    )
+    response = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": csrf},
+        json=duplicate,
+    )
+    assert response.status_code == 422
+    assert "重复" in response.text
+    github.submit.assert_not_awaited()
+
+
+def test_submission_forwards_markdown_without_server_structure_validation(
     client: TestClient,
 ) -> None:
     registered = client.post(
@@ -1824,31 +1884,87 @@ def test_submission_rejects_partial_markdown_workspace_snapshot(
             "password": "local-password-123",
         },
     ).json()
-    client.app.state.github.submit = AsyncMock()
+    client.app.state.github.submit = AsyncMock(
+        return_value=SubmissionResult(
+            branch="web/partial-tree/partial-workspace",
+            commit_sha="partial-commit",
+            pr_number=84,
+            pr_url="https://github.example/pr/84",
+        )
+    )
     response = client.post(
         "/api/submit",
         headers={"X-CSRF-Token": registered["csrf_token"]},
-        json={
-            "custom_head": "partial-workspace",
-            "title": "docs: partial workspace must fail",
-            "changes": [
+        json=git_submission(
+            "partial-tree",
+            "partial-workspace",
+            "docs: client validates Markdown",
+            [
                 {
                     "path": "knowledge/cpp/partial.md",
                     "content": "## 1. 只有被修改的一行\n",
                     "operation": "upsert",
-                    "base_sha": "base-blob",
-                    "base_content": "## 1. 原始的一行\n",
                 }
             ],
-        },
+        ),
     )
 
-    assert response.status_code == 422
-    assert "一级标题" in response.text
-    assert client.app.state.github.submit.await_count == 0
+    assert response.status_code == 200, response.text
+    change = client.app.state.github.submit.await_args.kwargs["changes"][0]
+    assert change["content"] == "## 1. 只有被修改的一行\n"
 
 
-def test_submission_reports_remote_tree_merge_conflict(
+def test_submission_forwards_complete_markdown_when_only_h2_changes(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "complete-tree@example.test",
+            "username": "complete-tree",
+            "password": "local-password-123",
+        },
+    ).json()
+    path = "program/knowledge/engine/01-memory-allocators.md"
+    base = (
+        "# 内存分配器与分配器上下文\n\n导言。\n\n"
+        "## 1. 为什么引擎要自定义分配器\n\n正文。\n\n"
+        "## 2. 各策略要点\n\n后续完整内容。\n"
+    )
+    current = base.replace(
+        "## 1. 为什么引擎要自定义分配器",
+        "## 1. 为什么引擎要自定义分配器追加文字",
+    )
+    github = client.app.state.github
+    github.submit = AsyncMock(
+        return_value=SubmissionResult(
+            branch="web/complete-tree/change-h2",
+            commit_sha="complete-file-commit",
+            pr_number=83,
+            pr_url="https://github.example/pr/83",
+        )
+    )
+
+    response = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": registered["csrf_token"]},
+        json=git_submission(
+            "complete-tree",
+            "change-h2",
+            "docs: change h2",
+            [{"path": path, "content": current, "operation": "upsert"}],
+        ),
+    )
+
+    assert response.status_code == 200, response.text
+    submitted = github.submit.await_args.kwargs["changes"][0]["content"]
+    assert submitted == current
+    assert submitted.startswith("# 内存分配器与分配器上下文\n")
+    assert "## 2. 各策略要点" in submitted
+    assert "后续完整内容。" in submitted
+
+
+def test_submission_leaves_main_conflicts_for_pull_request(
     client: TestClient,
 ) -> None:
     registered = client.post(
@@ -1861,59 +1977,40 @@ def test_submission_reports_remote_tree_merge_conflict(
     ).json()
     csrf = registered["csrf_token"]
     path = "knowledge/cpp/merge-conflict.md"
-    draft = client.put(
-        "/api/drafts",
-        headers={"X-CSRF-Token": csrf},
-        json={
-            "path": path,
-            "content": "# Topic\n\nlocal\n",
-            "base_sha": "base-blob",
-            "operation": "upsert",
-        },
-    )
-    assert draft.status_code == 200
 
     github = client.app.state.github
-    github.main_reference = AsyncMock(
-        return_value={"object": {"sha": "latest-main"}}
+    github.repository_tree = AsyncMock()
+    github.repository_blob = AsyncMock()
+    github.submit = AsyncMock(
+        return_value=SubmissionResult(
+            branch="web/merge-conflict/conflict",
+            commit_sha="conflicting-branch-commit",
+            pr_number=85,
+            pr_url="https://github.example/pr/85",
+        )
     )
-    github.repository_tree = AsyncMock(
-        return_value=[
-            {"path": path, "sha": "remote-blob", "type": "blob"}
-        ]
-    )
-    github.repository_blob = AsyncMock(
-        side_effect=[
-            "# Topic\n\nbase\n",
-            "# Topic\n\nremote\n",
-        ]
-    )
-    github.submit = AsyncMock()
 
     response = client.post(
         "/api/submit",
         headers={"X-CSRF-Token": csrf},
-        json={
-            "custom_head": "conflict",
-            "title": "docs: conflicting changes",
-            "description": "",
-        },
+        json=git_submission(
+            "merge-conflict",
+            "conflict",
+            "docs: conflicting changes",
+            [
+                {
+                    "path": path,
+                    "content": "# Topic\n\nlocal\n",
+                    "operation": "upsert",
+                }
+            ],
+        ),
     )
 
-    assert response.status_code == 409
-    detail = response.json()["detail"]
-    assert detail["code"] == "repository_merge_conflict"
-    assert detail["conflicts"] == [
-        {
-            "path": path,
-            "reason": "content_conflict",
-            "message": "草稿与远端修改了相同内容",
-            "base_sha": "base-blob",
-            "remote_sha": "remote-blob",
-        }
-    ]
-    github.submit.assert_not_awaited()
-    assert client.get("/api/drafts").json()["items"][0]["path"] == path
+    assert response.status_code == 200, response.text
+    github.submit.assert_awaited_once()
+    github.repository_tree.assert_not_awaited()
+    github.repository_blob.assert_not_awaited()
 
 
 def test_same_user_can_confirm_submission_branch_overwrite(
@@ -1929,10 +2026,6 @@ def test_same_user_can_confirm_submission_branch_overwrite(
     ).json()
     csrf = registered["csrf_token"]
     github = client.app.state.github
-    github.main_reference = AsyncMock(
-        return_value={"object": {"sha": "main-commit-sha"}}
-    )
-    github.repository_tree = AsyncMock(return_value=[])
     github.submit = AsyncMock(
         return_value=SubmissionResult(
             branch="web/overwrite-user/reusable-head",
@@ -1942,45 +2035,41 @@ def test_same_user_can_confirm_submission_branch_overwrite(
         )
     )
 
-    first_draft = client.put(
-        "/api/drafts",
-        headers={"X-CSRF-Token": csrf},
-        json={
+    first_changes = [
+        {
             "path": "knowledge/cpp/overwrite-first.md",
             "content": "# First\n",
             "operation": "upsert",
-        },
-    )
-    assert first_draft.status_code == 200
+        }
+    ]
     first_submit = client.post(
         "/api/submit",
         headers={"X-CSRF-Token": csrf},
-        json={
-            "custom_head": "reusable-head",
-            "title": "docs: first submission",
-            "description": "",
-        },
+        json=git_submission(
+            "overwrite-user",
+            "reusable-head",
+            "docs: first submission",
+            first_changes,
+        ),
     )
     assert first_submit.status_code == 200, first_submit.text
 
-    second_draft = client.put(
-        "/api/drafts",
-        headers={"X-CSRF-Token": csrf},
-        json={
+    second_changes = [
+        {
             "path": "knowledge/cpp/overwrite-second.md",
             "content": "# Second\n",
             "operation": "upsert",
-        },
-    )
-    assert second_draft.status_code == 200
+        }
+    ]
     conflict = client.post(
         "/api/submit",
         headers={"X-CSRF-Token": csrf},
-        json={
-            "custom_head": "reusable-head",
-            "title": "docs: replacement submission",
-            "description": "",
-        },
+        json=git_submission(
+            "overwrite-user",
+            "reusable-head",
+            "docs: replacement submission",
+            second_changes,
+        ),
     )
     assert conflict.status_code == 409
     assert conflict.json()["detail"] == {
@@ -1991,7 +2080,6 @@ def test_same_user_can_confirm_submission_branch_overwrite(
     }
     assert github.submit.await_count == 1
 
-    github.branch_exists = AsyncMock(return_value=True)
     github.submit.return_value = SubmissionResult(
         branch="web/overwrite-user/reusable-head",
         commit_sha="replacement-commit",
@@ -2001,18 +2089,18 @@ def test_same_user_can_confirm_submission_branch_overwrite(
     overwritten = client.post(
         "/api/submit",
         headers={"X-CSRF-Token": csrf},
-        json={
-            "custom_head": "reusable-head",
-            "title": "docs: replacement submission",
-            "description": "",
-            "overwrite": True,
-        },
+        json=git_submission(
+            "overwrite-user",
+            "reusable-head",
+            "docs: replacement submission",
+            second_changes,
+            force_update=True,
+        ),
     )
     assert overwritten.status_code == 200, overwritten.text
     assert overwritten.json()["overwritten"] is True
     assert overwritten.json()["pr_number"] == 51
-    assert github.submit.await_args.kwargs["overwrite"] is True
-    assert client.get("/api/drafts").json()["items"] == []
+    assert github.submit.await_args.kwargs["force_update"] is True
 
 
 def test_unknown_remote_branch_cannot_be_overwritten(
@@ -2027,34 +2115,33 @@ def test_unknown_remote_branch_cannot_be_overwritten(
         },
     ).json()
     csrf = registered["csrf_token"]
-    draft = client.put(
-        "/api/drafts",
-        headers={"X-CSRF-Token": csrf},
-        json={
-            "path": "knowledge/cpp/remote-conflict.md",
-            "content": "# Remote conflict\n",
-            "operation": "upsert",
-        },
-    )
-    assert draft.status_code == 200
-
     github = client.app.state.github
-    github.branch_exists = AsyncMock(return_value=True)
-    github.submit = AsyncMock()
+    github.submit = AsyncMock(
+        side_effect=BranchConflictError(
+            "web/remote-conflict/occupied"
+        )
+    )
     conflict = client.post(
         "/api/submit",
         headers={"X-CSRF-Token": csrf},
-        json={
-            "custom_head": "occupied",
-            "title": "docs: remote conflict",
-            "description": "",
-        },
+        json=git_submission(
+            "remote-conflict",
+            "occupied",
+            "docs: remote conflict",
+            [
+                {
+                    "path": "knowledge/cpp/remote-conflict.md",
+                    "content": "# Remote conflict\n",
+                    "operation": "upsert",
+                }
+            ],
+        ),
     )
     assert conflict.status_code == 409
     detail = conflict.json()["detail"]
     assert detail["code"] == "branch_conflict"
     assert detail["can_overwrite"] is False
-    github.submit.assert_not_awaited()
+    github.submit.assert_awaited_once()
 
 
 def test_submission_queues_verified_contributor_thank_you(
@@ -2087,10 +2174,6 @@ def test_submission_queues_verified_contributor_thank_you(
     assert draft.status_code == 200
 
     github = client.app.state.github
-    github.main_reference = AsyncMock(
-        return_value={"object": {"sha": "main-commit-sha"}}
-    )
-    github.repository_tree = AsyncMock(return_value=[])
     github.submit = AsyncMock(
         return_value=SubmissionResult(
             branch="web/feedback-user/feedback",
@@ -2102,11 +2185,18 @@ def test_submission_queues_verified_contributor_thank_you(
     submitted = client.post(
         "/api/submit",
         headers={"X-CSRF-Token": csrf},
-        json={
-            "custom_head": "feedback",
-            "title": "docs: feedback",
-            "description": "",
-        },
+        json=git_submission(
+            "feedback-user",
+            "feedback",
+            "docs: feedback",
+            [
+                {
+                    "path": "knowledge/cpp/feedback.md",
+                    "content": "# Feedback\n",
+                    "operation": "upsert",
+                }
+            ],
+        ),
     )
     assert submitted.status_code == 200, submitted.text
     assert submitted.json()["feedback_email_queued"] is True
@@ -2296,25 +2386,8 @@ def test_submission_preserves_file_delete_operation(
     ).json()
     csrf = registered["csrf_token"]
     path = "knowledge/cpp/obsolete/README.md"
-    deleted = client.put(
-        "/api/drafts",
-        headers={"X-CSRF-Token": csrf},
-        json={
-            "path": path,
-            "content": "",
-            "base_sha": "blob-sha",
-            "operation": "delete",
-        },
-    )
-    assert deleted.status_code == 200
 
     github = client.app.state.github
-    github.main_reference = AsyncMock(
-        return_value={"object": {"sha": "main-commit-sha"}}
-    )
-    github.repository_tree = AsyncMock(
-        return_value=[{"path": path, "sha": "blob-sha", "type": "blob"}]
-    )
     github.submit = AsyncMock(
         return_value=SubmissionResult(
             branch="web/delete-submit/remove-obsolete",
@@ -2327,11 +2400,12 @@ def test_submission_preserves_file_delete_operation(
     response = client.post(
         "/api/submit",
         headers={"X-CSRF-Token": csrf},
-        json={
-            "custom_head": "remove-obsolete",
-            "title": "docs: remove obsolete topic",
-            "description": "",
-        },
+        json=git_submission(
+            "delete-submit",
+            "remove-obsolete",
+            "docs: remove obsolete topic",
+            [{"path": path, "content": "", "operation": "delete"}],
+        ),
     )
     assert response.status_code == 200, response.text
     changes = github.submit.await_args.kwargs["changes"]
@@ -2339,7 +2413,7 @@ def test_submission_preserves_file_delete_operation(
     assert changes[0]["operation"] == "delete"
 
 
-def test_submission_rejects_incomplete_top_level_module_deletion(
+def test_submission_leaves_module_deletion_policy_to_client_and_review(
     client: TestClient,
 ) -> None:
     registered = client.post(
@@ -2352,53 +2426,28 @@ def test_submission_rejects_incomplete_top_level_module_deletion(
     ).json()
     csrf = registered["csrf_token"]
     path = "graphics/README.md"
-    deleted = client.put(
-        "/api/drafts",
-        headers={"X-CSRF-Token": csrf},
-        json={
-            "path": path,
-            "content": "",
-            "base_sha": "module-readme-sha",
-            "operation": "delete",
-        },
-    )
-    assert deleted.status_code == 200
-
     github = client.app.state.github
-    github.main_reference = AsyncMock(
-        return_value={"object": {"sha": "main-commit-sha"}}
+    github.submit = AsyncMock(
+        return_value=SubmissionResult(
+            branch="web/delete-module/remove-module-readme",
+            commit_sha="module-delete-commit",
+            pr_number=86,
+            pr_url="https://github.example/pr/86",
+        )
     )
-    github.repository_tree = AsyncMock(
-        return_value=[
-            {
-                "path": path,
-                "sha": "module-readme-sha",
-                "type": "blob",
-            },
-            {
-                "path": "graphics/topic/README.md",
-                "sha": "topic-sha",
-                "type": "blob",
-            },
-        ]
-    )
-    github.submit = AsyncMock()
 
     response = client.post(
         "/api/submit",
         headers={"X-CSRF-Token": csrf},
-        json={
-            "custom_head": "remove-module-readme",
-            "title": "docs: remove module readme",
-            "description": "",
-        },
+        json=git_submission(
+            "delete-module",
+            "remove-module-readme",
+            "docs: remove module readme",
+            [{"path": path, "content": "", "operation": "delete"}],
+        ),
     )
-    assert response.status_code == 422
-    assert response.json()["detail"] == (
-        "删除顶级模块 graphics 时必须同时删除目录内全部文件；"
-        "当前仍有 1 个文件未标记删除"
-    )
-    github.submit.assert_not_awaited()
+    assert response.status_code == 200, response.text
+    github.submit.assert_awaited_once()
 
 
 def test_submission_allows_complete_top_level_module_deletion(
@@ -2414,33 +2463,12 @@ def test_submission_allows_complete_top_level_module_deletion(
     ).json()
     csrf = registered["csrf_token"]
     files = {
-        "graphics/README.md": "module-readme-sha",
-        "graphics/topic/README.md": "topic-readme-sha",
-        "graphics/topic/diagram.png": "diagram-sha",
+        "graphics/README.md",
+        "graphics/topic/README.md",
+        "graphics/topic/diagram.png",
     }
-    for path, sha in files.items():
-        response = client.put(
-            "/api/drafts",
-            headers={"X-CSRF-Token": csrf},
-            json={
-                "path": path,
-                "content": "",
-                "base_sha": sha,
-                "operation": "delete",
-            },
-        )
-        assert response.status_code == 200, response.text
 
     github = client.app.state.github
-    github.main_reference = AsyncMock(
-        return_value={"object": {"sha": "main-commit-sha"}}
-    )
-    github.repository_tree = AsyncMock(
-        return_value=[
-            {"path": path, "sha": sha, "type": "blob"}
-            for path, sha in files.items()
-        ]
-    )
     github.submit = AsyncMock(
         return_value=SubmissionResult(
             branch="web/delete-complete-module/remove-graphics",
@@ -2453,11 +2481,15 @@ def test_submission_allows_complete_top_level_module_deletion(
     response = client.post(
         "/api/submit",
         headers={"X-CSRF-Token": csrf},
-        json={
-            "custom_head": "remove-graphics",
-            "title": "docs: remove graphics module",
-            "description": "",
-        },
+        json=git_submission(
+            "delete-complete-module",
+            "remove-graphics",
+            "docs: remove graphics module",
+            [
+                {"path": path, "content": "", "operation": "delete"}
+                for path in files
+            ],
+        ),
     )
     assert response.status_code == 200, response.text
     changes = github.submit.await_args.kwargs["changes"]
@@ -2663,10 +2695,6 @@ def test_local_account_can_explicitly_bind_and_unlink_github(
         },
     )
     assert draft.status_code == 200
-    github.main_reference = AsyncMock(
-        return_value={"object": {"sha": "main-commit-sha"}}
-    )
-    github.repository_tree = AsyncMock(return_value=[])
     github.submit = AsyncMock(
         return_value=SubmissionResult(
             branch="web/local-user/bound-submit",
@@ -2678,11 +2706,18 @@ def test_local_account_can_explicitly_bind_and_unlink_github(
     submitted = oauth_client.post(
         "/api/submit",
         headers={"X-CSRF-Token": csrf},
-        json={
-            "custom_head": "bound-submit",
-            "title": "docs: bound submit",
-            "description": "",
-        },
+        json=git_submission(
+            "local-user",
+            "bound-submit",
+            "docs: bound submit",
+            [
+                {
+                    "path": "knowledge/cpp/bound-user.md",
+                    "content": "# Bound user\n",
+                    "operation": "upsert",
+                }
+            ],
+        ),
     )
     assert submitted.status_code == 200, submitted.text
     assert github.submit.await_args.kwargs["token"] == "github-token"

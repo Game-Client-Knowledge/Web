@@ -894,6 +894,23 @@ function renderCachedLineDiff(rows) {
   }
 }
 
+function renderDiffSnapshotSummary(draft, contextAvailable = true) {
+  const target = byId("diffSnapshotSummary");
+  if (draft.operation === "delete") {
+    target.textContent = "提交内容：删除完整文件";
+    return;
+  }
+  const fileLines = diffLines(draft.content || "").length;
+  const summary = draft.diff_summary || {};
+  const changedLines = Math.max(
+    Number(summary.deleted || 0),
+    Number(summary.added || 0) + Number(summary.modified || 0)
+  );
+  target.textContent =
+    `提交内容：完整文件 · ${fileLines} 行 · ${changedLines} 行变化` +
+    (contextAvailable ? "" : " · 当前仅显示差异缓存");
+}
+
 async function baseContentForDraft(draft) {
   const cachedBaseIsComplete =
     typeof draft.base_content === "string" &&
@@ -989,13 +1006,20 @@ async function showChangeDiff(draft) {
   loading.textContent = "正在读取基线并计算行级差异…";
   byId("diffSource").append(loading);
   clearFeedback(byId("editorFeedback"));
-  if (Array.isArray(draft.line_diff) && draft.line_diff.length) {
-    renderCachedLineDiff(draft.line_diff);
-    return;
-  }
+  renderDiffSnapshotSummary(draft);
   try {
     renderSourceDiff(await baseContentForDraft(draft), draft);
   } catch (error) {
+    if (Array.isArray(draft.line_diff) && draft.line_diff.length) {
+      renderCachedLineDiff(draft.line_diff);
+      renderDiffSnapshotSummary(draft, false);
+      feedback(
+        byId("editorFeedback"),
+        "完整基线暂时不可用，当前仅显示缓存差异；提交仍会校验完整文件。",
+        "warning"
+      );
+      return;
+    }
     const failed = document.createElement("p");
     failed.className = "diff-empty is-error";
     failed.textContent = "无法生成行级差异：" + error.message;
@@ -1344,13 +1368,23 @@ async function syncRemoteWorkspace(options = {}) {
   const store = workspaceStore();
   const userId = workspaceUserId();
   if (!store || !userId) return null;
+  const previous = readLocalWorkspace();
+  const previousChanges = previous?.changes || [];
+  if (previousChanges.length) {
+    if (!options.quiet) {
+      feedback(
+        byId("editorFeedback"),
+        "当前工作区已有更改，Base Tree commit 将保持不变；提交后再同步远程。",
+        "warning"
+      );
+    }
+    return previous;
+  }
   const button = byId("refreshRepositoryButton");
   if (button) button.disabled = true;
   if (!options.quiet && !state.baseTree) {
     byId("resourceTree").textContent = "正在同步远端基树…";
   }
-  const previous = readLocalWorkspace();
-  const previousChanges = previous?.changes || [];
   try {
     const payload = await api("/repository/tree?refresh=true");
     if (
@@ -2057,16 +2091,7 @@ byId("submitForm").custom_head.addEventListener("input", (event) => {
 });
 
 function submissionErrorMessage(error) {
-  if (
-    error.detail?.code !== "repository_merge_conflict" ||
-    !Array.isArray(error.detail.conflicts)
-  ) {
-    return error.message;
-  }
-  const paths = error.detail.conflicts
-    .map((conflict) => `${conflict.path}：${conflict.message}`)
-    .join("；");
-  return `${error.detail.message}。${paths}`;
+  return error.message;
 }
 
 byId("submitForm").addEventListener("submit", async (event) => {
@@ -2077,7 +2102,10 @@ byId("submitForm").addEventListener("submit", async (event) => {
   button.disabled = true;
   button.textContent = "正在创建分支和 PR";
   try {
-    if (state.active?.operation !== "delete") {
+    if (
+      state.active?.operation !== "delete" &&
+      byId("diffViewer").hidden
+    ) {
       persistActiveChange();
     }
     for (const draft of state.drafts.slice()) {
@@ -2102,29 +2130,30 @@ byId("submitForm").addEventListener("submit", async (event) => {
     if (!state.drafts.length) {
       throw new Error("没有可提交的本地更改。");
     }
-    const conflicted = state.drafts.filter((draft) => draft.conflict);
-    if (conflicted.length) {
-      throw new Error(
-        `有 ${conflicted.length} 个文件存在远端冲突，请先同步并处理。`
-      );
+    const baseCommit = String(state.baseTree?.revision || "");
+    if (!/^[0-9a-f]{7,40}$/i.test(baseCommit)) {
+      throw new Error("Base Tree 缺少有效的 Git commit，请先同步远程。");
     }
-    const submitChanges = (overwrite) =>
+    const username = state.session?.user?.username || "user";
+    const branch =
+      `web/${slugify(username)}/${slugify(form.custom_head.value)}`;
+    const submitChanges = (forceUpdate) =>
       api("/submit", {
         method: "POST",
         body: JSON.stringify({
-          ...formPayload(form),
-          overwrite,
-          base_revision: state.baseTree?.revision || null,
+          base_commit: baseCommit,
+          branch,
+          commit_message: form.title.value,
+          pr_title: form.title.value,
+          pr_body: form.description.value,
+          pr_base: "main",
+          draft: true,
+          force_update: forceUpdate,
           changes: state.drafts.map((draft) => ({
             path: draft.path,
             content:
               draft.operation === "delete" ? "" : draft.content,
-            operation: draft.operation,
-            base_sha: draft.base_sha || null,
-            base_content:
-              typeof draft.base_content === "string"
-                ? draft.base_content
-                : null
+            operation: draft.operation
           }))
         })
       });
@@ -2162,9 +2191,7 @@ byId("submitForm").addEventListener("submit", async (event) => {
       document.createTextNode(
         result.overwritten
           ? "覆盖成功："
-          : result.merged_paths?.length
-            ? `自动合并 ${result.merged_paths.length} 个远端更新后提交成功：`
-            : "提交成功："
+          : "提交成功："
       ),
       link
     );

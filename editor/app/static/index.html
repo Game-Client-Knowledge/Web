@@ -213,7 +213,7 @@
                 <input id="filePath" maxlength="240">
               </div>
               <div class="toolbar-buttons">
-                <span id="diffModeLabel" class="diff-mode-label" hidden>源文件差异</span>
+                <span id="diffModeLabel" class="diff-mode-label" hidden>完整文件差异</span>
                 <button id="editChangeButton" class="secondary-button" type="button" hidden>编辑源文件</button>
                 <button id="previewButton" class="secondary-button" type="button">预览</button>
                 <button id="discardDraftButton" class="secondary-button" type="button">撤销更改</button>
@@ -238,6 +238,7 @@
                 <span data-status="A">新增</span>
                 <span data-status="M">修改</span>
                 <span data-status="D">删除</span>
+                <strong id="diffSnapshotSummary" class="diff-snapshot-summary"></strong>
               </div>
               <div id="diffSource" class="diff-source" aria-label="源文件差异"></div>
             </div>

@@ -58,12 +58,10 @@ from .pr_lifecycle import (
     user_action_url,
 )
 from .security import (
-    ALLOWED_ROOTS,
     TRACK_ROOTS,
     TokenCipher,
     hash_password,
     is_valid_module_root,
-    make_branch_name,
     normalize_email,
     normalize_username,
     password_needs_rehash,
@@ -87,7 +85,6 @@ from .site_updates import (
     queue_update,
     update_status,
 )
-from .text_merge import merge_text
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
@@ -175,18 +172,19 @@ class SubmitChangeRequest(BaseModel):
     path: str = Field(max_length=240)
     content: str = Field(default="", max_length=MAX_DRAFT_BYTES)
     operation: str = Field(default="upsert")
-    base_sha: str | None = Field(default=None, max_length=64)
-    base_content: str | None = Field(default=None, max_length=MAX_DRAFT_BYTES)
 
 
 class SubmitRequest(BaseModel):
-    custom_head: str = Field(min_length=1, max_length=80)
-    title: str = Field(min_length=1, max_length=180)
-    description: str = Field(default="", max_length=5000)
-    overwrite: bool = False
-    base_revision: str | None = Field(default=None, max_length=64)
+    base_commit: str = Field(pattern=r"^[0-9a-fA-F]{7,40}$")
+    branch: str = Field(min_length=1, max_length=240)
+    commit_message: str = Field(min_length=1, max_length=180)
+    pr_title: str = Field(min_length=1, max_length=180)
+    pr_body: str = Field(default="", max_length=5000)
+    pr_base: str = Field(default="main", max_length=80)
+    draft: bool = True
+    force_update: bool = False
     changes: list[SubmitChangeRequest] = Field(
-        default_factory=list,
+        min_length=1,
         max_length=MAX_DRAFTS,
     )
 
@@ -211,11 +209,6 @@ def is_module_readme_path(value: str) -> bool:
     if parts and parts[0] in TRACK_ROOTS:
         return len(parts) == 3 and parts[-1] == "README.md"
     return len(parts) == 2 and parts[-1] == "README.md"
-
-
-def is_track_readme_path(value: str) -> bool:
-    parts = value.split("/")
-    return len(parts) == 2 and parts[0] in TRACK_ROOTS and parts[-1] == "README.md"
 
 
 class SettingsRequest(BaseModel):
@@ -2264,20 +2257,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         user: dict[str, Any] = Depends(require_editor),
     ) -> dict[str, Any]:
         verify_csrf(user, x_csrf_token)
-        branch = make_branch_name(user["username"], payload.custom_head)
-        client_changes = [item.model_dump() for item in payload.changes]
+        branch = payload.branch.strip()
+        expected_prefix = f"web/{slugify(user['username'], 'user')}/"
+        branch_tail = branch.removeprefix(expected_prefix)
+        if (
+            not branch.startswith(expected_prefix)
+            or not branch_tail
+            or slugify(branch_tail, "") != branch_tail
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="提交分支必须位于当前用户的 web/ 命名空间",
+            )
+        if payload.pr_base != "main":
+            raise HTTPException(
+                status_code=422,
+                detail="Pull Request 目标分支必须是 main",
+            )
+        drafts = [item.model_dump() for item in payload.changes]
         with db.connect() as connection:
-            legacy_drafts = [
-                dict(row)
-                for row in connection.execute(
-                    """
-                    SELECT * FROM drafts
-                    WHERE user_id = ?
-                    ORDER BY path
-                    """,
-                    (user["id"],),
-                ).fetchall()
-            ]
             previous = connection.execute(
                 """
                 SELECT id, user_id, status, pr_number, pr_url
@@ -2286,10 +2284,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 """,
                 (branch,),
             ).fetchone()
-        drafts = client_changes or legacy_drafts
-        using_legacy_drafts = not client_changes
-        if not drafts:
-            raise HTTPException(status_code=422, detail="没有可提交的更改")
+        seen_paths: set[str] = set()
         for draft in drafts:
             try:
                 draft["path"] = (
@@ -2307,23 +2302,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status_code=422,
                     detail=f"{draft['path']} 的更改操作无效",
                 )
-            if draft["operation"] == "delete" and not draft["base_sha"]:
+            if draft["path"] in seen_paths:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"{draft['path']} 缺少删除基线",
+                    detail=f"{draft['path']} 在提交中重复出现",
                 )
-            if draft["operation"] == "upsert":
-                errors = validate_markdown(
-                    draft["path"],
-                    draft["content"],
-                )
-                if errors:
-                    raise HTTPException(
-                        status_code=422,
-                        detail=errors,
-                    )
-            draft.setdefault("revision", 0)
-            draft.setdefault("base_content", None)
+            seen_paths.add(draft["path"])
         if previous and previous["user_id"] != user["id"]:
             raise HTTPException(
                 status_code=409,
@@ -2334,7 +2318,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "can_overwrite": False,
                 },
             )
-        if previous and previous["status"] != "failed" and not payload.overwrite:
+        if (
+            previous
+            and previous["status"] != "failed"
+            and not payload.force_update
+        ):
             raise HTTPException(
                 status_code=409,
                 detail={
@@ -2344,7 +2332,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "can_overwrite": True,
                 },
             )
-        if payload.overwrite and not previous:
+        if payload.force_update and not previous:
             raise HTTPException(
                 status_code=409,
                 detail={
@@ -2421,262 +2409,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "EDITOR_GITHUB_BOT_TOKEN"
             )
 
-        try:
-            remote_branch_exists = await github.branch_exists(
-                branch,
-                submit_token,
-            )
-        except GitHubError as exc:
-            if exc.status_code == 401:
-                raise HTTPException(
-                    status_code=401,
-                    detail=github_credential_hint(),
-                ) from exc
-            raise
-        if remote_branch_exists and not previous:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "branch_conflict",
-                    "message": "GitHub 已存在同名分支，但无法确认归属，请更换提交头",
-                    "branch": branch,
-                    "can_overwrite": False,
-                },
-            )
-        if remote_branch_exists and not payload.overwrite:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "branch_conflict",
-                    "message": "GitHub 已存在该提交头，是否覆盖原分支？",
-                    "branch": branch,
-                    "can_overwrite": True,
-                },
-            )
-
         # #region debug-point D:submit-start
         exec("try:\n urllib.request.urlopen(urllib.request.Request('http://192.168.31.185:7777/event',data=json.dumps({'sessionId':'oauth-submit-failures','runId':'post-fix','hypothesisId':'D','location':'main.py:submit','msg':'[DEBUG] Submission started','data':{'userId':user['id'],'authProvider':user['auth_provider'],'tokenSource':token_source,'draftCount':len(drafts),'branch':branch},'ts':int(datetime.now(timezone.utc).timestamp()*1000)}).encode(),headers={'Content-Type':'application/json'}),timeout=.5).read()\nexcept Exception:\n pass")
         # #endregion
-        main_ref = await github.main_reference(submit_token)
-        base_commit_sha = str(main_ref["object"]["sha"])
-        tree = {
-            item["path"]: item
-            for item in await github.repository_tree(
-                ref=base_commit_sha,
-                token=submit_token,
-            )
-        }
-        merged_paths: list[str] = []
-        merge_conflicts: list[dict[str, Any]] = []
-        merge_updates: list[tuple[str, str, str, str]] = []
-        for draft in drafts:
-            current = tree.get(draft["path"])
-            base_sha = draft["base_sha"]
-            if not base_sha:
-                if current and draft["operation"] != "delete":
-                    merge_conflicts.append(
-                        {
-                            "path": draft["path"],
-                            "reason": "remote_created",
-                            "message": "远端已创建同名文件",
-                            "remote_sha": current["sha"],
-                        }
-                    )
-                continue
-            if not current:
-                merge_conflicts.append(
-                    {
-                        "path": draft["path"],
-                        "reason": "remote_deleted",
-                        "message": "远端已删除该文件",
-                        "base_sha": base_sha,
-                    }
-                )
-                continue
-            remote_sha = current["sha"]
-            if remote_sha == base_sha:
-                continue
-            if draft["operation"] == "delete":
-                merge_conflicts.append(
-                    {
-                        "path": draft["path"],
-                        "reason": "delete_modified",
-                        "message": "文件在删除草稿创建后已被远端修改",
-                        "base_sha": base_sha,
-                        "remote_sha": remote_sha,
-                    }
-                )
-                continue
-            base_content = draft["base_content"]
-            if base_content is None:
-                base_content = await github.repository_blob(
-                    base_sha,
-                    submit_token,
-                )
-            remote_content = await github.repository_blob(
-                remote_sha,
-                submit_token,
-            )
-            try:
-                merged = merge_text(
-                    base_content,
-                    draft["content"],
-                    remote_content,
-                )
-            except RuntimeError as exc:
-                raise HTTPException(
-                    status_code=503,
-                    detail="服务器暂时无法执行三方合并，请稍后重试",
-                ) from exc
-            if merged.conflicted:
-                merge_conflicts.append(
-                    {
-                        "path": draft["path"],
-                        "reason": "content_conflict",
-                        "message": "草稿与远端修改了相同内容",
-                        "base_sha": base_sha,
-                        "remote_sha": remote_sha,
-                    }
-                )
-                continue
-            draft["content"] = merged.content
-            draft["base_sha"] = remote_sha
-            draft["base_content"] = remote_content
-            draft["revision"] = int(draft["revision"]) + 1
-            merged_paths.append(draft["path"])
-            merge_updates.append(
-                (
-                    merged.content,
-                    remote_sha,
-                    remote_content,
-                    draft["path"],
-                )
-            )
-
-        if merge_conflicts:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "repository_merge_conflict",
-                    "message": (
-                        f"远端目录树已更新，{len(merge_conflicts)} 个文件"
-                        "无法自动合并，请处理冲突后重试"
-                    ),
-                    "base_commit": base_commit_sha,
-                    "conflicts": merge_conflicts,
-                },
-            )
-
-        available_roots = set(ALLOWED_ROOTS) | {
-            module_root_for_path(path)
-            for path in tree
-            if is_module_readme_path(path)
-        }
-        available_roots.update(
-            module_root_for_path(draft["path"])
-            for draft in drafts
-            if draft["operation"] == "upsert"
-            and is_module_readme_path(draft["path"])
-        )
-        deleted_roots = {
-            module_root_for_path(draft["path"])
-            for draft in drafts
-            if draft["operation"] == "delete"
-            and is_module_readme_path(draft["path"])
-        }
-        deleted_paths = {
-            draft["path"]
-            for draft in drafts
-            if draft["operation"] == "delete"
-        }
-        for root in deleted_roots:
-            remaining = []
-            prefix = root + "/"
-            for candidate in tree:
-                if candidate != f"{root}/README.md" and not candidate.startswith(
-                    prefix
-                ):
-                    continue
-                try:
-                    safe_candidate = validate_repository_path(candidate)
-                except ValueError:
-                    continue
-                if safe_candidate not in deleted_paths:
-                    remaining.append(safe_candidate)
-            if remaining:
-                raise HTTPException(
-                    status_code=422,
-                    detail=(
-                        f"删除顶级模块 {root} 时必须同时删除目录内全部文件；"
-                        f"当前仍有 {len(remaining)} 个文件未标记删除"
-                    ),
-                )
-        available_roots.difference_update(deleted_roots)
-        for draft in drafts:
-            if is_track_readme_path(draft["path"]):
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"{draft['path']} 是赛道入口，不能通过普通内容提交修改",
-                )
-            root = module_root_for_path(draft["path"])
-            if root in deleted_roots:
-                if draft["operation"] != "delete":
-                    raise HTTPException(
-                        status_code=422,
-                        detail=f"{draft['path']} 位于待删除的大模块中",
-                    )
-            elif root not in available_roots:
-                raise HTTPException(
-                    status_code=422,
-                    detail=(
-                        f"{draft['path']} 所属顶级模块不存在；"
-                        "请先创建该模块的 README.md"
-                    ),
-                )
-            current = tree.get(draft["path"])
-            if draft["base_sha"]:
-                if not current or current["sha"] != draft["base_sha"]:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"{draft['path']} 已被远端修改，请重新加载",
-                    )
-            elif current and draft["operation"] != "delete":
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"{draft['path']} 已在远端存在",
-                )
-            elif draft["operation"] == "delete" and not current:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"{draft['path']} 已不存在",
-                )
-
         now = utc_now()
-        if merge_updates and using_legacy_drafts:
-            with db.connect() as connection:
-                for (
-                    content,
-                    remote_sha,
-                    remote_content,
-                    draft_path,
-                ) in merge_updates:
-                    connection.execute(
-                        """
-                        UPDATE drafts
-                        SET content = ?, base_sha = ?, base_content = ?,
-                            revision = revision + 1, updated_at = ?
-                        WHERE user_id = ? AND path = ?
-                        """,
-                        (
-                            content,
-                            remote_sha,
-                            remote_content,
-                            now,
-                            user["id"],
-                            draft_path,
-                        ),
-                    )
-
         created_submission = previous is None
         with db.connect() as connection:
             if previous:
@@ -2691,8 +2427,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     """,
                     (
                         user["auth_provider"],
-                        payload.title.strip(),
-                        payload.description.strip(),
+                        payload.pr_title.strip(),
+                        payload.pr_body.strip(),
                         now,
                         submission_id,
                     ),
@@ -2710,8 +2446,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         user["id"],
                         user["auth_provider"],
                         branch,
-                        payload.title.strip(),
-                        payload.description.strip(),
+                        payload.pr_title.strip(),
+                        payload.pr_body.strip(),
                         now,
                         now,
                     ),
@@ -2722,13 +2458,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             result = await github.submit(
                 token=submit_token,
                 branch=branch,
-                title=payload.title.strip(),
-                description=payload.description,
+                base_commit=payload.base_commit,
+                commit_message=payload.commit_message.strip(),
+                pr_title=payload.pr_title.strip(),
+                pr_body=payload.pr_body,
+                pr_base=payload.pr_base,
+                draft=payload.draft,
                 changes=drafts,
                 author=author,
                 actor_label=actor,
-                expected_parent_sha=base_commit_sha,
-                overwrite=payload.overwrite,
+                force_update=payload.force_update,
             )
         except BranchConflictError as exc:
             can_overwrite = bool(
@@ -2817,16 +2556,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     submission_id,
                 ),
             )
-            if using_legacy_drafts:
-                connection.execute(
-                    "DELETE FROM drafts WHERE user_id = ?",
-                    (user["id"],),
-                )
 
         db.audit(
             (
                 "submission.overwritten"
-                if payload.overwrite
+                if payload.force_update
                 else "submission.created"
             ),
             request_ip(request),
@@ -2840,7 +2574,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             f"[GCK] 新的内容提交 #{result.pr_number}",
             (
                 f"提交人：{actor}\n"
-                f"标题：{payload.title.strip()}\n"
+                f"标题：{payload.pr_title.strip()}\n"
                 f"分支：{branch}\n"
                 f"PR：{result.pr_url}\n"
             ),
@@ -2851,16 +2585,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             submission_id,
             (
                 "contributor_submission_updated"
-                if payload.overwrite
+                if payload.force_update
                 else "contributor_submission_received"
             ),
             (
                 f"[GCK] 感谢你的贡献：PR #{result.pr_number} "
-                f"{'已更新' if payload.overwrite else '已创建'}"
+                f"{'已更新' if payload.force_update else '已创建'}"
             ),
             (
                 "感谢你为 Game Client Knowledge 提交内容。\n\n"
-                f"标题：{payload.title.strip()}\n"
+                f"标题：{payload.pr_title.strip()}\n"
                 f"PR：{result.pr_url}\n\n"
                 "PR 被合并、关闭或因长期未处理自动关闭时，"
                 "系统会继续发送邮件通知。\n"
@@ -2874,8 +2608,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "commit_sha": result.commit_sha,
             "pr_number": result.pr_number,
             "pr_url": result.pr_url,
-            "overwritten": payload.overwrite,
-            "merged_paths": merged_paths,
+            "overwritten": payload.force_update,
             "feedback_email_queued": feedback_email_queued,
         }
 

@@ -335,13 +335,13 @@ sequenceDiagram
     Base->>Current: Clone when the workspace is initialized
     Current->>Current: Apply edit/create/delete immediately
     Current->>Current: Derive A/M/D and line diff against Base
-    Current->>Editor: Explicit remote synchronization request
+    Current->>Editor: Sync only when Current Tree is clean
     Editor->>GitHub: Read latest main tree
     GitHub-->>Editor: Revision and tree
     Editor-->>Base: Replace remote Base Tree
-    Base->>Current: Replay local changes and flag conflicts
-    Current->>Editor: Submit local change set
-    Editor->>GitHub: Submit branch and Draft PR
+    Base->>Current: Clone the new clean baseline
+    Current->>Editor: Submit base commit and A/M/D files
+    Editor->>GitHub: Create commit, branch, and Draft PR
 ```
 
 The Base Tree is immutable during normal editing. Only remote synchronization may
@@ -353,12 +353,13 @@ server round trip.
 The server does not persist new editing state. SQLite draft rows and
 `editor-buffer.js` payloads remain readable only to migrate existing users once.
 After migration, the client deletes legacy server drafts. A submission sends the
-derived local change set directly to `/api/submit`; the server reads the latest
-main tree, performs per-file three-way merges, and returns file-level conflicts.
+Base commit plus the derived local A/M/D set directly to `/api/submit`. The
+server creates a commit from that historical Base tree. GitHub evaluates the
+branch against current `main` and exposes merge conflicts in the pull request.
 
 The standalone workspace exposes two explicit operations:
 
-- **Sync remote** replaces the Base Tree and replays local Current Tree changes.
+- **Sync remote** replaces Base Tree only when Current Tree has no local changes.
 - **Release cache** resets the Current Tree to the Base Tree and removes all
   local unsubmitted changes.
 

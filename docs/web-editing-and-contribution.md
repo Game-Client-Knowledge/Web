@@ -281,18 +281,27 @@ web/sourcecode/cpp-polymorphism
 
 Submission performs these steps:
 
-1. Load all drafts belonging to the current user.
-2. Check local submission ownership and the GitHub branch ref for a head conflict.
+1. Receive the immutable Base Tree commit and the Current Tree's A/M/D files.
+2. Check local submission ownership for overwrite authorization.
 3. Ask for explicit overwrite confirmation only for the current user's branch.
-4. Resolve and retain the current `main` commit SHA.
-5. Compare every edited file's blob SHA with that snapshot.
-6. Reject new files that now exist or deleted files that no longer exist.
-7. Create blobs and one Git tree.
-8. Recheck that `main` still has the retained SHA.
-9. Create a commit and create or update the temporary branch.
-10. Reuse an open Draft PR for an overwritten branch, or create a new Draft PR.
-11. Remove the user's drafts only after pull request handling succeeds.
-12. Record the result and notify every active administrator.
+4. Verify with one GitHub compare request that the Base commit belongs to
+   `main` history, and read its tree SHA from the same response.
+5. Create complete blobs only for upserted files; deletes use null tree entries.
+6. Create a Git tree based on the historical Base tree.
+7. Create a commit whose parent is the Base commit.
+8. Create or force-update the temporary branch.
+9. Reuse an open Draft PR for an overwritten branch, or create a new Draft PR.
+10. Let GitHub calculate mergeability against the current `main`.
+11. Record the result and notify every active administrator.
+
+The request does not include unchanged files, Base file bodies, per-file Base
+SHAs, line diffs, or patches. The server does not fetch the recursive `main`
+tree and does not run a three-way merge. See
+[Git Submission Protocol](git-submission-protocol.md).
+
+New branches are created optimistically. A GitHub "ref already exists" response
+becomes the structured branch conflict, avoiding a separate branch-ref GET on
+the successful path.
 
 If pull request creation fails after branch creation, the service attempts to remove
 the temporary branch. A failed submission record can be retried with the same

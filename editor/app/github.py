@@ -209,21 +209,43 @@ class GitHubClient:
         except (binascii.Error, UnicodeDecodeError) as exc:
             raise GitHubError("文件不是可编辑的 UTF-8 文本", 422) from exc
 
-    async def branch_exists(
+    async def pull_request_base_commit(
         self,
-        branch: str,
+        base_commit: str,
+        base_branch: str,
         token: str,
-    ) -> bool:
+    ) -> tuple[str, str]:
         response = await self._request(
             "GET",
             (
-                f"/repos/{self.settings.github_repo}/git/ref/heads/"
-                f"{quote(branch, safe='/')}"
+                f"/repos/{self.settings.github_repo}/compare/"
+                f"{quote(base_commit, safe='')}..."
+                f"{quote(base_branch, safe='')}"
             ),
             token=token,
-            expected=(200, 404),
+            params={"per_page": 1, "page": 2},
         )
-        return response.status_code == 200
+        payload = response.json()
+        resolved = payload.get("base_commit") or {}
+        merge_base = payload.get("merge_base_commit") or {}
+        resolved_sha = str(resolved.get("sha") or "")
+        merge_base_sha = str(merge_base.get("sha") or "")
+        status = str(payload.get("status") or "")
+        tree_sha = str(
+            ((resolved.get("commit") or {}).get("tree") or {}).get("sha")
+            or ""
+        )
+        if (
+            status not in {"ahead", "identical"}
+            or not resolved_sha
+            or merge_base_sha != resolved_sha
+            or not tree_sha
+        ):
+            raise GitHubError(
+                f"基线 commit 不属于 {base_branch} 的历史",
+                status_code=409,
+            )
+        return resolved_sha, tree_sha
 
     async def pull_request(
         self,
@@ -466,36 +488,24 @@ class GitHubClient:
         *,
         token: str,
         branch: str,
-        title: str,
-        description: str,
+        base_commit: str,
+        commit_message: str,
+        pr_title: str,
+        pr_body: str,
+        pr_base: str,
+        draft: bool,
         changes: list[dict[str, Any]],
         author: dict[str, str] | None,
         actor_label: str,
-        expected_parent_sha: str,
-        overwrite: bool = False,
+        force_update: bool = False,
     ) -> SubmissionResult:
         repo_path = f"/repos/{self.settings.github_repo}"
 
-        existing = await self._request(
-            "GET",
-            f"{repo_path}/git/ref/heads/{quote(branch, safe='/')}",
-            token=token,
-            expected=(200, 404),
+        parent_sha, base_tree = await self.pull_request_base_commit(
+            base_commit,
+            pr_base,
+            token,
         )
-        branch_exists = existing.status_code == 200
-        if branch_exists and not overwrite:
-            raise BranchConflictError(branch)
-
-        main_ref = await self.main_reference(token)
-        parent_sha = main_ref["object"]["sha"]
-        if parent_sha != expected_parent_sha:
-            raise GitHubError("main 已发生变化，请重新检查草稿后提交", 409)
-        parent_commit = await self._request(
-            "GET",
-            f"{repo_path}/git/commits/{parent_sha}",
-            token=token,
-        )
-        base_tree = parent_commit.json()["tree"]["sha"]
 
         tree_entries: list[dict[str, Any]] = []
         for change in changes:
@@ -534,7 +544,7 @@ class GitHubClient:
             json={"base_tree": base_tree, "tree": tree_entries},
         )
         commit_payload: dict[str, Any] = {
-            "message": title,
+            "message": commit_message,
             "tree": tree.json()["sha"],
             "parents": [parent_sha],
         }
@@ -550,33 +560,49 @@ class GitHubClient:
         )
         commit_sha = commit.json()["sha"]
 
-        if branch_exists:
-            await self._request(
+        branch_preexisting = False
+        if force_update:
+            update = await self._request(
                 "PATCH",
                 (
                     f"{repo_path}/git/refs/heads/"
                     f"{quote(branch, safe='/')}"
                 ),
                 token=token,
+                expected=(200, 404, 422),
                 json={"sha": commit_sha, "force": True},
             )
+            branch_preexisting = update.status_code == 200
+            if not branch_preexisting:
+                await self._request(
+                    "POST",
+                    f"{repo_path}/git/refs",
+                    token=token,
+                    expected=(201,),
+                    json={
+                        "ref": f"refs/heads/{branch}",
+                        "sha": commit_sha,
+                    },
+                )
         else:
-            await self._request(
+            created = await self._request(
                 "POST",
                 f"{repo_path}/git/refs",
                 token=token,
-                expected=(201,),
+                expected=(201, 422),
                 json={"ref": f"refs/heads/{branch}", "sha": commit_sha},
             )
+            if created.status_code != 201:
+                raise BranchConflictError(branch)
 
         pr_body = (
-            f"{description.strip()}\n\n"
+            f"{pr_body.strip()}\n\n"
             "---\n"
             f"Submitted from Game Client Knowledge Web Editor by {actor_label}.\n"
             f"Branch: `{branch}`"
         ).strip()
         pull = None
-        if overwrite:
+        if force_update:
             open_pulls = await self._request(
                 "GET",
                 f"{repo_path}/pulls",
@@ -593,7 +619,7 @@ class GitHubClient:
                     "PATCH",
                     f"{repo_path}/pulls/{pull_number}",
                     token=token,
-                    json={"title": title, "body": pr_body},
+                    json={"title": pr_title, "body": pr_body},
                 )
         if pull is None:
             try:
@@ -603,15 +629,15 @@ class GitHubClient:
                     token=token,
                     expected=(201,),
                     json={
-                        "title": title,
+                        "title": pr_title,
                         "body": pr_body,
                         "head": branch,
-                        "base": "main",
-                        "draft": True,
+                        "base": pr_base,
+                        "draft": draft,
                     },
                 )
             except GitHubError:
-                if not branch_exists:
+                if not branch_preexisting:
                     try:
                         await self._request(
                             "DELETE",

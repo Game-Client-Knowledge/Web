@@ -82,6 +82,8 @@ order: 40
     (module) => module.key === "program/graphics"
   );
 
+  assert.equal(catalog.repository.commit, "0123456");
+  assert.equal(catalog.repository.revision, "0123456789abcdef");
   assert.deepEqual(
     catalog.tracks.map((track) => track.key),
     ["program", "planning"]

@@ -570,6 +570,7 @@
         editorApi: {{ (site.editorUrl ~ 'api') | json | safe }},
         assetVersion: {{ site.assetVersion | json | safe }},
         contentVersion: {{ catalog.repository.commit | json | safe }},
+        contentRevision: {{ catalog.repository.revision | json | safe }},
         repository: {{ catalog.repositoryUrl | json | safe }},
         rawBase: {{ '/raw/' | withBase | json | safe }},
         contentRoutes: {{ catalog.sourceRoutes | json | safe }},

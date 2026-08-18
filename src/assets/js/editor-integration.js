@@ -319,7 +319,7 @@
         window.localStorage,
         userId,
         workspaceRepository(),
-        config.contentVersion,
+        config.contentRevision || config.contentVersion,
         config.workspaceEntries || []
       )
     );
@@ -1820,6 +1820,9 @@
     }
     const previous = readLocalWorkspace();
     const previousChanges = previous ? previous.changes : [];
+    if (previousChanges.length) {
+      return previous;
+    }
     state.remoteSyncPromise = (async function () {
       const payload = await api("/repository/tree");
       if (

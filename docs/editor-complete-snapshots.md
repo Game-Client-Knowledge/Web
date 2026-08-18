@@ -8,8 +8,9 @@ content.
 
 For Markdown files, a complete snapshot must contain exactly one top-level
 heading. The reader and workspace reject an incomplete snapshot before it can
-replace a valid Current Tree entry. The submission API repeats the same
-validation before GitHub operations begin.
+replace a valid Current Tree entry. This is a client authoring invariant. The
+submission service enforces trust-boundary constraints but does not duplicate
+Markdown structure policy.
 
 ## Base hydration
 
@@ -42,7 +43,9 @@ opens and re-edits the file.
   validation, and conservative fragment repair.
 - `scripts/test-workspace-store.js` covers damaged Base/Current hydration and
   verifies that later sections remain in the submitted snapshot.
-- `test_submission_rejects_partial_markdown_workspace_snapshot` verifies that
-  the API never sends a partial Markdown file to GitHub.
+- `test_submission_forwards_complete_markdown_when_only_h2_changes` verifies
+  that an H2-only edit reaches the GitHub boundary as a complete file.
+- `scripts/test-editor-workspace.js` locks the client integrity check and the
+  minimal Git submission mapper.
 - Browser verification edits the real 121-line allocator document and checks
   that the Current Tree still contains its H1, tables, and later sections.

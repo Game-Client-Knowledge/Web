@@ -56,21 +56,17 @@ tree or unchanged files.
 
 ## Synchronization
 
-The client performs a conditional draft pull when a page opens. The
-`draft_revision` fingerprint lets `GET /api/drafts` return no rows when nothing
-changed.
+The Base Tree commit is immutable while Current Tree contains local changes.
+Opening another page or workspace does not silently rebase those changes onto a
+newer `main`. This allows submission to create a normal Git branch from the exact
+commit the user edited.
 
-The configured `workspace_sync_interval_seconds` controls later synchronization
-and is bounded to 15-3600 seconds. The default is 60 seconds.
+When the workspace is clean, remote synchronization can replace Base Tree and
+Current Tree with the latest `main` metadata. When it is dirty, synchronization
+is deferred until the changes are submitted or released.
 
-`PUT /api/drafts` accepts `base_revision`. A stale write receives HTTP 409 and
-the current server draft. The client applies its locally generated patch to the
-new server content and retries once. A failed merge keeps the local buffer and
-marks it as a conflict instead of overwriting either side.
-
-Page hide and browser close only persist the local buffer. They do not force a
-network request. The next page open pulls current server drafts before the
-configured upload cycle.
+Page hide and browser close only persist the local Current Tree. They do not
+force a network request.
 
 ## Server Load
 
@@ -78,8 +74,9 @@ The GitHub recursive repository tree is cached in the editor process for 60
 seconds and coalesced behind an async lock. The full editor also caches tree
 metadata in local storage for the configured synchronization interval.
 
-Normal reader navigation does not request the GitHub tree. It uses the static
-workspace metadata generated from the immutable content commit.
+Normal reader navigation does not request the GitHub tree while local changes
+exist. It uses the static workspace metadata generated from the immutable
+content commit.
 
 ## Verification
 

@@ -24,13 +24,13 @@ the same branch.
 
 ## Conflict Detection
 
-The server checks two independent sources:
+The server uses two independent ownership signals:
 
 1. **Local submission history:** `submissions.branch_name` has a unique SQLite
    index. This identifies which site user originally created the branch.
-2. **GitHub branch state:** the server requests
-   `GET /repos/<owner>/<repo>/git/ref/heads/<branch>`. HTTP 200 means the branch
-   currently exists; HTTP 404 means it does not.
+2. **GitHub ref mutation:** a new submission optimistically calls
+   `POST /git/refs`. GitHub HTTP 422 for an existing ref becomes a branch
+   conflict without a separate preflight request.
 
 A conflict response uses HTTP 409 with structured detail:
 
@@ -59,9 +59,10 @@ contributor's branch merely by entering the same custom head.
 
 After confirmation, the server:
 
-1. Revalidates every draft against the current `main` tree.
-2. Creates a new commit whose parent is the current `main`.
-3. Force-updates the user's existing `web/...` branch to that commit.
+1. Reuses the Base Tree commit supplied by the client.
+2. Verifies that the Base commit is still in `main` history.
+3. Creates a replacement commit from that Base and force-updates the user's
+   existing `web/...` branch.
 4. Searches for an open pull request whose head is that branch.
 5. Updates and reuses the open pull request when found.
 6. Creates a new Draft PR only when no open pull request exists.
@@ -70,6 +71,10 @@ After confirmation, the server:
 
 Overwriting never writes directly to `main`. Repository review and branch
 protection remain in effect.
+
+The replacement commit can be based on an older `main` ancestor. GitHub reports
+merge conflicts in the pull request instead of the editor service rejecting or
+pre-merging the submission.
 
 ## Retry and Race Handling
 

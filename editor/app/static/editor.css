@@ -1033,6 +1033,13 @@ a[aria-disabled="true"] {
   border-color: #ff8182;
 }
 
+.diff-snapshot-summary {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+}
+
 .diff-source {
   min-width: max-content;
   padding-bottom: 18px;

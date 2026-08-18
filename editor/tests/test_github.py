@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from app.github import BranchConflictError, GitHubClient
+from app.github import BranchConflictError, GitHubClient, GitHubError
 
 
 def test_oauth_web_origin_uses_tls_verified_fallback(
@@ -227,7 +227,23 @@ def test_submit_rejects_existing_branch_without_overwrite() -> None:
     )
     client = GitHubClient(settings)
     client._request = AsyncMock(
-        return_value=httpx.Response(200, json={"object": {"sha": "old"}})
+        side_effect=[
+            httpx.Response(
+                200,
+                json={
+                    "status": "ahead",
+                    "base_commit": {
+                        "sha": "base-commit",
+                        "commit": {"tree": {"sha": "base-tree"}},
+                    },
+                    "merge_base_commit": {"sha": "base-commit"},
+                },
+            ),
+            httpx.Response(201, json={"sha": "blob"}),
+            httpx.Response(201, json={"sha": "tree"}),
+            httpx.Response(201, json={"sha": "commit"}),
+            httpx.Response(422, json={"message": "Reference already exists"}),
+        ]
     )
 
     with pytest.raises(BranchConflictError):
@@ -235,14 +251,126 @@ def test_submit_rejects_existing_branch_without_overwrite() -> None:
             client.submit(
                 token="token",
                 branch="web/user/existing",
-                title="Existing",
-                description="",
-                changes=[],
+                base_commit="base-commit",
+                commit_message="Existing",
+                pr_title="Existing",
+                pr_body="",
+                pr_base="main",
+                draft=True,
+                changes=[
+                    {
+                        "path": "knowledge/cpp/existing.md",
+                        "operation": "upsert",
+                        "content": "# Existing\n",
+                    }
+                ],
                 author=None,
                 actor_label="user",
-                expected_parent_sha="main",
             )
         )
+
+
+def test_pull_request_base_commit_must_be_main_ancestor() -> None:
+    settings = SimpleNamespace(github_repo="owner/repository")
+    client = GitHubClient(settings)
+    client._request = AsyncMock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "status": "diverged",
+                "base_commit": {
+                    "sha": "feature-commit",
+                    "commit": {"tree": {"sha": "feature-tree"}},
+                },
+                "merge_base_commit": {"sha": "older-common-commit"},
+            },
+        )
+    )
+
+    with pytest.raises(GitHubError, match="不属于 main 的历史"):
+        asyncio.run(
+            client.pull_request_base_commit(
+                "feature-commit",
+                "main",
+                "token",
+            )
+        )
+
+
+def test_submit_creates_branch_from_historical_main_commit() -> None:
+    settings = SimpleNamespace(
+        github_repo="owner/repository",
+        github_owner="owner",
+    )
+    client = GitHubClient(settings)
+    client._request = AsyncMock(
+        side_effect=[
+            httpx.Response(
+                200,
+                json={
+                    "status": "ahead",
+                    "ahead_by": 3,
+                    "base_commit": {
+                        "sha": "historical-main",
+                        "commit": {"tree": {"sha": "historical-tree"}},
+                    },
+                    "merge_base_commit": {"sha": "historical-main"},
+                },
+            ),
+            httpx.Response(201, json={"sha": "changed-blob"}),
+            httpx.Response(201, json={"sha": "changed-tree"}),
+            httpx.Response(201, json={"sha": "branch-commit"}),
+            httpx.Response(201, json={"object": {"sha": "branch-commit"}}),
+            httpx.Response(
+                201,
+                json={
+                    "number": 74,
+                    "html_url": "https://github.example/pull/74",
+                },
+            ),
+        ]
+    )
+
+    result = asyncio.run(
+        client.submit(
+            token="token",
+            branch="web/user/historical-base",
+            base_commit="historical-main",
+            commit_message="docs: edit from historical base",
+            pr_title="Historical base edit",
+            pr_body="Let GitHub report conflicts.",
+            pr_base="main",
+            draft=True,
+            changes=[
+                {
+                    "path": "knowledge/cpp/example.md",
+                    "operation": "upsert",
+                    "content": "# Example changed\n",
+                }
+            ],
+            author=None,
+            actor_label="user",
+        )
+    )
+
+    assert result.commit_sha == "branch-commit"
+    calls = client._request.await_args_list
+    tree_call = calls[2]
+    assert tree_call.kwargs["json"]["base_tree"] == "historical-tree"
+    commit_call = calls[3]
+    assert commit_call.kwargs["json"]["parents"] == ["historical-main"]
+    pr_call = calls[5]
+    assert pr_call.kwargs["json"] == {
+        "title": "Historical base edit",
+        "body": (
+            "Let GitHub report conflicts.\n\n---\n"
+            "Submitted from Game Client Knowledge Web Editor by user.\n"
+            "Branch: `web/user/historical-base`"
+        ),
+        "head": "web/user/historical-base",
+        "base": "main",
+        "draft": True,
+    }
 
 
 def test_submit_overwrites_branch_and_reuses_open_pull_request() -> None:
@@ -253,9 +381,17 @@ def test_submit_overwrites_branch_and_reuses_open_pull_request() -> None:
     client = GitHubClient(settings)
     client._request = AsyncMock(
         side_effect=[
-            httpx.Response(200, json={"object": {"sha": "old-commit"}}),
-            httpx.Response(200, json={"object": {"sha": "main-commit"}}),
-            httpx.Response(200, json={"tree": {"sha": "base-tree"}}),
+            httpx.Response(
+                200,
+                json={
+                    "status": "ahead",
+                    "base_commit": {
+                        "sha": "base-commit",
+                        "commit": {"tree": {"sha": "base-tree"}},
+                    },
+                    "merge_base_commit": {"sha": "base-commit"},
+                },
+            ),
             httpx.Response(201, json={"sha": "new-blob"}),
             httpx.Response(201, json={"sha": "new-tree"}),
             httpx.Response(201, json={"sha": "new-commit"}),
@@ -275,8 +411,12 @@ def test_submit_overwrites_branch_and_reuses_open_pull_request() -> None:
         client.submit(
             token="token",
             branch="web/user/existing",
-            title="Replacement",
-            description="Updated content",
+            base_commit="base-commit",
+            commit_message="Replacement",
+            pr_title="Replacement PR",
+            pr_body="Updated content",
+            pr_base="main",
+            draft=True,
             changes=[
                 {
                     "path": "knowledge/cpp/example.md",
@@ -286,15 +426,20 @@ def test_submit_overwrites_branch_and_reuses_open_pull_request() -> None:
             ],
             author=None,
             actor_label="user",
-            expected_parent_sha="main-commit",
-            overwrite=True,
+            force_update=True,
         )
     )
 
     assert result.commit_sha == "new-commit"
     assert result.pr_number == 73
     calls = client._request.await_args_list
-    ref_update = calls[6]
+    compare = calls[0]
+    assert compare.args[:2] == (
+        "GET",
+        "/repos/owner/repository/compare/base-commit...main",
+    )
+    assert compare.kwargs["params"] == {"per_page": 1, "page": 2}
+    ref_update = calls[4]
     assert ref_update.args[0] == "PATCH"
     assert ref_update.args[1].endswith(
         "/git/refs/heads/web/user/existing"
@@ -303,7 +448,7 @@ def test_submit_overwrites_branch_and_reuses_open_pull_request() -> None:
         "sha": "new-commit",
         "force": True,
     }
-    pull_lookup = calls[7]
+    pull_lookup = calls[5]
     assert pull_lookup.args[:2] == (
         "GET",
         "/repos/owner/repository/pulls",
@@ -312,8 +457,9 @@ def test_submit_overwrites_branch_and_reuses_open_pull_request() -> None:
         "head": "owner:web/user/existing",
         "state": "open",
     }
-    pull_update = calls[8]
+    pull_update = calls[6]
     assert pull_update.args[:2] == (
         "PATCH",
         "/repos/owner/repository/pulls/73",
     )
+    assert pull_update.kwargs["json"]["title"] == "Replacement PR"
