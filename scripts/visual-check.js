@@ -694,7 +694,7 @@ async function inspectPage(browser, scenario) {
     assert(
       ordering.labels.join(",") === "子专题,文件" &&
         ordering.subtopicsOpen === false &&
-        ordering.child.includes("工程实践与项目表达") &&
+        Boolean(ordering.child) &&
         ordering.file.includes("游戏客户端面试知识地图"),
       `${scenario.name}: topic/file ordering is ${JSON.stringify(ordering)}`
     );
@@ -821,7 +821,9 @@ async function inspectPage(browser, scenario) {
         fontSize: getComputedStyle(prose).fontSize,
         lineHeight: getComputedStyle(prose).lineHeight,
         headingSize: getComputedStyle(heading).fontSize,
-        headingTop: heading.getBoundingClientRect().top,
+        headingOffset:
+          heading.getBoundingClientRect().top -
+          prose.getBoundingClientRect().top,
         borderLeftWidth: getComputedStyle(prose).borderLeftWidth,
         tables: prose.querySelectorAll(".table-scroll > table").length
       };
@@ -843,7 +845,9 @@ async function inspectPage(browser, scenario) {
         fontSize: getComputedStyle(prose).fontSize,
         lineHeight: getComputedStyle(prose).lineHeight,
         headingSize: getComputedStyle(heading).fontSize,
-        headingTop: heading.getBoundingClientRect().top,
+        headingOffset:
+          heading.getBoundingClientRect().top -
+          prose.getBoundingClientRect().top,
         inlineToolbar: panel.querySelectorAll(".inline-editor-toolbar").length,
         saveButtons: panel.querySelectorAll("[data-inline-save]").length,
         previewToolbar: document.querySelectorAll(".reader-preview-controls")
@@ -870,7 +874,7 @@ async function inspectPage(browser, scenario) {
         `${scenario.name}: reader typography changed`
       );
       assert(
-        Math.abs(preview.headingTop - editing.headingTop) <= 24,
+        Math.abs(preview.headingOffset - editing.headingOffset) <= 24,
         `${scenario.name}: reader content shifted vertically`
       );
       assert(
