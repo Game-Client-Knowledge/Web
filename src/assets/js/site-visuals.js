@@ -536,6 +536,8 @@
     let ratio = 1;
     let artwork = null;
     let particles = [];
+    let energyTrails = [];
+    let hudPings = [];
     let started = performance.now();
     let frame = 0;
     let finished = false;
@@ -551,6 +553,11 @@
     document.body.dataset.homeIntro = "playing";
     stage.dataset.contributorLayout = "orbital";
     stage.dataset.contributorTrajectory = "moving-targets";
+    stage.dataset.backgroundPalette = "tactical-multi";
+    stage.dataset.typographyMotion = "active";
+    stage.dataset.gameHud = "active";
+    stage.dataset.typographyOffset = "0.00,0.00";
+    stage.dataset.hudSweep = "0.0000";
 
     function clamp(value, minimum = 0, maximum = 1) {
       return Math.max(minimum, Math.min(maximum, value));
@@ -820,6 +827,65 @@
       return shuffle(candidates).slice(0, width < 620 ? 180 : 280);
     }
 
+    function createGameGeometry() {
+      const mobile = width < 620;
+      const colors = [
+        "rgba(91, 224, 202, 0.72)",
+        "rgba(238, 184, 76, 0.72)",
+        "rgba(92, 176, 230, 0.62)",
+        "rgba(218, 102, 151, 0.48)"
+      ];
+      energyTrails = Array.from(
+        { length: mobile ? 3 : 5 },
+        (_, index) => {
+          const fromLeft = index % 2 === 0;
+          const band = (index + 1) / (mobile ? 4 : 6);
+          return {
+            startX: fromLeft ? -width * 0.08 : width * 1.08,
+            startY: height * (0.16 + band * 0.62),
+            control1X: width * (fromLeft ? 0.22 : 0.78),
+            control1Y: height * (0.08 + random() * 0.76),
+            control2X: width * (fromLeft ? 0.68 : 0.32),
+            control2Y: height * (0.12 + random() * 0.72),
+            endX: fromLeft ? width * 1.08 : -width * 0.08,
+            endY: height * (0.18 + random() * 0.64),
+            color: colors[index % colors.length],
+            speed: 0.00011 + random() * 0.00008,
+            phase: random(),
+            dash: mobile ? 12 + index * 2 : 18 + index * 3
+          };
+        }
+      );
+      hudPings = Array.from(
+        { length: mobile ? 5 : 9 },
+        (_, index) => ({
+          angle: random() * Math.PI * 2,
+          radius: 18 + random() * (mobile ? 48 : 74),
+          phase: random() * Math.PI * 2,
+          size: index % 3 === 0 ? 3 : 2,
+          color: colors[index % colors.length]
+        })
+      );
+      stage.dataset.energyTrailCount = String(energyTrails.length);
+      stage.dataset.hudPingCount = String(hudPings.length);
+    }
+
+    function cubicPoint(item, progressValue) {
+      const inverse = 1 - progressValue;
+      return {
+        x:
+          inverse * inverse * inverse * item.startX +
+          3 * inverse * inverse * progressValue * item.control1X +
+          3 * inverse * progressValue * progressValue * item.control2X +
+          progressValue * progressValue * progressValue * item.endX,
+        y:
+          inverse * inverse * inverse * item.startY +
+          3 * inverse * inverse * progressValue * item.control1Y +
+          3 * inverse * progressValue * progressValue * item.control2Y +
+          progressValue * progressValue * progressValue * item.endY
+      };
+    }
+
     function createParticleTargets() {
       artwork = document.createElement("canvas");
       artwork.width = Math.max(1, Math.round(width));
@@ -899,6 +965,7 @@
         selectContributors();
       }
       createContributorMotions();
+      createGameGeometry();
       createParticleTargets();
     }
 
@@ -915,27 +982,275 @@
       rebuildTargets(false);
     }
 
-    function drawGrid(progressValue) {
-      context.fillStyle = "#0b1512";
+    function drawArenaBackground(elapsed, progressValue) {
+      context.fillStyle = "#10252a";
       context.fillRect(0, 0, width, height);
+      context.fillStyle = "rgba(27, 35, 61, 0.72)";
+      context.fillRect(0, 0, width, height * 0.34);
+      context.fillStyle = "rgba(15, 54, 47, 0.68)";
+      context.fillRect(0, height * 0.67, width, height * 0.33);
+      context.fillStyle = "rgba(35, 43, 52, 0.44)";
+      context.fillRect(0, height * 0.34, width, height * 0.33);
+
       const centerX = width / 2;
       const centerY = height / 2;
       const opacity = 0.055 + progressValue * 0.055;
       context.strokeStyle = `rgba(95, 180, 153, ${opacity})`;
       context.lineWidth = 0.7;
       const grid = width < 620 ? 42 : 54;
-      for (let x = centerX % grid; x < width; x += grid) {
+      const gridOffset = (elapsed * 0.006) % grid;
+      for (let x = centerX % grid - grid + gridOffset; x < width; x += grid) {
         context.beginPath();
         context.moveTo(x, 0);
         context.lineTo(x, height);
         context.stroke();
       }
-      for (let y = centerY % grid; y < height; y += grid) {
+      for (let y = centerY % grid - grid + gridOffset; y < height; y += grid) {
         context.beginPath();
         context.moveTo(0, y);
         context.lineTo(width, y);
         context.stroke();
       }
+
+      const horizon = height * 0.64;
+      context.strokeStyle =
+        `rgba(89, 178, 203, ${0.06 + progressValue * 0.08})`;
+      for (let index = -8; index <= 8; index += 1) {
+        context.beginPath();
+        context.moveTo(centerX, horizon);
+        context.lineTo(centerX + index * width * 0.14, height);
+        context.stroke();
+      }
+      for (let index = 0; index <= 8; index += 1) {
+        const distance = Math.pow(index / 8, 1.7);
+        const y = horizon + distance * (height - horizon);
+        context.beginPath();
+        context.moveTo(0, y);
+        context.lineTo(width, y);
+        context.stroke();
+      }
+
+      const scanY = (elapsed * 0.08) % (height + 80) - 40;
+      context.fillStyle =
+        `rgba(102, 228, 205, ${0.025 + progressValue * 0.035})`;
+      context.fillRect(0, scanY, width, width < 620 ? 16 : 24);
+      context.strokeStyle = "rgba(235, 179, 76, 0.1)";
+      context.setLineDash([4, 14]);
+      context.lineDashOffset = -elapsed * 0.025;
+      context.beginPath();
+      context.moveTo(0, height * 0.18);
+      context.lineTo(width, height * 0.78);
+      context.moveTo(width * 0.2, 0);
+      context.lineTo(width * 0.86, height);
+      context.stroke();
+      context.setLineDash([]);
+    }
+
+    function drawEnergyTrails(elapsed, opacity) {
+      context.save();
+      context.globalAlpha = opacity;
+      energyTrails.forEach((item, index) => {
+        context.strokeStyle = item.color;
+        context.lineWidth = index % 2 === 0 ? 1.25 : 0.8;
+        context.setLineDash([item.dash, item.dash * 0.72]);
+        context.lineDashOffset =
+          -(elapsed * (0.04 + index * 0.006) + item.phase * 100);
+        context.beginPath();
+        context.moveTo(item.startX, item.startY);
+        context.bezierCurveTo(
+          item.control1X,
+          item.control1Y,
+          item.control2X,
+          item.control2Y,
+          item.endX,
+          item.endY
+        );
+        context.stroke();
+
+        const runner = (elapsed * item.speed + item.phase) % 1;
+        const point = cubicPoint(item, runner);
+        context.save();
+        context.translate(point.x, point.y);
+        context.rotate(Math.PI / 4 + elapsed * 0.001);
+        context.fillStyle = item.color;
+        const size = width < 620 ? 4 : 5;
+        context.fillRect(-size / 2, -size / 2, size, size);
+        context.restore();
+      });
+      context.setLineDash([]);
+      context.restore();
+    }
+
+    function drawGameHud(elapsed, opacity) {
+      const mobile = width < 620;
+      const margin = mobile ? 16 : 28;
+      const bracket = mobile ? 34 : 50;
+      const sweep = elapsed * 0.00115;
+      context.save();
+      context.globalAlpha = opacity;
+      context.lineWidth = 1;
+      context.strokeStyle = "rgba(108, 220, 198, 0.58)";
+
+      [
+        [margin, margin, 1, 1],
+        [width - margin, margin, -1, 1],
+        [margin, height - margin, 1, -1],
+        [width - margin, height - margin, -1, -1]
+      ].forEach(([x, y, directionX, directionY]) => {
+        context.beginPath();
+        context.moveTo(x + directionX * bracket, y);
+        context.lineTo(x, y);
+        context.lineTo(x, y + directionY * bracket);
+        context.stroke();
+      });
+
+      const radarX = width - (mobile ? 72 : 118);
+      const radarY = mobile ? 84 : 112;
+      const radarRadius = mobile ? 42 : 68;
+      context.strokeStyle = "rgba(91, 176, 230, 0.42)";
+      [0.36, 0.68, 1].forEach((scale) => {
+        context.beginPath();
+        context.arc(radarX, radarY, radarRadius * scale, 0, Math.PI * 2);
+        context.stroke();
+      });
+      context.beginPath();
+      context.moveTo(radarX - radarRadius, radarY);
+      context.lineTo(radarX + radarRadius, radarY);
+      context.moveTo(radarX, radarY - radarRadius);
+      context.lineTo(radarX, radarY + radarRadius);
+      context.stroke();
+      context.strokeStyle = "rgba(238, 184, 76, 0.7)";
+      context.beginPath();
+      context.moveTo(radarX, radarY);
+      context.lineTo(
+        radarX + Math.cos(sweep) * radarRadius,
+        radarY + Math.sin(sweep) * radarRadius
+      );
+      context.stroke();
+      hudPings.forEach((ping) => {
+        const pulse = 0.45 + Math.sin(elapsed * 0.004 + ping.phase) * 0.35;
+        context.globalAlpha = opacity * pulse;
+        context.fillStyle = ping.color;
+        context.fillRect(
+          radarX + Math.cos(ping.angle) * ping.radius - ping.size / 2,
+          radarY + Math.sin(ping.angle) * ping.radius - ping.size / 2,
+          ping.size,
+          ping.size
+        );
+      });
+
+      context.globalAlpha = opacity;
+      context.textAlign = "left";
+      context.textBaseline = "middle";
+      context.font =
+        `700 ${mobile ? 8 : 10}px "SFMono-Regular", Consolas, monospace`;
+      context.fillStyle = "rgba(151, 226, 207, 0.82)";
+      context.fillText(
+        "MISSION // KNOWLEDGE BUILD",
+        margin,
+        height - (mobile ? 72 : 92)
+      );
+      context.fillStyle = "rgba(238, 184, 76, 0.86)";
+      context.fillText(
+        "READY",
+        margin,
+        height - (mobile ? 54 : 72)
+      );
+      const barWidth = mobile ? 88 : 142;
+      context.strokeStyle = "rgba(151, 226, 207, 0.35)";
+      context.strokeRect(
+        margin,
+        height - (mobile ? 40 : 56),
+        barWidth,
+        5
+      );
+      context.fillStyle = "rgba(91, 224, 202, 0.74)";
+      context.fillRect(
+        margin + 1,
+        height - (mobile ? 39 : 55),
+        barWidth * (0.62 + Math.sin(elapsed * 0.0018) * 0.08),
+        3
+      );
+      stage.dataset.hudSweep = sweep.toFixed(4);
+      context.restore();
+    }
+
+    function drawDynamicTypography(elapsed, opacity) {
+      if (opacity <= 0) return;
+      const mobile = width < 620;
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const titleText = "Game Client Knowledge";
+      const titleSize = fitFont(
+        context,
+        titleText,
+        width - (mobile ? 28 : 80),
+        mobile ? 34 : 52,
+        27,
+        760
+      );
+      const driftX = Math.sin(elapsed * 0.0011) * (mobile ? 3 : 8);
+      const driftY = Math.cos(elapsed * 0.0015) * 2;
+      const glitchPulse = clamp(
+        (Math.sin(elapsed * 0.024) - 0.86) / 0.14
+      );
+
+      context.save();
+      context.globalAlpha = opacity;
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.font =
+        `700 ${mobile ? 9 : 11}px "SFMono-Regular", Consolas, monospace`;
+      context.fillStyle = "rgba(112, 228, 205, 0.9)";
+      context.fillText(
+        "OPEN KNOWLEDGE GRAPH / CLIENT SYSTEMS",
+        centerX - driftX * 1.5,
+        centerY - (mobile ? 104 : 120) + driftY
+      );
+
+      context.font =
+        `760 ${titleSize}px Inter, system-ui, -apple-system, sans-serif`;
+      if (glitchPulse > 0) {
+        context.globalAlpha = opacity * glitchPulse * 0.5;
+        context.fillStyle = "#5cb0e6";
+        context.fillText(
+          titleText,
+          centerX + driftX - 3,
+          centerY - 36 + driftY
+        );
+        context.fillStyle = "#da6697";
+        context.fillText(
+          titleText,
+          centerX + driftX + 3,
+          centerY - 35 + driftY
+        );
+      }
+      context.globalAlpha = opacity;
+      context.fillStyle = "#f2f8f5";
+      context.fillText(
+        titleText,
+        centerX + driftX,
+        centerY - 36 + driftY
+      );
+      context.font =
+        `500 ${mobile ? 13 : 15}px Inter, system-ui, sans-serif`;
+      context.fillStyle = "rgba(206, 221, 216, 0.92)";
+      context.fillText(
+        "游戏客户端开发与面试知识库",
+        centerX - driftX * 0.55,
+        centerY + 22 - driftY
+      );
+      context.font =
+        `700 ${mobile ? 8 : 9}px "SFMono-Regular", Consolas, monospace`;
+      context.fillStyle = "rgba(238, 184, 76, 0.84)";
+      context.fillText(
+        `SYNC ${String(Math.floor(elapsed / 80) % 100).padStart(2, "0")} / PLAYER READY`,
+        centerX + driftX * 0.8,
+        centerY + (mobile ? 58 : 64)
+      );
+      context.restore();
+      stage.dataset.typographyOffset =
+        `${driftX.toFixed(2)},${driftY.toFixed(2)}`;
     }
 
     function drawRotatingFrames(elapsed, opacity) {
@@ -1017,7 +1332,8 @@
     function drawAssembly(elapsed) {
       const assemblyElapsed = Math.min(elapsed, assembleDuration);
       const progressValue = clamp(assemblyElapsed / assembleDuration);
-      drawGrid(progressValue);
+      drawArenaBackground(elapsed, progressValue);
+      drawEnergyTrails(elapsed, 0.24 + progressValue * 0.5);
       particles.forEach((particle) => {
         const local = clamp(
           (assemblyElapsed - particle.delay) /
@@ -1041,12 +1357,14 @@
       const imageOpacity = clamp((progressValue - 0.82) / 0.18);
       if (artwork && imageOpacity > 0) {
         context.save();
-        context.globalAlpha = imageOpacity * 0.92;
+        context.globalAlpha = imageOpacity * 0.2;
         context.drawImage(artwork, 0, 0);
         context.restore();
       }
-      const dynamicOpacity = clamp((progressValue - 0.72) / 0.28);
+      const dynamicOpacity = clamp((progressValue - 0.58) / 0.42);
       drawRotatingFrames(elapsed, 0.25 + dynamicOpacity * 0.75);
+      drawDynamicTypography(elapsed, dynamicOpacity);
+      drawGameHud(elapsed, 0.38 + dynamicOpacity * 0.62);
       drawContributorLabels(elapsed, dynamicOpacity);
       progress.style.transform =
         `scaleX(${Math.min(
@@ -1260,6 +1578,31 @@
         createEntrySequence(settings, reducedMotion);
       }
     }
+
+    window.addEventListener("gck:visual-settings", (event) => {
+      const liveSettings = normalizeHomeIntroSettings({
+        ...defaults,
+        ...(event.detail || {})
+      });
+      cacheHomeIntroSettings(liveSettings);
+      document.body.dataset.pointerEffect =
+        liveSettings.pointer_effect_enabled ? "on" : "off";
+      if (type !== "home") return;
+      const shouldPlay = policy.updateMode(
+        liveSettings.home_intro_mode,
+        liveSettings.home_intro_enabled
+      );
+      if (!liveSettings.home_intro_enabled || !shouldPlay) {
+        if (cancelHomeIntro) cancelHomeIntro();
+        return;
+      }
+      if (updateHomeIntroSettings) {
+        updateHomeIntroSettings(liveSettings);
+      } else if (!introStarted && !homeIntroReleased) {
+        createEntrySequence(liveSettings, reducedMotion);
+        introStarted = true;
+      }
+    });
 
     if (type === "catalog") {
       document.body.dataset.catalogBackground =

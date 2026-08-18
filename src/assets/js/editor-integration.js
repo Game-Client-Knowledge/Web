@@ -949,6 +949,13 @@
     state.draftRevision = payload.draft_revision || "";
     refreshEffectiveDrafts();
     updateAccountView();
+    if (payload.config) {
+      window.dispatchEvent(
+        new CustomEvent("gck:visual-settings", {
+          detail: payload.config
+        })
+      );
+    }
     if (!settings.fromCache) {
       state.identityLoaded = true;
       writeIdentityCache(payload);

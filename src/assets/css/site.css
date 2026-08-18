@@ -224,7 +224,7 @@ body:has(dialog[open]) .site-pointer-reticle {
   min-height: 100vh;
   min-height: 100svh;
   color: #edf7f3;
-  background: #0b1512;
+  background: #10252a;
   overflow: hidden;
   cursor: pointer;
 }

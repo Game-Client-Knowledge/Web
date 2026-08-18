@@ -266,6 +266,13 @@ async function inspectPage(browser, scenario) {
         coreOverlap: stage?.dataset.contributorCoreOverlap,
         layout: stage?.dataset.contributorLayout,
         trajectory: stage?.dataset.contributorTrajectory,
+        energyTrails: Number(stage?.dataset.energyTrailCount || 0),
+        hudPings: Number(stage?.dataset.hudPingCount || 0),
+        backgroundPalette: stage?.dataset.backgroundPalette,
+        typographyMotion: stage?.dataset.typographyMotion,
+        gameHud: stage?.dataset.gameHud,
+        typographyOffset: stage?.dataset.typographyOffset,
+        hudSweep: Number(stage?.dataset.hudSweep || 0),
         progress: document.querySelector(".site-entry-progress")?.style
           .transform,
         scrollY: Math.round(window.scrollY)
@@ -294,6 +301,14 @@ async function inspectPage(browser, scenario) {
     assert(
       intro.particles >= 1000,
       `${scenario.name}: entry particle count ${intro.particles}`
+    );
+    assert(
+      intro.energyTrails >= 3 &&
+        intro.hudPings >= 5 &&
+        intro.backgroundPalette === "tactical-multi" &&
+        intro.typographyMotion === "active" &&
+        intro.gameHud === "active",
+      `${scenario.name}: game visual layers are invalid`
     );
     assert(
       intro.duration === visualSettings.home_intro_duration_ms,
@@ -330,13 +345,17 @@ async function inspectPage(browser, scenario) {
       const stage = document.querySelector("[data-entry-sequence]");
       return {
         rotation: Number(stage?.dataset.frameRotation || 0),
-        coreOverlap: stage?.dataset.contributorCoreOverlap
+        coreOverlap: stage?.dataset.contributorCoreOverlap,
+        typographyOffset: stage?.dataset.typographyOffset,
+        hudSweep: Number(stage?.dataset.hudSweep || 0)
       };
     });
     assert(
       assembled.rotation > intro.rotation &&
-        assembled.coreOverlap === "false",
-      `${scenario.name}: central frames or contributors did not move safely`
+        assembled.coreOverlap === "false" &&
+        assembled.typographyOffset !== intro.typographyOffset &&
+        assembled.hudSweep > intro.hudSweep,
+      `${scenario.name}: animated intro layers did not move safely`
     );
     await page.screenshot({
       path: path.join(

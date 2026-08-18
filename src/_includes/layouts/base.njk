@@ -581,12 +581,25 @@
           root: {% if document %}{{ document.moduleKey | json | safe }}{% elif module %}{{ module.key | json | safe }}{% else %}null{% endif %}
         }
       };
-      window.GCK_VISUAL_SETTINGS = Promise.resolve(
-        window.GCK_EDITOR_BOOTSTRAP
-      ).then(function (payload) {
-        return payload && payload.config ? payload.config : {};
-      }).catch(function () {
-        return {};
+      window.GCK_VISUAL_SETTINGS = Promise.resolve().then(function () {
+        var settings = {};
+        try {
+          var identity = JSON.parse(
+            window.localStorage.getItem("gck-editor-identity:v1") || "null"
+          );
+          if (identity && identity.payload && identity.payload.config) {
+            settings = Object.assign(settings, identity.payload.config);
+          }
+          var intro = JSON.parse(
+            window.localStorage.getItem("gck-home-intro-settings") || "null"
+          );
+          if (intro) {
+            settings = Object.assign(settings, intro);
+          }
+        } catch (error) {
+          settings = {};
+        }
+        return settings;
       });
     </script>
     <script src="{{ '/assets/js/site-visuals.js' | assetUrl }}"></script>
