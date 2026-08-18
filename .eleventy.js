@@ -121,7 +121,9 @@ module.exports = function configureEleventy(eleventyConfig) {
       (
         target.toLowerCase() === "readme.md"
           ? catalog.sourceRoutes[
-              `${sourceRelative.split("/")[0]}/README.md`
+              sourceRelative.split("/").length > 2
+                ? `${sourceRelative.split("/")[0]}/${sourceRelative.split("/")[1]}/README.md`
+                : `${sourceRelative.split("/")[0]}/README.md`
             ]
           : null
       );

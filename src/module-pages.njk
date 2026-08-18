@@ -9,6 +9,7 @@ eleventyComputed:
   title: "{{ module.title }}"
   description: "{{ module.description }}"
   activeModule: "{{ module.key }}"
+  activeTrack: "{{ module.trackKey }}"
   pageKind: "module"
 ---
 
@@ -126,6 +127,10 @@ eleventyComputed:
     <nav class="breadcrumbs" aria-label="面包屑">
       <a href="{{ '/' | withBase }}">首页</a>
       <i data-lucide="chevron-right" aria-hidden="true"></i>
+      {% if module.trackKey %}
+        <a href="{{ ('/' ~ module.trackKey ~ '/') | withBase }}">{{ module.trackTitle }}</a>
+        <i data-lucide="chevron-right" aria-hidden="true"></i>
+      {% endif %}
       <span>{{ module.title }}</span>
     </nav>
     <div class="module-title-row">
@@ -134,7 +139,7 @@ eleventyComputed:
       </span>
       <div>
         <p class="eyebrow">
-          {% if module.key == "code" %}
+          {% if module.moduleSlug == "code" %}
             {{ catalog.codeProjects | length }} 个代码工程
           {% else %}
             {{ module.documentCount }} 篇内容{% if module.codeCount %} · {{ module.codeCount }} 个源码文件{% endif %}
@@ -195,7 +200,7 @@ eleventyComputed:
     {% endif %}
   </div>
 
-  {% if module.key == "code" %}
+  {% if module.moduleSlug == "code" %}
     <section class="code-project-directory" aria-labelledby="code-project-title">
       <div class="section-heading">
         <div>

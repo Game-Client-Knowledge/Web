@@ -865,14 +865,14 @@ async function inspectPage(browser, scenario) {
       const sourceHref = await editorLink.getAttribute("href");
       await Promise.all([
         page.waitForURL(
-          "**/knowledge/ecs/06-component-query-implementation/"
+          "**/program/knowledge/ecs/06-component-query-implementation/"
         ),
         editorLink.click()
       ]);
       assert(
         sourceHref === "./06-component-query-implementation.md" &&
           page.url().endsWith(
-            "/knowledge/ecs/06-component-query-implementation/"
+            "/program/knowledge/ecs/06-component-query-implementation/"
           ),
         `${scenario.name}: editor link did not resolve to the reader route`
       );
@@ -1340,7 +1340,7 @@ async function inspectPage(browser, scenario) {
     },
     {
       name: "catalog-circuit-desktop",
-      route: "/knowledge/",
+      route: "/program/knowledge/",
       viewport: { width: 1440, height: 1000 },
       ambient: { type: "catalog", style: "circuit" },
       pointerEffect: true,
@@ -1348,7 +1348,7 @@ async function inspectPage(browser, scenario) {
     },
     {
       name: "catalog-constellation-desktop",
-      route: "/knowledge/",
+      route: "/program/knowledge/",
       viewport: { width: 1440, height: 1000 },
       ambient: { type: "catalog", style: "constellation" },
       pointerEffect: false,
@@ -1359,7 +1359,7 @@ async function inspectPage(browser, scenario) {
     },
     {
       name: "catalog-clean-mobile",
-      route: "/knowledge/",
+      route: "/program/knowledge/",
       viewport: { width: 390, height: 844 },
       ambient: { type: "catalog", style: "clean" },
       pointerEffect: false,
@@ -1380,14 +1380,14 @@ async function inspectPage(browser, scenario) {
     },
     {
       name: "article-tablet",
-      route: "/interviews/mihoyo/2026-autumn-early-game-client-source-code/04-third-round-answers/",
+      route: "/program/interviews/mihoyo/2026-autumn-early-game-client-source-code/04-third-round-answers/",
       viewport: { width: 1024, height: 900 },
       ambient: { type: "reader", style: "blueprint" },
       pointerEffect: true
     },
     {
       name: "article-mobile",
-      route: "/knowledge/ecs/01-fundamentals/",
+      route: "/program/knowledge/ecs/01-fundamentals/",
       viewport: { width: 390, height: 844 },
       mobileSidebar: true,
       ambient: { type: "reader", style: "clean" },
@@ -1399,7 +1399,7 @@ async function inspectPage(browser, scenario) {
     },
     {
       name: "article-constellation-desktop",
-      route: "/knowledge/ecs/01-fundamentals/",
+      route: "/program/knowledge/ecs/01-fundamentals/",
       viewport: { width: 1440, height: 1000 },
       ambient: { type: "reader", style: "constellation" },
       pointerEffect: false,
@@ -1410,7 +1410,7 @@ async function inspectPage(browser, scenario) {
     },
     {
       name: "article-reduced-motion",
-      route: "/knowledge/ecs/01-fundamentals/",
+      route: "/program/knowledge/ecs/01-fundamentals/",
       viewport: { width: 1440, height: 1000 },
       ambient: { type: "reader", style: "blueprint" },
       pointerEffect: false,
@@ -1418,7 +1418,7 @@ async function inspectPage(browser, scenario) {
     },
     {
       name: "reader-editor-desktop",
-      route: "/knowledge/ecs/01-fundamentals/",
+      route: "/program/knowledge/ecs/01-fundamentals/",
       viewport: { width: 1440, height: 1000 },
       readerEditor: true,
       readerAutosave: true,
@@ -1426,7 +1426,7 @@ async function inspectPage(browser, scenario) {
     },
     {
       name: "reader-editor-roundtrip-desktop",
-      route: "/knowledge/ecs/01-fundamentals/",
+      route: "/program/knowledge/ecs/01-fundamentals/",
       viewport: { width: 1440, height: 1000 },
       readerEditor: true,
       readerRoundTrip: true,
@@ -1435,14 +1435,14 @@ async function inspectPage(browser, scenario) {
     },
     {
       name: "reader-editor-mobile",
-      route: "/knowledge/ecs/01-fundamentals/",
+      route: "/program/knowledge/ecs/01-fundamentals/",
       viewport: { width: 390, height: 844 },
       readerEditor: true,
       visualSettings: { pointer_effect_enabled: false }
     },
     {
       name: "module-draft-tree-desktop",
-      route: "/interviews/",
+      route: "/program/interviews/",
       viewport: { width: 1440, height: 1000 },
       authenticated: true,
       workspaceTree: true,
@@ -1451,7 +1451,7 @@ async function inspectPage(browser, scenario) {
         {
           id: 9101,
           path:
-            "interviews/visual-company/" +
+            "program/interviews/visual-company/" +
             "2027-game-client/README.md",
           operation: "upsert",
           content:
@@ -1465,7 +1465,7 @@ async function inspectPage(browser, scenario) {
         {
           id: 9102,
           path:
-            "interviews/visual-company/" +
+            "program/interviews/visual-company/" +
             "2027-game-client/01-first-round.md",
           operation: "upsert",
           content: "# 视觉测试一面\n\n第一轮面试内容。\n",
@@ -1479,7 +1479,7 @@ async function inspectPage(browser, scenario) {
     },
     {
       name: "module-delete-controls-mobile",
-      route: "/interviews/",
+      route: "/program/interviews/",
       viewport: { width: 390, height: 844 },
       authenticated: true,
       workspaceTree: true,
@@ -1489,7 +1489,7 @@ async function inspectPage(browser, scenario) {
         {
           id: 9201,
           path:
-            "interviews/visual-company/" +
+            "program/interviews/visual-company/" +
             "2027-game-client/README.md",
           operation: "upsert",
           content:
@@ -1502,7 +1502,7 @@ async function inspectPage(browser, scenario) {
         {
           id: 9202,
           path:
-            "interviews/visual-company/" +
+            "program/interviews/visual-company/" +
             "2027-game-client/01-first-round.md",
           operation: "upsert",
           content: "# 视觉测试一面\n\n第一轮面试内容。\n",
@@ -1516,13 +1516,13 @@ async function inspectPage(browser, scenario) {
     },
     {
       name: "mermaid-desktop",
-      route: "/knowledge/ecs/",
+      route: "/program/knowledge/ecs/",
       viewport: { width: 1440, height: 1000 },
       mermaid: true
     },
     {
       name: "source-desktop",
-      route: "/examples/algorithms/mihoyo-third-round/files/main.cpp/",
+      route: "/program/examples/algorithms/mihoyo-third-round/files/main.cpp/",
       viewport: { width: 1440, height: 1000 },
       source: true
     },

@@ -18,6 +18,14 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{1,30}[A-Za-z0-9]$")
 SLUG_RE = re.compile(r"[^a-z0-9-]+")
 ALLOWED_ROOTS = {"knowledge", "interviews", "examples"}
+TRACK_ROOTS = {"program", "planning"}
+MARKDOWN_ONLY_MODULES = {
+    "knowledge",
+    "interviews",
+    "written-tests",
+    "cases",
+    "templates",
+}
 MODULE_ROOT_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$")
 RESERVED_ROOTS = {
     "deploy",
@@ -134,7 +142,16 @@ def validate_content_path(value: str) -> str:
     path = PurePosixPath(raw)
     if ".." in path.parts or any(part.startswith(".") for part in path.parts):
         raise ValueError("内容路径不能包含隐藏目录或上级目录")
-    if len(path.parts) < 2 or not is_valid_module_root(path.parts[0]):
+    if path.parts[0] in TRACK_ROOTS:
+        if (
+            len(path.parts) < 3
+            or not is_valid_module_root(path.parts[1])
+        ):
+            raise ValueError("内容必须位于有效的赛道模块目录")
+        module_slug = path.parts[1]
+    elif len(path.parts) >= 2 and is_valid_module_root(path.parts[0]):
+        module_slug = path.parts[0]
+    else:
         raise ValueError("内容必须位于有效的顶级模块目录")
     if len(raw) > 240:
         raise ValueError("内容路径过长")
@@ -142,7 +159,7 @@ def validate_content_path(value: str) -> str:
     extension = path.suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:
         raise ValueError("不支持该文件类型")
-    if path.parts[0] in {"knowledge", "interviews"} and extension != ".md":
+    if module_slug in MARKDOWN_ONLY_MODULES and extension != ".md":
         raise ValueError("知识与面经目录只允许 Markdown 文件")
     return path.as_posix()
 
@@ -165,12 +182,20 @@ def validate_repository_path(
     path = PurePosixPath(raw)
     if ".." in path.parts or any(part.startswith(".") for part in path.parts):
         raise ValueError("仓库路径不能包含隐藏目录或上级目录")
-    minimum_parts = 1 if allow_module_root else 2
-    if (
-        len(path.parts) < minimum_parts
-        or not is_valid_module_root(path.parts[0])
-    ):
-        raise ValueError("仓库路径必须位于有效的顶级模块内")
+    if path.parts[0] in TRACK_ROOTS:
+        minimum_parts = 2 if allow_module_root else 3
+        if (
+            len(path.parts) < minimum_parts
+            or not is_valid_module_root(path.parts[1])
+        ):
+            raise ValueError("仓库路径必须位于有效的赛道模块内")
+    else:
+        minimum_parts = 1 if allow_module_root else 2
+        if (
+            len(path.parts) < minimum_parts
+            or not is_valid_module_root(path.parts[0])
+        ):
+            raise ValueError("仓库路径必须位于有效的顶级模块内")
     if len(raw) > 240:
         raise ValueError("仓库路径过长")
     return path.as_posix()

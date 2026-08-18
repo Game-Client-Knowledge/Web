@@ -18,14 +18,23 @@ function write(relative, content) {
 
 try {
   for (const [key, title] of [
-    ["knowledge", "八股与专题"],
-    ["interviews", "真实面经"],
-    ["examples", "代码示例"]
+    ["program", "程序赛道"],
+    ["planning", "策划赛道"]
+  ]) {
+    write(`${key}/README.md`, `# ${title}\n\n${title}说明。\n`);
+  }
+  for (const [key, title] of [
+    ["program/knowledge", "八股与专题"],
+    ["program/interviews", "真实面经"],
+    ["program/examples", "代码示例"],
+    ["program/code", "代码阅读"],
+    ["planning/knowledge", "策划八股"],
+    ["planning/interviews", "策划面经"]
   ]) {
     write(`${key}/README.md`, `# ${title}\n\n${title}说明。\n`);
   }
   write(
-    "graphics/README.md",
+    "program/graphics/README.md",
     `---
 shortTitle: 图形
 icon: shapes
@@ -39,16 +48,16 @@ order: 40
 `
   );
   write(
-    "graphics/rendering/README.md",
+    "program/graphics/rendering/README.md",
     "# 渲染基础\n\n渲染管线与图形 API。\n"
   );
-  write("graphics/rendering/demo.cpp", "int main() { return 0; }\n");
+  write("program/graphics/rendering/demo.cpp", "int main() { return 0; }\n");
   write(
-    "graphics/rendering/materials/README.md",
+    "program/graphics/rendering/materials/README.md",
     "# 材质系统\n\n材质、着色器与参数绑定。\n"
   );
   write(
-    "graphics/rendering/materials/01-overview.md",
+    "program/graphics/rendering/materials/01-overview.md",
     "# 材质概览\n\n材质系统概览。\n"
   );
 
@@ -60,10 +69,14 @@ order: 40
   const { loadCatalog } = require("../lib/content-loader");
   const catalog = loadCatalog();
   const graphics = catalog.modules.find(
-    (module) => module.key === "graphics"
+    (module) => module.key === "program/graphics"
   );
 
-  assert(graphics, "a top-level README must create a website module");
+  assert.deepEqual(
+    catalog.tracks.map((track) => track.key),
+    ["program", "planning"]
+  );
+  assert(graphics, "a track module README must create a website module");
   assert.equal(graphics.title, "图形与渲染");
   assert.equal(graphics.shortTitle, "图形");
   assert.equal(graphics.icon, "shapes");
@@ -72,37 +85,55 @@ order: 40
   assert(
     catalog.documents.some(
       (document) =>
-        document.sourceRelative === "graphics/rendering/demo.cpp"
+        document.sourceRelative === "program/graphics/rendering/demo.cpp" &&
+        document.moduleKey === "program/graphics" &&
+        document.trackKey === "program" &&
+        document.moduleSlug === "graphics"
     ),
     "allowCode modules must include source files"
   );
   assert.deepEqual(
-    catalog.modules.slice(0, 4).map((module) => module.key),
-    ["knowledge", "interviews", "examples", "graphics"]
+    catalog.modules.slice(0, 5).map((module) => module.key),
+    [
+      "program/knowledge",
+      "program/interviews",
+      "program/examples",
+      "program/code",
+      "program/graphics"
+    ]
   );
   assert.equal(graphics.rootUnits.length, 1);
-  assert.equal(graphics.rootUnits[0].id, "graphics/rendering");
+  assert.equal(graphics.rootUnits[0].id, "program/graphics/rendering");
   assert.equal(graphics.rootUnits[0].children.length, 1);
   assert.equal(
     graphics.rootUnits[0].children[0].id,
-    "graphics/rendering/materials"
+    "program/graphics/rendering/materials"
   );
   assert.equal(
     graphics.rootUnits[0].children[0].parentId,
-    "graphics/rendering"
+    "program/graphics/rendering"
   );
   assert.deepEqual(
     graphics.rootUnits[0].children[0].ancestorIds,
-    ["graphics/rendering"]
+    ["program/graphics/rendering"]
   );
   assert(
     catalog.workspaceEntries.some(
       (entry) =>
-        entry.path === "graphics/rendering/materials/README.md" &&
+        entry.path === "program/graphics/rendering/materials/README.md" &&
+        entry.moduleKey === "program/graphics" &&
         entry.isReadme &&
         entry.title === "材质系统"
     ),
     "the client workspace tree must receive generated content metadata"
+  );
+  assert(
+    catalog.legacyRedirects.some(
+      (redirect) =>
+        redirect.from === "/graphics/rendering/" &&
+        redirect.to === "/program/graphics/rendering/"
+    ),
+    "program track routes must publish legacy redirects"
   );
   assert.deepEqual(
     catalog.contributors,

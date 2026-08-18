@@ -691,20 +691,41 @@ function renderChanges() {
 
 function renderTopicRootOptions(entries) {
   const labels = {
+    "program/knowledge": "程序 / 知识专题",
+    "program/interviews": "程序 / 面经",
+    "program/examples": "程序 / 代码示例",
+    "program/code": "程序 / 代码阅读",
+    "planning/knowledge": "策划 / 八股",
+    "planning/interviews": "策划 / 面经",
+    "planning/written-tests": "策划 / 笔试题",
+    "planning/cases": "策划 / 案例拆解",
+    "planning/templates": "策划 / 模板",
     knowledge: "知识专题",
     interviews: "面经",
     examples: "代码示例"
   };
+  function moduleRootForPath(path) {
+    const parts = path.split("/");
+    if ((parts[0] === "program" || parts[0] === "planning") && parts.length >= 2) {
+      return parts.slice(0, 2).join("/");
+    }
+    return parts[0] || "";
+  }
+  function isModuleReadme(path) {
+    const parts = path.split("/");
+    if (parts[0] === "program" || parts[0] === "planning") {
+      return parts.length === 3 && parts[2].toLowerCase() === "readme.md";
+    }
+    return parts.length === 2 && parts[1].toLowerCase() === "readme.md";
+  }
   const roots = entries
     .filter((entry) => {
-      const parts = entry.path.split("/");
       return (
-        parts.length === 2 &&
-        parts[1].toLowerCase() === "readme.md" &&
+        isModuleReadme(entry.path) &&
         entry.draft?.operation !== "delete"
       );
     })
-    .map((entry) => entry.path.split("/")[0])
+    .map((entry) => moduleRootForPath(entry.path))
     .filter((value, index, values) => values.indexOf(value) === index)
     .sort((left, right) =>
       left.localeCompare(right, "zh-CN", { numeric: true })

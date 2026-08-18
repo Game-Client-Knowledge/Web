@@ -124,6 +124,16 @@
         </a>
 
         <nav class="primary-nav" aria-label="主导航">
+          {% if catalog.tracks.length %}
+            {% for track in catalog.tracks %}
+              <a
+                href="{{ track.route | withBase }}"
+                {% if activeTrack == track.key %}aria-current="page"{% endif %}
+              >
+                {{ track.shortTitle }}
+              </a>
+            {% endfor %}
+          {% else %}
           {% for module in catalog.modules %}
             <a
               href="{{ module.route | withBase }}"
@@ -132,6 +142,7 @@
               {{ module.shortTitle }}
             </a>
           {% endfor %}
+          {% endif %}
         </nav>
 
         <div class="header-actions">
@@ -212,12 +223,21 @@
       </div>
 
       <nav class="mobile-nav" data-mobile-nav aria-label="移动端导航">
+        {% if catalog.tracks.length %}
+          {% for track in catalog.tracks %}
+            <a href="{{ track.route | withBase }}">
+              <i data-lucide="{{ track.icon }}" aria-hidden="true"></i>
+              {{ track.title }}
+            </a>
+          {% endfor %}
+        {% else %}
         {% for module in catalog.modules %}
           <a href="{{ module.route | withBase }}">
             <i data-lucide="{{ module.icon }}" aria-hidden="true"></i>
             {{ module.title }}
           </a>
         {% endfor %}
+        {% endif %}
       </nav>
     </header>
 

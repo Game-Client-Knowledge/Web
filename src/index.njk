@@ -28,12 +28,12 @@ permalink: index.html
     </div>
     <dl class="intro-stats" aria-label="知识库内容统计">
       <div>
-        <dt>内容模块</dt>
-        <dd>{{ catalog.modules | length }}</dd>
+        <dt>岗位赛道</dt>
+        <dd>{{ catalog.tracks.length or 1 }}</dd>
       </div>
       <div>
-        <dt>知识专题</dt>
-        <dd>{{ catalog.units.length }}</dd>
+        <dt>内容模块</dt>
+        <dd>{{ catalog.modules | length }}</dd>
       </div>
       <div>
         <dt>可读内容</dt>
@@ -59,7 +59,69 @@ permalink: index.html
     </div>
   </div>
 
-  {% for module in catalog.modules %}
+  {% if catalog.tracks.length %}
+    {% for track in catalog.tracks %}
+      <section class="track-band track-{{ track.key }}" aria-labelledby="track-{{ track.key }}">
+        <div class="track-band-heading">
+          <div>
+            <p class="eyebrow">Career track</p>
+            <h3 id="track-{{ track.key }}">{{ track.title }}</h3>
+            <p>{{ track.description }}</p>
+          </div>
+          <a class="text-link" href="{{ track.route | withBase }}">
+            进入赛道
+            <i data-lucide="arrow-right" aria-hidden="true"></i>
+          </a>
+        </div>
+
+        {% for module in track.modules %}
+          <section class="module-band module-{{ module.accent }}" aria-labelledby="module-{{ module.key }}">
+            <div class="module-band-heading">
+              <div class="module-identity">
+                <span class="module-icon">
+                  <i data-lucide="{{ module.icon }}" aria-hidden="true"></i>
+                </span>
+                <div>
+                  <h4 id="module-{{ module.key }}">{{ module.title }}</h4>
+                  <p>{{ module.description }}</p>
+                </div>
+              </div>
+              <a class="text-link" href="{{ module.route | withBase }}">
+                查看全部
+                <i data-lucide="arrow-right" aria-hidden="true"></i>
+              </a>
+            </div>
+
+            <div class="unit-grid">
+              {% for unit in module.rootUnits %}
+                <a class="unit-card" href="{{ unit.route | withBase }}">
+                  <span class="unit-meta">
+                    {{ unit.articleCount }} 篇
+                    {% if unit.children.length %} · {{ unit.children.length }} 个子专题{% endif %}
+                    {% if unit.codeCount %} · {{ unit.codeCount }} 个源码文件{% endif %}
+                  </span>
+                  <strong>{{ unit.title }}</strong>
+                  <span class="unit-card-description">{{ unit.description }}</span>
+                  {% if unit.children.length %}
+                    <div class="unit-card-children">
+                      <small>子专题</small>
+                      {% for child in unit.children %}
+                        <span>{{ child.title }}</span>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                  <i data-lucide="arrow-up-right" aria-hidden="true"></i>
+                </a>
+              {% else %}
+                <p class="empty-state">该模块暂无内容。</p>
+              {% endfor %}
+            </div>
+          </section>
+        {% endfor %}
+      </section>
+    {% endfor %}
+  {% else %}
+    {% for module in catalog.modules %}
     <section class="module-band module-{{ module.accent }}" aria-labelledby="module-{{ module.key }}">
       <div class="module-band-heading">
         <div class="module-identity">
@@ -102,7 +164,8 @@ permalink: index.html
         {% endfor %}
       </div>
     </section>
-  {% endfor %}
+    {% endfor %}
+  {% endif %}
 </section>
 
 <section class="contribution-band">

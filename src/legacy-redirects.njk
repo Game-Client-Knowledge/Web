@@ -1,0 +1,23 @@
+---
+pagination:
+  data: catalog.legacyRedirects
+  size: 1
+  alias: redirect
+permalink: "{{ redirect.outputPath }}"
+eleventyExcludeFromCollections: true
+---
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="refresh" content="0; url={{ redirect.to | withBase }}">
+    <link rel="canonical" href="{{ redirect.to | withBase }}">
+    <title>页面已迁移</title>
+  </head>
+  <body>
+    <p>页面已迁移到 <a href="{{ redirect.to | withBase }}">{{ redirect.to }}</a>。</p>
+    <script>
+      window.location.replace({{ (redirect.to | withBase) | json | safe }});
+    </script>
+  </body>
+</html>

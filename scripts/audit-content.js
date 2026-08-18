@@ -114,18 +114,32 @@ function validateMarkdown(file) {
   }
 }
 
-for (const requiredDirectory of [
-  "knowledge",
-  "interviews",
-  "examples",
-  "code"
-]) {
-  const directory = path.join(root, requiredDirectory);
+const requiredModules = [
+  "program/knowledge",
+  "program/interviews",
+  "program/examples",
+  "program/code",
+  "planning/knowledge",
+  "planning/interviews",
+  "planning/written-tests",
+  "planning/cases",
+  "planning/templates"
+];
+
+for (const requiredTrack of ["program", "planning"]) {
+  const readme = path.join(root, requiredTrack, "README.md");
+  if (!fs.existsSync(readme)) {
+    errors.push(`缺少岗位赛道说明：${requiredTrack}/README.md`);
+  }
+}
+
+for (const requiredModule of requiredModules) {
+  const directory = path.join(root, requiredModule);
   if (!fs.existsSync(directory)) {
-    errors.push(`缺少内容目录：${requiredDirectory}/`);
+    errors.push(`缺少内容模块目录：${requiredModule}/`);
   }
   if (!fs.existsSync(path.join(directory, "README.md"))) {
-    errors.push(`缺少内容类型说明：${requiredDirectory}/README.md`);
+    errors.push(`缺少内容模块说明：${requiredModule}/README.md`);
   }
 }
 
@@ -165,8 +179,12 @@ if (catalog) {
   );
   for (const file of markdownFiles) {
     const relative = toPosix(path.relative(root, file));
-    if (moduleKeys.has(relative.split("/")[0])) {
-      const isModuleReadme = relative.split("/").length === 2;
+    const parts = relative.split("/");
+    const moduleKey = moduleKeys.has(parts.slice(0, 2).join("/"))
+      ? parts.slice(0, 2).join("/")
+      : parts[0];
+    if (moduleKeys.has(moduleKey)) {
+      const isModuleReadme = relative === `${moduleKey}/README.md`;
       if (!isModuleReadme && !indexedMarkdown.has(relative)) {
         report(file, "内容未被网站扫描器收录");
       }

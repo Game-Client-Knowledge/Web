@@ -9,6 +9,7 @@ eleventyComputed:
   title: "{{ document.title }}"
   description: "{{ document.description }}"
   activeModule: "{{ document.moduleKey }}"
+  activeTrack: "{{ document.trackKey }}"
   pageKind: "document"
 ---
 
@@ -93,6 +94,10 @@ eleventyComputed:
     >
       <header class="article-header">
         <nav class="breadcrumbs" aria-label="面包屑">
+          {% if currentModule.trackKey %}
+            <a href="{{ ('/' ~ currentModule.trackKey ~ '/') | withBase }}">{{ currentModule.trackTitle }}</a>
+            <i data-lucide="chevron-right" aria-hidden="true"></i>
+          {% endif %}
           <a href="{{ currentModule.route | withBase }}">{{ currentModule.title }}</a>
           <i data-lucide="chevron-right" aria-hidden="true"></i>
           {% for ancestor in currentUnit.ancestors %}
@@ -110,7 +115,7 @@ eleventyComputed:
             data-lucide="{% if document.kind == 'code' %}file-code-2{% else %}file-text{% endif %}"
             aria-hidden="true"
           ></i>
-          {% if document.kind == "code" %}源码{% elif document.moduleKey == "interviews" %}面经{% else %}知识文档{% endif %}
+          {% if document.kind == "code" %}源码{% elif document.moduleSlug == "interviews" %}面经{% else %}知识文档{% endif %}
         </p>
         <h1>{{ document.title }}</h1>
         <p class="article-description">{{ document.description }}</p>

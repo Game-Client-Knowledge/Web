@@ -1,0 +1,74 @@
+---
+layout: layouts/base.njk
+pagination:
+  data: catalog.tracks
+  size: 1
+  alias: track
+permalink: "{{ track.outputPath }}"
+eleventyComputed:
+  title: "{{ track.title }}"
+  description: "{{ track.description }}"
+  activeTrack: "{{ track.key }}"
+  pageKind: "track"
+---
+
+<div class="track-page-shell">
+  <header class="track-page-header">
+    <nav class="breadcrumbs" aria-label="面包屑">
+      <a href="{{ '/' | withBase }}">首页</a>
+      <i data-lucide="chevron-right" aria-hidden="true"></i>
+      <span>{{ track.title }}</span>
+    </nav>
+    <div class="track-title-row">
+      <span class="module-icon">
+        <i data-lucide="{{ track.icon }}" aria-hidden="true"></i>
+      </span>
+      <div>
+        <p class="eyebrow">{{ track.modules.length }} 个内容模块</p>
+        <h1>{{ track.title }}</h1>
+        <p>{{ track.description }}</p>
+      </div>
+    </div>
+  </header>
+
+  {% if track.body %}
+    <div class="module-introduction prose compact-prose">
+      {{ track.body | renderMarkdown(track.sourceRelative) | safe }}
+    </div>
+  {% endif %}
+
+  <section class="track-module-directory" aria-labelledby="track-modules-{{ track.key }}">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Modules</p>
+        <h2 id="track-modules-{{ track.key }}">赛道模块</h2>
+      </div>
+      <button
+        class="filter-search"
+        type="button"
+        data-open-search
+      >
+        <i data-lucide="search" aria-hidden="true"></i>
+        搜索本赛道
+      </button>
+    </div>
+
+    <div class="track-module-grid">
+      {% for module in track.modules %}
+        <a class="track-module-card module-{{ module.accent }}" href="{{ module.route | withBase }}">
+          <span class="module-icon">
+            <i data-lucide="{{ module.icon }}" aria-hidden="true"></i>
+          </span>
+          <span class="unit-meta">
+            {{ module.documentCount }} 篇内容{% if module.codeCount %} · {{ module.codeCount }} 个源码文件{% endif %}
+          </span>
+          <strong>{{ module.title }}</strong>
+          <span>{{ module.description }}</span>
+          <i data-lucide="arrow-up-right" aria-hidden="true"></i>
+        </a>
+      {% else %}
+        <p class="empty-state">该赛道暂无模块。</p>
+      {% endfor %}
+    </div>
+  </section>
+</div>

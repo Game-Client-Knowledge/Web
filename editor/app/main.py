@@ -50,6 +50,7 @@ from .pr_lifecycle import (
 )
 from .security import (
     ALLOWED_ROOTS,
+    TRACK_ROOTS,
     TokenCipher,
     hash_password,
     is_valid_module_root,
@@ -146,6 +147,25 @@ class AdminApplicationRequest(BaseModel):
 
 class AdminDecisionRequest(BaseModel):
     decision: str
+
+
+def module_root_for_path(value: str) -> str:
+    parts = value.split("/")
+    if parts and parts[0] in TRACK_ROOTS and len(parts) >= 2:
+        return "/".join(parts[:2])
+    return parts[0] if parts else ""
+
+
+def is_module_readme_path(value: str) -> bool:
+    parts = value.split("/")
+    if parts and parts[0] in TRACK_ROOTS:
+        return len(parts) == 3 and parts[-1] == "README.md"
+    return len(parts) == 2 and parts[-1] == "README.md"
+
+
+def is_track_readme_path(value: str) -> bool:
+    parts = value.split("/")
+    return len(parts) == 2 and parts[0] in TRACK_ROOTS and parts[-1] == "README.md"
 
 
 class SettingsRequest(BaseModel):
@@ -1740,10 +1760,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }:
             raise HTTPException(status_code=422, detail="模块图标无效")
 
-        path = f"{slug}/README.md"
+        path = f"program/{slug}/README.md"
         tree = await github.repository_tree()
         if any(item["path"] == path for item in tree):
-            raise HTTPException(status_code=409, detail="远端已存在该顶级模块")
+            raise HTTPException(status_code=409, detail="远端已存在该程序模块")
         description = payload.description.strip() or (
             f"{payload.title.strip()} 的知识内容与阅读导航。"
         )
@@ -1768,7 +1788,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if occupied:
                 raise HTTPException(
                     status_code=409,
-                    detail="已有用户创建了同名顶级模块草稿",
+                    detail="已有用户创建了同名程序模块草稿",
                 )
             count = connection.execute(
                 "SELECT COUNT(*) AS count FROM drafts WHERE user_id = ?",
@@ -1811,10 +1831,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         verify_csrf(user, x_csrf_token)
         tree = await github.repository_tree()
         module_roots = {
-            item["path"].split("/", 1)[0]
+            module_root_for_path(item["path"])
             for item in tree
-            if item["path"].count("/") == 1
-            and item["path"].endswith("/README.md")
+            if is_module_readme_path(item["path"])
         }
         with db.connect() as connection:
             for row in connection.execute(
@@ -1824,12 +1843,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 """,
                 (user["id"],),
             ).fetchall():
-                if row["path"].count("/") == 1 and row["path"].endswith(
-                    "/README.md"
-                ):
-                    module_roots.add(row["path"].split("/", 1)[0])
+                if is_module_readme_path(row["path"]):
+                    module_roots.add(module_root_for_path(row["path"]))
         if payload.root not in module_roots:
-            raise HTTPException(status_code=422, detail="顶级模块不存在")
+            raise HTTPException(status_code=422, detail="内容模块不存在")
         slug = slugify(payload.slug, "")
         if not slug:
             raise HTTPException(status_code=422, detail="专题目录名无效")
@@ -2053,23 +2070,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         }
         available_roots = set(ALLOWED_ROOTS) | {
-            path.split("/", 1)[0]
+            module_root_for_path(path)
             for path in tree
-            if path.count("/") == 1 and path.endswith("/README.md")
+            if is_module_readme_path(path)
         }
         available_roots.update(
-            draft["path"].split("/", 1)[0]
+            module_root_for_path(draft["path"])
             for draft in drafts
             if draft["operation"] == "upsert"
-            and draft["path"].count("/") == 1
-            and draft["path"].endswith("/README.md")
+            and is_module_readme_path(draft["path"])
         )
         deleted_roots = {
-            draft["path"].split("/", 1)[0]
+            module_root_for_path(draft["path"])
             for draft in drafts
             if draft["operation"] == "delete"
-            and draft["path"].count("/") == 1
-            and draft["path"].endswith("/README.md")
+            and is_module_readme_path(draft["path"])
         }
         deleted_paths = {
             draft["path"]
@@ -2100,7 +2115,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
         available_roots.difference_update(deleted_roots)
         for draft in drafts:
-            root = draft["path"].split("/", 1)[0]
+            if is_track_readme_path(draft["path"]):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{draft['path']} 是赛道入口，不能通过普通内容提交修改",
+                )
+            root = module_root_for_path(draft["path"])
             if root in deleted_roots:
                 if draft["operation"] != "delete":
                     raise HTTPException(

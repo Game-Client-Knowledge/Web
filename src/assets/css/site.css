@@ -756,6 +756,35 @@ body[data-editor-state="loading"] [data-account-label] {
   font-size: 13px;
 }
 
+.track-band {
+  padding: 28px 0 42px;
+  border-top: 1px solid var(--line);
+}
+
+.track-band + .track-band {
+  margin-top: 18px;
+}
+
+.track-band-heading {
+  display: flex;
+  margin-bottom: 10px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.track-band-heading h3 {
+  margin: 0 0 6px;
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+.track-band-heading p {
+  max-width: 720px;
+  margin: 0;
+  color: var(--ink-soft);
+}
+
 .module-band {
   display: grid;
   padding: 30px 0 34px;
@@ -808,6 +837,11 @@ body[data-editor-state="loading"] [data-account-label] {
 .module-band-heading h3 {
   margin: 0 0 3px;
   font-size: 20px;
+}
+
+.module-band-heading h4 {
+  margin: 0 0 3px;
+  font-size: 19px;
 }
 
 .module-band-heading p {
@@ -1064,7 +1098,20 @@ body[data-editor-state="loading"] [data-account-label] {
     72px;
 }
 
+.track-page-shell {
+  box-sizing: border-box;
+  width: min(100% - 56px, 1220px);
+  min-height: calc(100vh - var(--header-height));
+  margin: 0 auto;
+  padding: 34px clamp(28px, 3.2vw, 46px) 72px;
+}
+
 .module-page-header {
+  padding-bottom: 30px;
+  border-bottom: 1px solid var(--line);
+}
+
+.track-page-header {
   padding-bottom: 30px;
   border-bottom: 1px solid var(--line);
 }
@@ -1106,7 +1153,18 @@ body[data-editor-state="loading"] [data-account-label] {
   gap: 18px;
 }
 
+.track-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+}
+
 .module-title-row .module-icon {
+  width: 54px;
+  height: 54px;
+}
+
+.track-title-row .module-icon {
   width: 54px;
   height: 54px;
 }
@@ -1116,7 +1174,19 @@ body[data-editor-state="loading"] [data-account-label] {
   height: 27px;
 }
 
+.track-title-row .module-icon svg {
+  width: 27px;
+  height: 27px;
+}
+
 .module-title-row h1 {
+  margin: 0 0 8px;
+  font-size: 36px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.track-title-row h1 {
   margin: 0 0 8px;
   font-size: 36px;
   line-height: 1.2;
@@ -1130,9 +1200,78 @@ body[data-editor-state="loading"] [data-account-label] {
   font-size: 16px;
 }
 
+.track-title-row p:last-child {
+  max-width: 760px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 16px;
+}
+
 .module-introduction {
   padding: 24px 0 6px;
   border-bottom: 1px solid var(--line);
+}
+
+.track-module-directory {
+  padding-top: 38px;
+}
+
+.track-module-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.track-module-card {
+  position: relative;
+  display: flex;
+  min-height: 186px;
+  padding: 20px 46px 20px 20px;
+  color: var(--ink);
+  background: #fbfcfb;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  flex-direction: column;
+  gap: 10px;
+  text-decoration: none;
+  clip-path: polygon(
+    0 0,
+    calc(100% - 7px) 0,
+    100% 7px,
+    100% 100%,
+    7px 100%,
+    0 calc(100% - 7px)
+  );
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.track-module-card:hover {
+  color: var(--teal-dark);
+  background: #ffffff;
+  border-color: rgba(18, 131, 109, 0.32);
+  box-shadow: 0 14px 32px rgba(14, 47, 39, 0.12);
+}
+
+.track-module-card > strong {
+  font-size: 19px;
+}
+
+.track-module-card > span:last-of-type {
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.track-module-card > svg,
+.track-module-card > i:last-child {
+  position: absolute;
+  top: 20px;
+  right: 18px;
+  color: var(--ink-faint);
 }
 
 .module-directory {
@@ -4357,6 +4496,16 @@ body.has-comments-open .reader-comments {
     justify-content: space-between;
   }
 
+  .track-band-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .track-band-heading h3 {
+    font-size: 24px;
+  }
+
   .module-band {
     padding: 25px 0 28px;
   }
@@ -4367,6 +4516,23 @@ body.has-comments-open .reader-comments {
 
   .module-band-heading p {
     display: none;
+  }
+
+  .track-page-shell {
+    width: calc(100% - 32px);
+    padding: 24px 18px 56px;
+  }
+
+  .track-title-row {
+    gap: 14px;
+  }
+
+  .track-title-row h1 {
+    font-size: 30px;
+  }
+
+  .track-module-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .module-band-heading .module-icon {

@@ -125,7 +125,7 @@
     if (item.kind === "code") {
       return "源码";
     }
-    if (item.moduleKey === "interviews") {
+    if (item.moduleSlug === "interviews") {
       return "面经";
     }
     if (item.moduleKey === "contribute") {
