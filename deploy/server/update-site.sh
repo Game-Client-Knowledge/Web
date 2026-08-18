@@ -5,6 +5,9 @@ set -euo pipefail
 BUILDER_ROOT="${BUILDER_ROOT:-/home/sourcecode/gck-builder}"
 WEB_ROOT="${WEB_ROOT:-${BUILDER_ROOT}/web}"
 RELEASE_ROOT="${RELEASE_ROOT:-/var/www/game-client-knowledge}"
+EDITOR_RELEASE_ROOT="${EDITOR_RELEASE_ROOT:-/opt/game-client-knowledge-editor}"
+EDITOR_SERVICE="${EDITOR_SERVICE:-game-client-knowledge-editor}"
+EDITOR_PIP_INDEX_URL="${EDITOR_PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 CONTENT_STATE_FILE="${CONTENT_STATE_FILE:-${BUILDER_ROOT}/last-content-commit}"
 WEB_STATE_FILE="${WEB_STATE_FILE:-${BUILDER_ROOT}/last-web-commit}"
 ATTRIBUTION_STATE_FILE="${ATTRIBUTION_STATE_FILE:-${BUILDER_ROOT}/last-attribution-commit}"
@@ -450,12 +453,56 @@ update_stage="prepare-snapshots"
 expected_source="$(mktemp)"
 printf 'web=%s\ncontent=%s\n' "$web_commit" "$content_commit" >"$expected_source"
 
+editor_is_current=1
+if [[ "$update_mode" != "content" ]]; then
+  editor_is_current=0
+  if [[
+    -f "${EDITOR_RELEASE_ROOT}/current/.web-commit"
+    && "$(cat "${EDITOR_RELEASE_ROOT}/current/.web-commit")" == "$web_commit"
+  ]]; then
+    editor_is_current=1
+  fi
+fi
+
+IFS=$'\t' read -r \
+  contribution_graph_initialized \
+  contribution_graph_revision < <(
+  python3 - "$EDITOR_DB_PATH" <<'PY'
+import sqlite3
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+initialized = 0
+revision = ""
+if path.exists():
+    try:
+        with sqlite3.connect(path) as connection:
+            table = connection.execute(
+                "SELECT 1 FROM sqlite_master "
+                "WHERE type = 'table' AND name = 'document_contributors'"
+            ).fetchone()
+            row = connection.execute(
+                "SELECT value FROM settings "
+                "WHERE key = 'contribution_graph_revision'"
+            ).fetchone() if table else None
+        if table and row and row[0]:
+            initialized = 1
+            revision = str(row[0])
+    except sqlite3.Error:
+        pass
+print(f"{initialized}\t{revision}")
+PY
+)
+
 if [[
   -f "${RELEASE_ROOT}/current/index.html"
   && -f "${RELEASE_ROOT}/current/.release-source"
   && "$(cat "${RELEASE_ROOT}/current/.release-source")" == "$(cat "$expected_source")"
   && -f "$ATTRIBUTION_STATE_FILE"
   && "$(cat "$ATTRIBUTION_STATE_FILE")" == "$content_commit"
+  && "$editor_is_current" == "1"
+  && "$contribution_graph_revision" == "$content_commit"
 ]]; then
   printf '%s\n' "$content_commit" >"$CONTENT_STATE_FILE"
   printf '%s\n' "$web_commit" >"$WEB_STATE_FILE"
@@ -524,32 +571,6 @@ WEB_COMMIT="$web_commit" \
 
 update_stage="sync-line-authors"
 previous_attribution_commit=""
-contribution_graph_initialized="$(
-  python3 - "$EDITOR_DB_PATH" <<'PY'
-import sqlite3
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-if not path.exists():
-    print(0)
-    raise SystemExit
-try:
-    with sqlite3.connect(path) as connection:
-        table = connection.execute(
-            "SELECT 1 FROM sqlite_master "
-            "WHERE type = 'table' AND name = 'document_contributors'"
-        ).fetchone()
-        revision = connection.execute(
-            "SELECT value FROM settings "
-            "WHERE key = 'contribution_graph_revision'"
-        ).fetchone() if table else None
-except sqlite3.Error:
-    table = None
-    revision = None
-print(1 if table and revision and revision[0] else 0)
-PY
-)"
 if [[ "$contribution_graph_initialized" == "1" && -f "$ATTRIBUTION_STATE_FILE" ]]; then
   candidate="$(cat "$ATTRIBUTION_STATE_FILE")"
   mapped_reference="refs/gck-upstream/${candidate}"
@@ -569,19 +590,136 @@ python3 scripts/sync-line-authors.py \
   --content-revision "$content_commit" \
   --previous "$previous_attribution_commit"
 
-update_stage="publish-release"
 release_id="$(
   printf '%s-%s-%s' \
     "$(date -u +%Y%m%dT%H%M%SZ)" \
     "${web_commit:0:12}" \
     "${content_commit:0:12}"
 )"
+update_stage="stage-release"
 release_dir="${RELEASE_ROOT}/releases/${release_id}"
 mkdir -p "$release_dir"
 rsync --archive --delete _site/ "${release_dir}/"
 cp "$expected_source" "${release_dir}/.release-source"
-
 test -f "${release_dir}/index.html"
+
+if [[ "$update_mode" != "content" && "$editor_is_current" != "1" ]]; then
+  update_stage="publish-editor-release"
+  editor_release_dir="${EDITOR_RELEASE_ROOT}/releases/${release_id}"
+  editor_venv="${EDITOR_RELEASE_ROOT}/venv"
+  editor_previous_target="$(
+    readlink -f "${EDITOR_RELEASE_ROOT}/current" 2>/dev/null || true
+  )"
+  editor_service_pid="$(
+    systemctl show "$EDITOR_SERVICE" -p MainPID --value 2>/dev/null || true
+  )"
+  editor_listener_pid="$(
+    lsof -nP -iTCP:8790 -sTCP:LISTEN -t 2>/dev/null | head -1 || true
+  )"
+
+  if [[ "$(systemctl is-active "$EDITOR_SERVICE" 2>/dev/null || true)" != "active" ]]; then
+    fail_update "${EDITOR_SERVICE} is not active."
+  fi
+  if [[
+    -z "$editor_service_pid"
+    || "$editor_service_pid" == "0"
+    || (
+      -n "$editor_listener_pid"
+      && "$editor_listener_pid" != "$editor_service_pid"
+    )
+  ]]; then
+    fail_update "Editor port 8790 is not owned by the managed service."
+  fi
+
+  mkdir -p "$editor_release_dir" "$editor_venv"
+  rsync \
+    --archive \
+    --delete \
+    "${web_snapshot}/editor/" \
+    "${editor_release_dir}/editor/"
+  printf '%s\n' "$web_commit" >"${editor_release_dir}/.web-commit"
+
+  if [[ ! -x "${editor_venv}/bin/python" ]]; then
+    python3 -m venv "$editor_venv"
+  fi
+  "${editor_venv}/bin/python" -m pip install \
+    --disable-pip-version-check \
+    --index-url "$EDITOR_PIP_INDEX_URL" \
+    --requirement "${editor_release_dir}/editor/requirements.txt"
+  PYTHONPATH="${editor_release_dir}/editor" \
+    "${editor_venv}/bin/python" -c "from app.main import create_app"
+
+  ln -sfn "$editor_release_dir" "${EDITOR_RELEASE_ROOT}/current.next"
+  mv -Tf \
+    "${EDITOR_RELEASE_ROOT}/current.next" \
+    "${EDITOR_RELEASE_ROOT}/current"
+  kill -TERM "$editor_service_pid"
+
+  editor_ready=0
+  for _attempt in $(seq 1 45); do
+    sleep 1
+    editor_next_pid="$(
+      systemctl show "$EDITOR_SERVICE" -p MainPID --value 2>/dev/null || true
+    )"
+    editor_next_cwd="$(
+      readlink -f "/proc/${editor_next_pid}/cwd" 2>/dev/null || true
+    )"
+    if [[
+      -n "$editor_next_pid"
+      && "$editor_next_pid" != "0"
+      && "$editor_next_pid" != "$editor_service_pid"
+      && "$editor_next_cwd" == "${editor_release_dir}/editor"
+      && "$(systemctl is-active "$EDITOR_SERVICE" 2>/dev/null || true)" == "active"
+    ]] && curl \
+      --fail \
+      --silent \
+      --show-error \
+      --max-time 5 \
+      http://127.0.0.1:8790/api/config \
+      >/dev/null; then
+        editor_ready=1
+        break
+    fi
+  done
+
+  if [[ "$editor_ready" != "1" ]]; then
+    if [[ -n "$editor_previous_target" ]]; then
+      ln -sfn \
+        "$editor_previous_target" \
+        "${EDITOR_RELEASE_ROOT}/current.next"
+      mv -Tf \
+        "${EDITOR_RELEASE_ROOT}/current.next" \
+        "${EDITOR_RELEASE_ROOT}/current"
+      editor_failed_pid="$(
+        systemctl show "$EDITOR_SERVICE" -p MainPID --value 2>/dev/null || true
+      )"
+      if [[ -n "$editor_failed_pid" && "$editor_failed_pid" != "0" ]]; then
+        kill -TERM "$editor_failed_pid" || true
+      fi
+    fi
+    fail_update "Editor failed to restart from ${editor_release_dir}."
+  fi
+
+  if [[ "$contribution_graph_initialized" != "1" ]]; then
+    update_stage="backfill-contribution-graph"
+    python3 scripts/sync-line-authors.py \
+      --repo "$CONTENT_GIT_MIRROR" \
+      --revision "$mirror_revision" \
+      --content-revision "$content_commit"
+  fi
+
+  find "${EDITOR_RELEASE_ROOT}/releases" \
+    -mindepth 1 \
+    -maxdepth 1 \
+    -type d \
+    -printf '%T@ %p\n' |
+    sort -nr |
+    tail -n +6 |
+    cut -d' ' -f2- |
+    xargs -r rm -rf
+fi
+
+update_stage="publish-release"
 ln -sfn "$release_dir" "${RELEASE_ROOT}/current.next"
 mv -Tf "${RELEASE_ROOT}/current.next" "${RELEASE_ROOT}/current"
 printf '%s\n' "$content_commit" >"$CONTENT_STATE_FILE"

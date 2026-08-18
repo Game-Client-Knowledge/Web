@@ -24,6 +24,13 @@ const trigger = fs.readFileSync(
   ),
   "utf8"
 );
+const updateService = fs.readFileSync(
+  path.join(
+    root,
+    "deploy/server/game-client-knowledge-update.service"
+  ),
+  "utf8"
+);
 const failureNotifier = fs.readFileSync(
   path.join(
     root,
@@ -46,6 +53,18 @@ assert.match(updater, /Authorization: Bearer \$\{EDITOR_GITHUB_BOT_TOKEN\}/);
 assert.match(updater, /PLAYWRIGHT_BROWSERS_PATH="\$BROWSER_ROOT"/);
 assert.match(updater, /playwright-core install chromium/);
 assert.match(updater, /fs\.existsSync\(chromium\.executablePath\(\)\)/);
+assert.match(updater, /EDITOR_RELEASE_ROOT/);
+assert.match(updater, /current\/\.web-commit/);
+assert.match(updater, /update_stage="publish-editor-release"/);
+assert.match(updater, /Editor port 8790 is not owned by the managed service/);
+assert.match(updater, /kill -TERM "\$editor_service_pid"/);
+assert.match(updater, /editor_next_cwd/);
+assert.match(updater, /update_stage="backfill-contribution-graph"/);
+assert.match(updater, /editor_previous_target/);
+assert.match(
+  updateService,
+  /ReadWritePaths=.*\/opt\/game-client-knowledge-editor/
+);
 assert.equal(manifest.dependencies["playwright-core"], "1.62.1");
 assert.equal(manifest.devDependencies?.["playwright-core"], undefined);
 assert.doesNotMatch(

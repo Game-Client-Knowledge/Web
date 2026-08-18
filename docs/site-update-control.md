@@ -122,7 +122,8 @@ The administration page provides two commands:
 - **Update content**: resolve the latest pushed content commit and rebuild it
   with the currently deployed Web commit.
 - **Update server version**: resolve and publish the latest pushed Web and
-  content commits together.
+  content commits together, publish the matching immutable editor release, and
+  restart the systemd-managed editor worker.
 
 The editor process never receives write access to the production release tree.
 An authenticated administrator request writes:
@@ -141,6 +142,20 @@ immutable snapshot build, and writes status to:
 
 The administration page polls that status while a request is queued or
 running.
+
+For a server-version update, the updater stages the static and editor releases
+before switching either public symlink. It verifies that port `8790` belongs to
+the systemd `MainPID`, installs the pinned editor requirements, switches
+`/opt/game-client-knowledge-editor/current`, and terminates the old worker. The
+service's `Restart=always` policy starts the new worker. The update succeeds
+only after the new PID runs from the target release and `/api/config` responds.
+An editor restart failure restores the previous editor symlink.
+
+The editor release stores its Web SHA in `.web-commit`. The fast current-version
+check requires the static release, editor release, attribution cursor, and
+contribution graph revision all to match. This prevents a static Web update from
+incorrectly reporting success while the administration service still serves an
+older form.
 
 ## Failure Notifications
 

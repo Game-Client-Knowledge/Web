@@ -1,5 +1,5 @@
 [Unit]
-Description=Publish pushed Game Client Knowledge Web and content commits
+Description=Publish pushed Game Client Knowledge Web, editor, and content commits
 After=network-online.target
 Wants=network-online.target
 
@@ -16,4 +16,4 @@ ExecStart=/home/sourcecode/gck-builder/web/deploy/server/update-site.sh
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=read-only
-ReadWritePaths=/home/sourcecode/gck-builder /var/www/game-client-knowledge /var/lib/game-client-knowledge-editor
+ReadWritePaths=/home/sourcecode/gck-builder /var/www/game-client-knowledge /var/lib/game-client-knowledge-editor /opt/game-client-knowledge-editor
