@@ -15,6 +15,7 @@
     home_star_brightness_transition_ms: 900,
     home_star_brightness_interval_ms: 2400,
     home_star_color_random_enabled: false,
+    home_star_graph_direction: "directed",
     home_star_illumination_rule: "bfs",
     home_star_illumination_depth: 3,
     home_star_selection_duration_ms: 3000,
@@ -342,6 +343,9 @@
       )
         ? merged.home_star_illumination_rule
         : defaults.home_star_illumination_rule,
+      home_star_graph_direction: illumination.normalizedDirectionMode(
+        merged.home_star_graph_direction
+      ),
       home_star_illumination_depth: illumination.normalizedDepth(
         merged.home_star_illumination_depth
       ),
@@ -549,6 +553,7 @@
       "<span>Connection coverage</span>" +
       "<strong data-star-coverage-total></strong>" +
       "<dl>" +
+      "<div><dt>起点亮度</dt><dd data-star-coverage-brightness></dd></div>" +
       "<div><dt>静星</dt><dd data-star-coverage-contributors></dd></div>" +
       "<div><dt>动星</dt><dd data-star-coverage-documents></dd></div>" +
       "<div><dt>关系</dt><dd data-star-coverage-relations></dd></div>" +
@@ -621,6 +626,7 @@
     let disposed = false;
     let selectedRoot = "";
     let selectedIds = new Set();
+    let selectedBrightness = 0;
     let activeRelationPlan = null;
     let activeVisualEdgeIds = new Set();
     let labelStar = null;
@@ -690,12 +696,39 @@
     function applyLineStyle(type, alpha, time) {
       const style = relationStyle(type);
       context.strokeStyle = `rgba(${relationColors[type]}, ${alpha})`;
+      context.fillStyle = `rgba(${relationColors[type]}, ${alpha})`;
       context.lineWidth = style === "glow" ? 1.35 : 0.8;
       context.setLineDash(style === "dashed" ? [5, 6] : []);
       context.shadowColor =
         style === "glow" ? `rgba(${relationColors[type]}, 0.75)` : "transparent";
       context.shadowBlur =
         style === "glow" ? 5 + Math.sin(time * 0.003) * 1.5 : 0;
+    }
+
+    function drawArrowhead(source, target) {
+      const dx = target.x - source.x;
+      const dy = target.y - source.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance < 18) return;
+      const unitX = dx / distance;
+      const unitY = dy / distance;
+      const tipX = target.x - unitX * 8;
+      const tipY = target.y - unitY * 8;
+      const size = 5;
+      const baseX = tipX - unitX * size;
+      const baseY = tipY - unitY * size;
+      context.beginPath();
+      context.moveTo(tipX, tipY);
+      context.lineTo(
+        baseX - unitY * size * 0.62,
+        baseY + unitX * size * 0.62
+      );
+      context.lineTo(
+        baseX + unitY * size * 0.62,
+        baseY - unitX * size * 0.62
+      );
+      context.closePath();
+      context.fill();
     }
 
     function drawEdges(time) {
@@ -723,6 +756,13 @@
         context.moveTo(source.x, source.y);
         context.lineTo(target.x, target.y);
         context.stroke();
+        if (runtimeSettings.home_star_graph_direction === "directed") {
+          context.setLineDash([]);
+          drawArrowhead(source, target);
+          if (edge.type === "strong") {
+            drawArrowhead(target, source);
+          }
+        }
       }
       context.setLineDash([]);
       context.shadowBlur = 0;
@@ -770,11 +810,15 @@
       }
     }
 
-    function drawStar(star, time) {
-      const brightness = Math.max(
+    function currentBrightness(star, time) {
+      return Math.max(
         0,
         Math.min(30, star.baseBrightness + variation(star, time))
       );
+    }
+
+    function drawStar(star, time) {
+      const brightness = currentBrightness(star, time);
       const selected = selectedIds.has(star.id);
       const presentation = illumination.brightnessPresentation(
         brightness,
@@ -935,6 +979,8 @@
         selectedIds.has(star.id)
       ).length;
       panel.hidden = false;
+      panel.querySelector("[data-star-coverage-brightness]").textContent =
+        `${selectedBrightness.toFixed(1)} / 30`;
       panel.querySelector("[data-star-coverage-total]").textContent =
         `${selectedIds.size} / ${stars.length} · ` +
         percentage(selectedIds.size, stars.length);
@@ -975,10 +1021,12 @@
     function clearSelection() {
       selectedRoot = "";
       selectedIds = new Set();
+      selectedBrightness = 0;
       activeRelationPlan = null;
       activeVisualEdgeIds = new Set();
       panel.hidden = true;
       canvas.dataset.selectedCount = "0";
+      canvas.dataset.selectedBrightness = "0";
       canvas.dataset.selectedRelationCount = "0";
       canvas.dataset.selectedRelationCoverage = "0";
       canvas.dataset.activeVisualEdgeCount = "0";
@@ -993,12 +1041,14 @@
         return;
       }
       selectedRoot = star.id;
+      selectedBrightness = currentBrightness(star, now);
       selectedIds = illumination.illuminate(
         stars,
         edges,
         star.id,
         runtimeSettings.home_star_illumination_rule,
-        runtimeSettings.home_star_illumination_depth
+        runtimeSettings.home_star_illumination_depth,
+        runtimeSettings.home_star_graph_direction
       );
       activeRelationPlan = illumination.relationPlan(
         stars,
@@ -1010,6 +1060,7 @@
         activeRelationPlan.visualEdges.map(illumination.edgeId)
       );
       canvas.dataset.selectedCount = String(selectedIds.size);
+      canvas.dataset.selectedBrightness = String(selectedBrightness);
       canvas.dataset.selectedRelationCount = String(
         activeRelationPlan.coverageCount
       );
@@ -1089,7 +1140,10 @@
     canvas.dataset.illuminationDepth = String(
       runtimeSettings.home_star_illumination_depth
     );
+    canvas.dataset.graphDirection =
+      runtimeSettings.home_star_graph_direction;
     canvas.dataset.selectedCount = "0";
+    canvas.dataset.selectedBrightness = "0";
     canvas.dataset.selectedRelationCount = "0";
     canvas.dataset.selectedRelationCoverage = "0";
     canvas.dataset.activeVisualEdgeCount = "0";

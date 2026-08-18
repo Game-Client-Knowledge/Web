@@ -11,39 +11,67 @@
   const RULES = new Set([
     "bfs",
     "depth",
+    "reverse_depth",
+    "bidirectional_depth",
     "bfs_contributor_terminal",
     "depth_contributor_terminal",
     "direct_neighbors",
     "strong_component",
-    "reference_depth"
+    "reference_depth",
+    "reference_sources_depth"
   ]);
+  const DIRECTION_MODES = new Set(["directed", "undirected"]);
 
   function normalizedDepth(value) {
     const depth = Number(value);
     return Math.max(1, Math.min(20, Number.isFinite(depth) ? depth : 3));
   }
 
-  function buildGraph(stars, edges) {
+  function normalizedDirectionMode(value) {
+    return DIRECTION_MODES.has(value) ? value : "directed";
+  }
+
+  function appendNeighbor(adjacency, source, target, type) {
+    const neighbors = adjacency.get(source);
+    if (
+      neighbors.some((neighbor) => {
+        return neighbor.id === target && neighbor.type === type;
+      })
+    ) {
+      return;
+    }
+    neighbors.push({ id: target, type });
+  }
+
+  function buildGraph(stars, edges, directionMode) {
     const starById = new Map(
       (stars || []).map((star) => [star.id, star])
     );
-    const adjacency = new Map(
+    const outgoing = new Map(
       Array.from(starById.keys(), (id) => [id, []])
     );
+    const incoming = new Map(
+      Array.from(starById.keys(), (id) => [id, []])
+    );
+    const mode = normalizedDirectionMode(directionMode);
     for (const edge of edges || []) {
       if (!starById.has(edge.source) || !starById.has(edge.target)) {
         continue;
       }
-      adjacency.get(edge.source).push({
-        id: edge.target,
-        type: edge.type
-      });
-      adjacency.get(edge.target).push({
-        id: edge.source,
-        type: edge.type
-      });
+      appendNeighbor(outgoing, edge.source, edge.target, edge.type);
+      appendNeighbor(incoming, edge.target, edge.source, edge.type);
+      if (mode === "undirected" || edge.type === "strong") {
+        appendNeighbor(outgoing, edge.target, edge.source, edge.type);
+        appendNeighbor(incoming, edge.source, edge.target, edge.type);
+      }
     }
-    return { starById, adjacency };
+    return {
+      starById,
+      adjacency: outgoing,
+      incoming,
+      outgoing,
+      directionMode: mode
+    };
   }
 
   function ruleOptions(rule, depth) {
@@ -51,12 +79,16 @@
     const options = {
       maxDepth: Infinity,
       contributorTerminal: false,
-      edgeTypes: null
+      edgeTypes: null,
+      traversal: "outgoing"
     };
     if (
       normalizedRule === "depth" ||
+      normalizedRule === "reverse_depth" ||
+      normalizedRule === "bidirectional_depth" ||
       normalizedRule === "depth_contributor_terminal" ||
-      normalizedRule === "reference_depth"
+      normalizedRule === "reference_depth" ||
+      normalizedRule === "reference_sources_depth"
     ) {
       options.maxDepth = normalizedDepth(depth);
     }
@@ -71,14 +103,53 @@
     }
     if (normalizedRule === "strong_component") {
       options.edgeTypes = new Set(["strong"]);
-    } else if (normalizedRule === "reference_depth") {
+    } else if (
+      normalizedRule === "reference_depth" ||
+      normalizedRule === "reference_sources_depth"
+    ) {
       options.edgeTypes = new Set(["reference"]);
+    }
+    if (
+      normalizedRule === "reverse_depth" ||
+      normalizedRule === "reference_sources_depth"
+    ) {
+      options.traversal = "incoming";
+    } else if (normalizedRule === "bidirectional_depth") {
+      options.traversal = "both";
     }
     return options;
   }
 
-  function illuminate(stars, edges, startId, rule, depth) {
-    const graph = buildGraph(stars, edges);
+  function neighborsFor(graph, id, traversal) {
+    if (traversal === "incoming") {
+      return graph.incoming.get(id) || [];
+    }
+    if (traversal !== "both") {
+      return graph.outgoing.get(id) || [];
+    }
+    const merged = [];
+    const seen = new Set();
+    for (const neighbor of [
+      ...(graph.outgoing.get(id) || []),
+      ...(graph.incoming.get(id) || [])
+    ]) {
+      const key = `${neighbor.type}\u0000${neighbor.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(neighbor);
+    }
+    return merged;
+  }
+
+  function illuminate(
+    stars,
+    edges,
+    startId,
+    rule,
+    depth,
+    directionMode
+  ) {
+    const graph = buildGraph(stars, edges, directionMode);
     if (!graph.starById.has(startId)) return new Set();
     const options = ruleOptions(rule, depth);
     const visited = new Set([startId]);
@@ -95,7 +166,11 @@
       ) {
         continue;
       }
-      for (const neighbor of graph.adjacency.get(current.id) || []) {
+      for (const neighbor of neighborsFor(
+        graph,
+        current.id,
+        options.traversal
+      )) {
         if (
           options.edgeTypes &&
           !options.edgeTypes.has(neighbor.type)
@@ -114,7 +189,11 @@
   }
 
   function edgeId(edge) {
-    return `${edge.type}:${[edge.source, edge.target].sort().join("\u0000")}`;
+    const endpoints =
+      edge.type === "strong"
+        ? [edge.source, edge.target].sort().join("\u0000")
+        : `${edge.source}\u0000${edge.target}`;
+    return `${edge.type}:${endpoints}`;
   }
 
   function coveredRelations(edges, selectedIds) {
@@ -295,6 +374,7 @@
   }
 
   return {
+    DIRECTION_MODES,
     RULES,
     brightnessPresentation,
     buildGraph,
@@ -304,6 +384,7 @@
     longestTreePath,
     minimumRelationTree,
     normalizedDepth,
+    normalizedDirectionMode,
     relationPlan,
     ruleOptions
   };

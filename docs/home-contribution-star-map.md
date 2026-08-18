@@ -43,6 +43,19 @@ Generated `bin` and `obj` paths remain excluded.
 | Reference | One Markdown document links to another readable document | Dashed |
 | Contribution | A contributor changed the document at least once | Solid |
 
+The graph keeps source and target semantics for every edge:
+
+- contribution: contributor -> document or code system;
+- reference: referring document -> referenced document;
+- strong: both directions, represented by one relation record.
+
+The administrator can switch between `directed` and `undirected`. Directed mode
+uses the semantics above for traversal and draws arrowheads: one arrowhead for
+reference and contribution edges, and two for strong edges. Undirected mode
+preserves the original behavior by making every edge traversable both ways and
+rendering it without arrowheads. Reciprocal references remain separate facts in
+both modes, so changing the traversal mode does not rewrite source data.
+
 All member references and contributor links are folded into their code-system
 star. Multiple files changed by the same contributor produce one contributor
 edge whose commit counts are accumulated and whose activity time is the newest
@@ -134,17 +147,25 @@ contributor name. Label and relation-highlight durations are configured
 independently and default to three seconds.
 
 When edge visibility is not `always`, clicking a star applies the selected
-illumination rule:
+illumination rule. In directed mode, "forward" means outgoing edges and
+"reverse" means incoming edges. Strong edges participate in both directions.
 
 | Rule | Behavior |
 | --- | --- |
-| Full graph | BFS over every edge type until the connected component is exhausted. |
-| N levels | BFS stops after the configured graph depth. |
+| Full graph | Forward BFS over outgoing edges until no successor remains. |
+| N levels | Forward BFS stops after the configured graph depth. |
+| Reverse N levels | Traverse incoming edges to find referrers and contributors. |
+| Bidirectional N levels | Traverse incoming and outgoing edges for local context. |
 | Full graph, contributor terminal | BFS, but a contributor reached from another star is illuminated without propagating further. A directly clicked contributor remains a valid source. |
 | N levels, contributor terminal | The same contributor boundary with a configurable depth limit. |
-| Direct neighbors | Illuminate the selected star and its immediate neighbors only. |
-| Smallest module | Traverse only strong edges inside the smallest content directory. |
-| Reference chain | Traverse only Markdown reference edges up to N levels. |
+| Direct successors | Illuminate the selected star and its immediate outgoing neighbors only. |
+| Smallest module | Traverse only bidirectional strong edges inside the smallest content directory. |
+| Reference downstream | Follow outgoing Markdown references up to N levels. |
+| Reference upstream | Follow incoming Markdown references up to N levels. |
+
+In undirected mode, outgoing and incoming adjacency are identical. This keeps
+all previous illumination rules and contributor-terminal behavior available as
+a compatibility option.
 
 The resulting set is highlighted and a fixed coverage panel reports:
 
@@ -152,6 +173,8 @@ The resulting set is highlighted and a fixed coverage panel reports:
 - highlighted contributor stars and percentage;
 - highlighted document stars and percentage.
 - covered relations and percentage of the complete relation set.
+- the clicked root star's rendered logical brightness at activation, on the
+  `[0, 30]` scale.
 
 Relation coverage always counts every real edge whose two endpoint stars are
 highlighted. It is independent from rendering. Active highlighting supports:
@@ -209,6 +232,7 @@ bounded highlight boost without replacing the underlying brightness.
 
 - homepage background engine and hero/full scope;
 - relation visibility;
+- directed or undirected graph traversal;
 - strong, reference, and contribution styles (`solid`, `dashed`, `glow`);
 - illumination rule and N-level depth;
 - active relation rendering (`single_path`, `minimal_tree`, or `full`);

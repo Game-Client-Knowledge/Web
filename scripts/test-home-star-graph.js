@@ -87,7 +87,7 @@ function fixtureCatalog() {
         sourceDirectory: "program/knowledge/root",
         title: "B",
         route: "/program/knowledge/root/02-b/",
-        body: ""
+        body: "[A](./01-a.md)"
       },
       {
         kind: "markdown",
@@ -291,7 +291,7 @@ const contributionEdges = graph.edges.filter(
   (edge) => edge.type === "contribution"
 );
 
-assert.equal(graph.version, 2);
+assert.equal(graph.version, 3);
 assert.equal(graph.revision, "abc1234");
 assert.equal(
   graph.stars.filter((star) => star.kind === "contributor").length,
@@ -370,7 +370,16 @@ assert.ok(
   }),
   "systems under the code module must share their parent cluster"
 );
-assert.equal(referenceEdges.length, 3);
+assert.equal(referenceEdges.length, 4);
+assert.ok(
+  referenceEdges.some((edge) => {
+    return (
+      edge.source === "document:program/knowledge/root/02-b.md" &&
+      edge.target === "document:program/knowledge/root/01-a.md"
+    );
+  }),
+  "opposite reference directions must remain distinct"
+);
 assert.ok(
   referenceEdges.some((edge) => {
     return (

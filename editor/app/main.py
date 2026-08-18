@@ -104,11 +104,14 @@ DEFAULT_STAR_BRIGHTNESS_RULES = [
 STAR_ILLUMINATION_RULE_IDS = {
     "bfs",
     "depth",
+    "reverse_depth",
+    "bidirectional_depth",
     "bfs_contributor_terminal",
     "depth_contributor_terminal",
     "direct_neighbors",
     "strong_component",
     "reference_depth",
+    "reference_sources_depth",
 }
 
 
@@ -281,6 +284,7 @@ class VisualSettingsRequest(BaseModel):
         le=30000,
     )
     home_star_color_random_enabled: bool = False
+    home_star_graph_direction: str = "directed"
     home_star_illumination_rule: str = "bfs"
     home_star_illumination_depth: int = Field(default=3, ge=1, le=20)
     home_star_selection_duration_ms: int = Field(
@@ -877,6 +881,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         if illumination_rule not in STAR_ILLUMINATION_RULE_IDS:
             illumination_rule = "bfs"
+        graph_direction = db.setting(
+            "home_star_graph_direction", "directed"
+        )
+        if graph_direction not in {"directed", "undirected"}:
+            graph_direction = "directed"
         active_edge_mode = db.setting(
             "home_star_active_edge_mode", "single_path"
         )
@@ -951,6 +960,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "home_star_color_random_enabled": (
                 db.setting("home_star_color_random_enabled", "0") == "1"
             ),
+            "home_star_graph_direction": graph_direction,
             "home_star_illumination_rule": illumination_rule,
             "home_star_illumination_depth": max(
                 1,
@@ -3338,6 +3348,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             not in STAR_ILLUMINATION_RULE_IDS
         ):
             raise HTTPException(status_code=422, detail="星图点亮规则无效")
+        if payload.home_star_graph_direction not in {
+            "directed",
+            "undirected",
+        }:
+            raise HTTPException(status_code=422, detail="星图方向模式无效")
         if payload.home_star_active_edge_mode not in {
             "full",
             "minimal_tree",
@@ -3430,6 +3445,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_star_color_random_enabled": (
                 "1" if payload.home_star_color_random_enabled else "0"
+            ),
+            "home_star_graph_direction": (
+                payload.home_star_graph_direction
             ),
             "home_star_illumination_rule": (
                 payload.home_star_illumination_rule

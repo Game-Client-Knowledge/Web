@@ -283,6 +283,7 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert payload["config"]["home_intro_contributor_limit"] == 8
     assert payload["config"]["home_content_mask_enabled"] is False
     assert payload["config"]["home_content_idle_timeout_seconds"] == 30
+    assert payload["config"]["home_star_graph_direction"] == "directed"
     assert payload["config"]["home_star_illumination_rule"] == "bfs"
     assert payload["config"]["home_star_illumination_depth"] == 3
     assert payload["config"]["home_star_selection_duration_ms"] == 3000
@@ -1027,7 +1028,8 @@ def test_admin_can_configure_client_visual_effects(
             "home_star_strong_relation_style": "glow",
             "home_star_reference_relation_style": "dashed",
             "home_star_contributor_relation_style": "solid",
-            "home_star_illumination_rule": "depth_contributor_terminal",
+            "home_star_graph_direction": "undirected",
+            "home_star_illumination_rule": "reverse_depth",
             "home_star_active_edge_mode": "minimal_tree",
             "home_star_illumination_depth": 4,
             "home_star_selection_duration_ms": 4500,
@@ -1069,7 +1071,8 @@ def test_admin_can_configure_client_visual_effects(
         "home_star_strong_relation_style": "glow",
         "home_star_reference_relation_style": "dashed",
         "home_star_contributor_relation_style": "solid",
-        "home_star_illumination_rule": "depth_contributor_terminal",
+        "home_star_graph_direction": "undirected",
+        "home_star_illumination_rule": "reverse_depth",
         "home_star_active_edge_mode": "minimal_tree",
         "home_star_illumination_depth": 4,
         "home_star_selection_duration_ms": 4500,
@@ -1107,9 +1110,10 @@ def test_admin_can_configure_client_visual_effects(
     assert config["home_star_scope"] == "full"
     assert config["home_star_relation_visibility"] == "hidden"
     assert config["home_star_strong_relation_style"] == "glow"
+    assert config["home_star_graph_direction"] == "undirected"
     assert (
         config["home_star_illumination_rule"]
-        == "depth_contributor_terminal"
+        == "reverse_depth"
     )
     assert config["home_star_active_edge_mode"] == "minimal_tree"
     assert config["home_star_illumination_depth"] == 4
@@ -1221,6 +1225,19 @@ def test_admin_can_configure_client_visual_effects(
         },
     )
     assert invalid_illumination.status_code == 422
+
+    invalid_graph_direction = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "catalog_background_style": "circuit",
+            "reader_background_style": "blueprint",
+            "pointer_effect_enabled": True,
+            "home_intro_enabled": True,
+            "home_star_graph_direction": "sideways",
+        },
+    )
+    assert invalid_graph_direction.status_code == 422
 
     invalid_active_edges = client.put(
         "/api/admin/visual-settings",

@@ -210,15 +210,25 @@
           </select>
         </label>
         <label>
+          星图方向
+          <select name="home_star_graph_direction">
+            <option value="directed">有向图</option>
+            <option value="undirected">无向图（兼容）</option>
+          </select>
+        </label>
+        <label>
           点击点亮规则
           <select name="home_star_illumination_rule">
-            <option value="bfs">完整关系网（BFS）</option>
-            <option value="depth">限制 N 层</option>
+            <option value="bfs">沿出边完整传播（BFS）</option>
+            <option value="depth">沿出边传播 N 层</option>
+            <option value="reverse_depth">沿入边逆向溯源 N 层</option>
+            <option value="bidirectional_depth">双向上下文 N 层</option>
             <option value="bfs_contributor_terminal">完整关系网 · 静星终止</option>
             <option value="depth_contributor_terminal">限制 N 层 · 静星终止</option>
-            <option value="direct_neighbors">仅直接相邻节点</option>
+            <option value="direct_neighbors">仅直接后继节点</option>
             <option value="strong_component">仅同最小模块</option>
-            <option value="reference_depth">仅引用链 N 层</option>
+            <option value="reference_depth">引用下游 N 层</option>
+            <option value="reference_sources_depth">被引用上游 N 层</option>
           </select>
         </label>
         <label>

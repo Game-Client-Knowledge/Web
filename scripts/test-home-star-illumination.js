@@ -17,15 +17,20 @@ const stars = [
 const edges = [
   { source: "d:a", target: "d:b", type: "strong" },
   { source: "d:b", target: "d:c", type: "reference" },
-  { source: "d:c", target: "u:one", type: "contribution" },
+  { source: "u:one", target: "d:c", type: "contribution" },
   { source: "u:one", target: "d:d", type: "contribution" },
   { source: "d:d", target: "d:e", type: "strong" },
-  { source: "d:e", target: "u:two", type: "contribution" }
+  { source: "u:two", target: "d:e", type: "contribution" }
 ];
 
-function values(rule, depth, startId = "d:a") {
+function values(
+  rule,
+  depth,
+  startId = "d:a",
+  directionMode = "undirected"
+) {
   return Array.from(
-    illuminate(stars, edges, startId, rule, depth)
+    illuminate(stars, edges, startId, rule, depth, directionMode)
   ).sort();
 }
 
@@ -69,6 +74,52 @@ assert.deepEqual(values("depth_contributor_terminal", 1, "u:one"), [
 assert.deepEqual(values("strong_component", 2), ["d:a", "d:b"]);
 assert.deepEqual(values("reference_depth", 3, "d:b"), ["d:b", "d:c"]);
 assert.deepEqual(values("unsupported", 1), values("bfs", 1));
+
+assert.deepEqual(values("bfs", 20, "d:a", "directed"), [
+  "d:a",
+  "d:b",
+  "d:c"
+]);
+assert.deepEqual(values("bfs", 20, "u:one", "directed"), [
+  "d:c",
+  "d:d",
+  "d:e",
+  "u:one"
+]);
+assert.deepEqual(values("depth", 1, "d:b", "directed"), [
+  "d:a",
+  "d:b",
+  "d:c"
+]);
+assert.deepEqual(values("direct_neighbors", 20, "d:c", "directed"), [
+  "d:c"
+]);
+assert.deepEqual(values("reverse_depth", 2, "d:c", "directed"), [
+  "d:a",
+  "d:b",
+  "d:c",
+  "u:one"
+]);
+assert.deepEqual(
+  values("bidirectional_depth", 1, "d:c", "directed"),
+  ["d:b", "d:c", "u:one"]
+);
+assert.deepEqual(
+  values("reference_depth", 3, "d:b", "directed"),
+  ["d:b", "d:c"]
+);
+assert.deepEqual(
+  values("reference_depth", 3, "d:c", "directed"),
+  ["d:c"]
+);
+assert.deepEqual(
+  values("reference_sources_depth", 3, "d:c", "directed"),
+  ["d:b", "d:c"]
+);
+assert.deepEqual(
+  values("strong_component", 20, "d:b", "directed"),
+  ["d:a", "d:b"]
+);
 
 const planStars = [
   { id: "a", kind: "document", x: 0, y: 0 },

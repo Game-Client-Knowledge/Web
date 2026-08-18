@@ -544,6 +544,7 @@ class Database:
                 "home_star_brightness_transition_ms": "900",
                 "home_star_brightness_interval_ms": "2400",
                 "home_star_color_random_enabled": "0",
+                "home_star_graph_direction": "directed",
                 "home_star_illumination_rule": "bfs",
                 "home_star_illumination_depth": "3",
                 "home_star_selection_duration_ms": "3000",

@@ -155,6 +155,8 @@
             settings.home_star_reference_relation_style,
           home_star_contributor_relation_style:
             settings.home_star_contributor_relation_style,
+          home_star_graph_direction:
+            settings.home_star_graph_direction,
           home_star_brightness_variation_enabled:
             settings.home_star_brightness_variation_enabled,
           home_star_brightness_variation_amount:
