@@ -14,19 +14,69 @@ eleventyComputed:
 ---
 
 {% macro renderUnit(unit, module, depth) %}
-  <section
-    class="module-unit-branch{% if depth %} is-subunit{% endif %}"
-    data-unit-depth="{{ depth }}"
-  >
-    <article class="module-unit">
-      <div class="module-unit-summary">
-        <p class="unit-meta">
-          {% if depth %}子专题 · {% endif %}
-          {{ unit.articleCount }} 篇
-          {% if unit.codeCount %} · {{ unit.codeCount }} 个源码文件{% endif %}
-        </p>
-        <h3><a href="{{ unit.route | withBase }}">{{ unit.title }}</a></h3>
-        <p>{{ unit.description }}</p>
+  {% set visibleDocuments = unit.documents | rejectattr("isReadme") | list %}
+  {% set unitContent %}
+    <div class="module-unit-content">
+      {% if unit.children.length %}
+        <section class="module-unit-content-group">
+          <div class="module-subunit-list">
+            {% for child in unit.children %}
+              {{ renderUnit(child, module, depth + 1) }}
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
+      {% if visibleDocuments.length %}
+        <section class="module-unit-content-group">
+          {% if unit.children.length %}
+            <p class="module-unit-content-label">文件</p>
+          {% endif %}
+          <ol class="module-unit-documents">
+            {% for item in visibleDocuments %}
+              <li class="module-document-row">
+                <a href="{{ item.route | withBase }}">
+                  <i
+                    data-lucide="{% if item.kind == 'code' %}file-code-2{% else %}file-text{% endif %}"
+                    aria-hidden="true"
+                  ></i>
+                  <span>{{ item.title }}</span>
+                  <i data-lucide="chevron-right" aria-hidden="true"></i>
+                </a>
+                <button
+                  class="workspace-delete-action edit-mode-only"
+                  type="button"
+                  data-edit-mode-only
+                  data-delete-path="{{ item.sourceRelative }}"
+                  data-delete-kind="file"
+                  data-delete-label="{{ item.title }}"
+                  aria-label="删除文件：{{ item.title }}"
+                  title="删除文件"
+                >
+                  <i data-lucide="trash-2" aria-hidden="true"></i>
+                </button>
+              </li>
+            {% endfor %}
+          </ol>
+        </section>
+      {% endif %}
+    </div>
+  {% endset %}
+  {% if depth %}
+    <details
+      class="module-unit-branch is-subunit module-subunit-details"
+      data-unit-depth="{{ depth }}"
+    >
+      <summary class="module-subunit-summary">
+        <span>
+          <small class="unit-meta">
+            子专题 · {{ unit.articleCount }} 篇{% if unit.codeCount %} · {{ unit.codeCount }} 个源码文件{% endif %}
+          </small>
+          <strong>{{ unit.title }}</strong>
+          <em>{{ unit.description }}</em>
+        </span>
+        <i data-lucide="chevron-right" aria-hidden="true"></i>
+      </summary>
+      <div class="module-subunit-body">
         <div class="unit-editor-actions edit-mode-only" data-edit-mode-only>
           <button
             type="button"
@@ -63,60 +113,63 @@ eleventyComputed:
             删除子模块
           </button>
         </div>
+        {{ unitContent | safe }}
       </div>
-      <div class="module-unit-content">
-        {% if unit.children.length %}
-          <section class="module-unit-content-group">
-            <details class="module-subtopics">
-              <summary>
-                <span>子专题</span>
-                <small>{{ unit.children.length }} 个</small>
-              </summary>
-              <div class="module-subunit-list">
-                {% for child in unit.children %}
-                  {{ renderUnit(child, module, depth + 1) }}
-                {% endfor %}
-              </div>
-            </details>
-          </section>
-        {% endif %}
-        {% set visibleDocuments = unit.documents | rejectattr("isReadme") | list %}
-        {% if visibleDocuments.length %}
-          <section class="module-unit-content-group">
-            {% if unit.children.length %}
-              <p class="module-unit-content-label">文件</p>
-            {% endif %}
-            <ol class="module-unit-documents">
-              {% for item in visibleDocuments %}
-                <li class="module-document-row">
-                  <a href="{{ item.route | withBase }}">
-                    <i
-                      data-lucide="{% if item.kind == 'code' %}file-code-2{% else %}file-text{% endif %}"
-                      aria-hidden="true"
-                    ></i>
-                    <span>{{ item.title }}</span>
-                    <i data-lucide="chevron-right" aria-hidden="true"></i>
-                  </a>
-                  <button
-                    class="workspace-delete-action edit-mode-only"
-                    type="button"
-                    data-edit-mode-only
-                    data-delete-path="{{ item.sourceRelative }}"
-                    data-delete-kind="file"
-                    data-delete-label="{{ item.title }}"
-                    aria-label="删除文件：{{ item.title }}"
-                    title="删除文件"
-                  >
-                    <i data-lucide="trash-2" aria-hidden="true"></i>
-                  </button>
-                </li>
-              {% endfor %}
-            </ol>
-          </section>
-        {% endif %}
-      </div>
-    </article>
-  </section>
+    </details>
+  {% else %}
+    <section
+      class="module-unit-branch"
+      data-unit-depth="{{ depth }}"
+    >
+      <article class="module-unit">
+        <div class="module-unit-summary">
+          <p class="unit-meta">
+            {{ unit.articleCount }} 篇
+            {% if unit.codeCount %} · {{ unit.codeCount }} 个源码文件{% endif %}
+          </p>
+          <h3><a href="{{ unit.route | withBase }}">{{ unit.title }}</a></h3>
+          <p>{{ unit.description }}</p>
+          <div class="unit-editor-actions edit-mode-only" data-edit-mode-only>
+            <button
+              type="button"
+              data-create-context="module"
+              data-create-root="{{ module.key }}"
+              data-create-parent="{{ unit.id }}"
+              aria-label="在 {{ unit.title }} 下新建子模块"
+              title="新建子模块"
+            >
+              <i data-lucide="folder-plus" aria-hidden="true"></i>
+              子模块
+            </button>
+            <button
+              type="button"
+              data-create-context="file"
+              data-create-root="{{ module.key }}"
+              data-create-parent="{{ unit.id }}"
+              aria-label="在 {{ unit.title }} 下新建文件"
+              title="新建文件"
+            >
+              <i data-lucide="file-plus-2" aria-hidden="true"></i>
+              文件
+            </button>
+            <button
+              class="workspace-scope-delete"
+              type="button"
+              data-delete-path="{{ unit.id }}"
+              data-delete-kind="directory"
+              data-delete-label="{{ unit.title }}"
+              aria-label="删除子模块：{{ unit.title }}"
+              title="删除子模块"
+            >
+              <i data-lucide="trash-2" aria-hidden="true"></i>
+              删除子模块
+            </button>
+          </div>
+        </div>
+        {{ unitContent | safe }}
+      </article>
+    </section>
+  {% endif %}
 {% endmacro %}
 
 <div

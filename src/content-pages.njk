@@ -29,20 +29,11 @@ eleventyComputed:
       {{ unit.title }}
     </a>
     {% if unit.children.length %}
-      <details
-        class="docs-nav-subtopics"
-        {% if unit.id in currentUnit.ancestorIds %}open{% endif %}
-      >
-        <summary>
-          <span>子专题</span>
-          <small>{{ unit.children.length }}</small>
-        </summary>
-        <div class="docs-nav-children">
-          {% for child in unit.children %}
-            {{ renderNavigationUnit(child, currentUnit, depth + 1) }}
-          {% endfor %}
-        </div>
-      </details>
+      <div class="docs-nav-children">
+        {% for child in unit.children %}
+          {{ renderNavigationUnit(child, currentUnit, depth + 1) }}
+        {% endfor %}
+      </div>
     {% endif %}
     {% if unit.id == currentUnit.id %}
       {% set visibleDocuments = unit.documents | rejectattr("isReadme") | list %}

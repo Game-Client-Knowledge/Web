@@ -635,21 +635,12 @@
     appendWorkspaceStatus(title, unit.status, unit.readme.conflict);
     section.append(title);
     if (unit.children.length) {
-      const details = document.createElement("details");
-      details.className = "docs-nav-subtopics";
-      const summary = document.createElement("summary");
-      const summaryText = document.createElement("span");
-      summaryText.textContent = "子专题";
-      const count = document.createElement("small");
-      count.textContent = String(unit.children.length);
-      summary.append(summaryText, count);
       const children = document.createElement("div");
       children.className = "docs-nav-children";
       unit.children.forEach(function (child) {
         children.append(renderNavigationUnit(child, depth + 1));
       });
-      details.append(summary, children);
-      section.append(details);
+      section.append(children);
     }
     const visibleDocuments = unit.documents.filter(function (entry) {
       return !entry.isReadme;
@@ -720,10 +711,142 @@
   }
 
   function renderModuleUnit(unit, depth) {
+    const articleCount = unit.documents.filter(function (entry) {
+      return entry.kind === "markdown" && entry.operation !== "delete";
+    }).length;
+    const codeCount = unit.documents.filter(function (entry) {
+      return entry.kind === "code" && entry.operation !== "delete";
+    }).length;
+    const metadataText =
+      (depth ? "子专题 · " : "") +
+      articleCount +
+      " 篇" +
+      (codeCount ? " · " + codeCount + " 个源码文件" : "") +
+      (unit.changeCount ? " · " + unit.changeCount + " 项更改" : "");
+
+    function renderActions() {
+      const actions = document.createElement("div");
+      actions.className = "unit-editor-actions edit-mode-only";
+      actions.dataset.editModeOnly = "";
+      actions.append(
+        createWorkspaceAction(
+          "module",
+          state.workspaceSnapshot.root,
+          unit.id,
+          "在 " + unit.title + " 下新建子模块"
+        ),
+        createWorkspaceAction(
+          "file",
+          state.workspaceSnapshot.root,
+          unit.id,
+          "在 " + unit.title + " 下新建文件"
+        ),
+        createWorkspaceDeleteAction(
+          unit.id,
+          "directory",
+          unit.title,
+          depth ? "删除子模块" : "删除模块"
+        )
+      );
+      return actions;
+    }
+
+    function renderContent() {
+      const content = document.createElement("div");
+      content.className = "module-unit-content";
+      if (unit.children.length) {
+        const group = document.createElement("section");
+        group.className = "module-unit-content-group";
+        const children = document.createElement("div");
+        children.className = "module-subunit-list";
+        unit.children.forEach(function (child) {
+          children.append(renderModuleUnit(child, depth + 1));
+        });
+        group.append(children);
+        content.append(group);
+      }
+      const visibleDocuments = unit.documents.filter(function (entry) {
+        return !entry.isReadme;
+      });
+      if (visibleDocuments.length) {
+        const group = document.createElement("section");
+        group.className = "module-unit-content-group";
+        if (unit.children.length) {
+          const label = document.createElement("p");
+          label.className = "module-unit-content-label";
+          label.textContent = "文件";
+          group.append(label);
+        }
+        const list = document.createElement("ol");
+        list.className = "module-unit-documents";
+        visibleDocuments.forEach(function (entry) {
+          const item = document.createElement("li");
+          item.className = "module-document-row";
+          const link = document.createElement("a");
+          link.href = workspaceEntryHref(entry);
+          if (entry.operation === "delete") {
+            link.classList.add("is-deleted-draft");
+          }
+          const icon = document.createElement("i");
+          icon.dataset.lucide =
+            entry.kind === "code" ? "file-code-2" : "file-text";
+          icon.setAttribute("aria-hidden", "true");
+          const label = document.createElement("span");
+          label.textContent = entry.title;
+          const chevron = document.createElement("i");
+          chevron.dataset.lucide = "chevron-right";
+          chevron.setAttribute("aria-hidden", "true");
+          link.append(icon, label);
+          appendWorkspaceStatus(link, entry.status, entry.conflict);
+          link.append(chevron);
+          item.append(
+            link,
+            createWorkspaceDeleteAction(
+              entry.path,
+              "file",
+              entry.title,
+              "删除文件"
+            )
+          );
+          list.append(item);
+        });
+        group.append(list);
+        content.append(group);
+      }
+      return content;
+    }
+
+    if (depth) {
+      const details = document.createElement("details");
+      details.className =
+        "module-unit-branch workspace-unit-branch is-subunit module-subunit-details";
+      details.dataset.unitDepth = String(depth);
+      if (unit.status) details.dataset.status = unit.status;
+      const summary = document.createElement("summary");
+      summary.className = "module-subunit-summary";
+      const copy = document.createElement("span");
+      const meta = document.createElement("small");
+      meta.className = "unit-meta";
+      meta.textContent = metadataText;
+      const title = document.createElement("strong");
+      title.textContent = unit.title;
+      appendWorkspaceStatus(title, unit.status, unit.readme.conflict);
+      const description = document.createElement("em");
+      description.textContent = unit.description || "待补充专题简介。";
+      copy.append(meta, title, description);
+      const chevron = document.createElement("i");
+      chevron.dataset.lucide = "chevron-right";
+      chevron.setAttribute("aria-hidden", "true");
+      summary.append(copy, chevron);
+      const body = document.createElement("div");
+      body.className = "module-subunit-body";
+      body.append(renderActions(), renderContent());
+      details.append(summary, body);
+      return details;
+    }
+
     const branch = document.createElement("section");
-    branch.className =
-      "module-unit-branch workspace-unit-branch" +
-      (depth ? " is-subunit" : "");
+    branch.className = "module-unit-branch workspace-unit-branch";
     branch.dataset.unitDepth = String(depth);
     if (unit.status) branch.dataset.status = unit.status;
     const article = document.createElement("article");
@@ -732,20 +855,7 @@
     summary.className = "module-unit-summary";
     const metadata = document.createElement("p");
     metadata.className = "unit-meta";
-    const articleCount = unit.documents.filter(function (entry) {
-      return entry.kind === "markdown" && entry.operation !== "delete";
-    }).length;
-    const codeCount = unit.documents.filter(function (entry) {
-      return entry.kind === "code" && entry.operation !== "delete";
-    }).length;
-    metadata.textContent =
-      (depth ? "子专题 · " : "") +
-      articleCount +
-      " 篇" +
-      (codeCount ? " · " + codeCount + " 个源码文件" : "");
-    if (unit.changeCount) {
-      metadata.textContent += " · " + unit.changeCount + " 项更改";
-    }
+    metadata.textContent = metadataText;
     const heading = document.createElement("h3");
     const headingLink = document.createElement("a");
     headingLink.href = workspaceEntryHref(unit.readme);
@@ -757,101 +867,8 @@
     appendWorkspaceStatus(heading, unit.status, unit.readme.conflict);
     const description = document.createElement("p");
     description.textContent = unit.description || "待补充专题简介。";
-    const actions = document.createElement("div");
-    actions.className = "unit-editor-actions edit-mode-only";
-    actions.dataset.editModeOnly = "";
-    actions.append(
-      createWorkspaceAction(
-        "module",
-        state.workspaceSnapshot.root,
-        unit.id,
-        "在 " + unit.title + " 下新建子模块"
-      ),
-      createWorkspaceAction(
-        "file",
-        state.workspaceSnapshot.root,
-        unit.id,
-        "在 " + unit.title + " 下新建文件"
-      ),
-      createWorkspaceDeleteAction(
-        unit.id,
-        "directory",
-        unit.title,
-        depth ? "删除子模块" : "删除模块"
-      )
-    );
-    summary.append(metadata, heading, description, actions);
-
-    const content = document.createElement("div");
-    content.className = "module-unit-content";
-    if (unit.children.length) {
-      const group = document.createElement("section");
-      group.className = "module-unit-content-group";
-      const details = document.createElement("details");
-      details.className = "module-subtopics";
-      const label = document.createElement("summary");
-      const labelText = document.createElement("span");
-      labelText.textContent = "子专题";
-      const count = document.createElement("small");
-      count.textContent = unit.children.length + " 个";
-      label.append(labelText, count);
-      const children = document.createElement("div");
-      children.className = "module-subunit-list";
-      unit.children.forEach(function (child) {
-        children.append(renderModuleUnit(child, depth + 1));
-      });
-      details.append(label, children);
-      group.append(details);
-      content.append(group);
-    }
-    const visibleDocuments = unit.documents.filter(function (entry) {
-      return !entry.isReadme;
-    });
-    if (visibleDocuments.length) {
-      const group = document.createElement("section");
-      group.className = "module-unit-content-group";
-      if (unit.children.length) {
-        const label = document.createElement("p");
-        label.className = "module-unit-content-label";
-        label.textContent = "文件";
-        group.append(label);
-      }
-      const list = document.createElement("ol");
-      list.className = "module-unit-documents";
-      visibleDocuments.forEach(function (entry) {
-        const item = document.createElement("li");
-        item.className = "module-document-row";
-        const link = document.createElement("a");
-        link.href = workspaceEntryHref(entry);
-        if (entry.operation === "delete") {
-          link.classList.add("is-deleted-draft");
-        }
-        const icon = document.createElement("i");
-        icon.dataset.lucide =
-          entry.kind === "code" ? "file-code-2" : "file-text";
-        icon.setAttribute("aria-hidden", "true");
-        const label = document.createElement("span");
-        label.textContent = entry.title;
-        const chevron = document.createElement("i");
-        chevron.dataset.lucide = "chevron-right";
-        chevron.setAttribute("aria-hidden", "true");
-        link.append(icon, label);
-        appendWorkspaceStatus(link, entry.status, entry.conflict);
-        link.append(chevron);
-        item.append(
-          link,
-          createWorkspaceDeleteAction(
-            entry.path,
-            "file",
-            entry.title,
-            "删除文件"
-          )
-        );
-        list.append(item);
-      });
-      group.append(list);
-      content.append(group);
-    }
+    summary.append(metadata, heading, description, renderActions());
+    const content = renderContent();
     article.append(summary, content);
     branch.append(article);
     return branch;

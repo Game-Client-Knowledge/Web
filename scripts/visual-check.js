@@ -619,16 +619,17 @@ async function inspectPage(browser, scenario) {
       );
       return {
         labels: groups.map((group) => {
-          return group.querySelector(".module-subtopics > summary span")
-            ?.textContent.trim() ||
-            group.querySelector(".module-unit-content-label")
+          return group.querySelector(".module-subunit-list")
+            ? "子专题"
+            : group.querySelector(".module-unit-content-label")
               ?.textContent.trim() ||
-            "文件";
+                "文件";
         }),
-        subtopicsOpen: groups[0]?.querySelector(".module-subtopics")
+        subtopicsOpen: groups[0]
+          ?.querySelector(".module-subunit-details")
           ?.hasAttribute("open") ?? null,
         child:
-          groups[0]?.querySelector(".module-unit-branch.is-subunit h3")
+          groups[0]?.querySelector(".module-subunit-summary strong")
             ?.textContent.trim() || "",
         file:
           groups[1]?.querySelector(".module-unit-documents a span")
