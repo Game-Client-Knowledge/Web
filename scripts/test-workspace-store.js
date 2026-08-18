@@ -32,6 +32,7 @@ const baseEntries = [
     sha: "cpp-sha",
     kind: "markdown",
     title: "C++",
+    route: "/program/knowledge/cpp/",
     trackKey: "program",
     moduleKey: "program/knowledge",
     isReadme: true
@@ -141,9 +142,13 @@ workspace = store.syncBase(
   repository,
   "commit-2",
   [
-    baseEntries[0],
     {
-      ...baseEntries[1],
+      path: baseEntries[0].path,
+      sha: baseEntries[0].sha,
+      size: 120
+    },
+    {
+      path: baseEntries[1].path,
       sha: "cpp-sha-2"
     }
   ]
@@ -151,6 +156,17 @@ workspace = store.syncBase(
 assert.equal(workspace.base.revision, "commit-2");
 assert.equal(workspace.changes.length, 1);
 assert.equal(workspace.changes[0].content, "# C++ local\n");
+assert.equal(
+  workspace.base.entries.find((entry) => entry.path.endsWith("cpp/README.md"))
+    .title,
+  "C++",
+  "a path/SHA-only remote tree must preserve catalog titles"
+);
+assert.equal(
+  workspace.base.entries.find((entry) => entry.path.endsWith("cpp/README.md"))
+    .route,
+  "/program/knowledge/cpp/"
+);
 assert.equal(
   workspace.changes[0].baseSha,
   "cpp-sha",
@@ -184,6 +200,43 @@ assert.equal(
   workspace.changes[0].baseSha,
   "cpp-sha-2",
   "a remote deletion must not turn a local edit into an added file"
+);
+
+const pollutedStorage = memoryStorage();
+workspace = store.syncBase(
+  pollutedStorage,
+  userId,
+  repository,
+  "commit-1",
+  baseEntries.map((entry) => ({
+    path: entry.path,
+    sha: entry.sha,
+    size: 120
+  }))
+);
+assert.equal(
+  workspace.base.entries.find((entry) => entry.path.endsWith("cpp/README.md"))
+    .title,
+  "README.md"
+);
+workspace = store.ensure(
+  pollutedStorage,
+  userId,
+  repository,
+  "commit-1",
+  baseEntries
+);
+assert.equal(
+  workspace.base.entries.find((entry) => entry.path.endsWith("cpp/README.md"))
+    .title,
+  "C++",
+  "the deployed catalog must repair an old path-only Base Tree"
+);
+assert.equal(
+  workspace.current.entries.find((entry) => entry.path.endsWith("cpp/README.md"))
+    .title,
+  "C++",
+  "the repaired metadata must flow into an unchanged Current Tree"
 );
 
 process.stdout.write("Local base/current workspace checks passed\n");

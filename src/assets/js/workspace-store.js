@@ -11,6 +11,18 @@
 
   const BASE_PREFIX = "gck-workspace-base:v1:";
   const CURRENT_PREFIX = "gck-workspace-current:v1:";
+  const METADATA_FIELDS = [
+    "title",
+    "description",
+    "kind",
+    "route",
+    "moduleKey",
+    "trackKey",
+    "moduleSlug",
+    "sourceDirectory",
+    "order",
+    "isReadme"
+  ];
 
   function key(prefix, userId, repository) {
     return (
@@ -70,6 +82,17 @@
         : { added: 0, modified: 0, deleted: 0 },
       updatedAt: Number(entry.updatedAt) || 0
     };
+  }
+
+  function applyEntryMetadata(entry, metadata) {
+    if (!metadata) return entry;
+    const merged = { ...entry };
+    for (const field of METADATA_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(metadata, field)) {
+        merged[field] = clone(metadata[field]);
+      }
+    }
+    return merged;
   }
 
   function read(storage, storageKey) {
@@ -232,8 +255,9 @@
     const changes = deriveChanges(oldBase, oldCurrent);
     const oldBaseByPath = entryMap(oldBase?.entries);
     const hydrated = (remoteEntries || []).map((entry) => {
-      const normalized = normalizeEntry(entry);
-      const previous = oldBaseByPath.get(normalized.path);
+      const remote = normalizeEntry(entry);
+      const previous = oldBaseByPath.get(remote.path);
+      const normalized = applyEntryMetadata(remote, previous);
       return {
         ...normalized,
         content:
@@ -282,10 +306,33 @@
         entries
       );
     }
+    const changes = deriveChanges(base, current);
+    const metadataByPath = entryMap(entries);
+    const repairedBase = write(
+      storage,
+      key(BASE_PREFIX, userId, repository),
+      {
+        ...base,
+        entries: base.entries.map((entry) => {
+          return applyEntryMetadata(
+            entry,
+            metadataByPath.get(entry.path)
+          );
+        })
+      }
+    );
+    const repairedCurrent = write(
+      storage,
+      key(CURRENT_PREFIX, userId, repository),
+      {
+        ...current,
+        entries: overlayChanges(repairedBase.entries, changes)
+      }
+    );
     return {
-      base,
-      current,
-      changes: deriveChanges(base, current)
+      base: repairedBase,
+      current: repairedCurrent,
+      changes: deriveChanges(repairedBase, repairedCurrent)
     };
   }
 
