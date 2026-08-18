@@ -19,6 +19,7 @@ EDITABLE_EXTENSIONS = {
     ".rs", ".sh", ".swift", ".toml", ".ts", ".tsx", ".xml", ".yaml", ".yml",
 }
 MAX_BATCH_BYTES = 1_500_000
+TRACK_ROOTS = {"program", "planning"}
 
 
 def git(repo: str, *arguments: str) -> str:
@@ -34,6 +35,7 @@ def editable(path: str) -> bool:
     parts = PurePosixPath(path).parts
     return (
         len(parts) >= 2
+        and (parts[0] not in TRACK_ROOTS or len(parts) >= 3)
         and not any(part.startswith(".") for part in parts)
         and PurePosixPath(path).suffix.lower() in EDITABLE_EXTENSIONS
     )
@@ -190,8 +192,21 @@ def post(url: str, token: str, payload: dict[str, object]) -> dict[str, object]:
             return json.load(response)
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")
+        paths = [
+            str(item.get("path", ""))
+            for item in payload.get("files", [])
+            if isinstance(item, dict)
+        ]
+        deleted = [
+            str(item)
+            for item in payload.get("deleted", [])
+        ]
+        batch_paths = ", ".join((paths + deleted)[:12])
+        if len(paths) + len(deleted) > 12:
+            batch_paths += ", ..."
         raise RuntimeError(
-            f"Attribution sync failed with HTTP {exc.code}: {detail}"
+            f"Attribution sync failed with HTTP {exc.code}: {detail}; "
+            f"batch paths: {batch_paths or '(empty batch)'}"
         ) from exc
 
 
