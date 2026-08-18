@@ -2028,6 +2028,9 @@
   }
 
   function splitMarkdownDocument(content) {
+    if (window.GCKEditorDocument) {
+      return window.GCKEditorDocument.splitMarkdownDocument(content);
+    }
     const match = content.match(/^#\s+(.+?)\s*$/m);
     if (!match || match.index === undefined) {
       return {
@@ -2048,6 +2051,13 @@
   }
 
   function assembleMarkdownDocument(parts, title, body) {
+    if (window.GCKEditorDocument) {
+      return window.GCKEditorDocument.assembleMarkdownDocument(
+        parts,
+        title,
+        body
+      );
+    }
     const prefix = parts.prefix || "";
     const heading = title ? "# " + title.trim() + "\n" : "";
     const normalizedBody = (body || "").replace(/^\n+/, "");
@@ -2214,6 +2224,21 @@
     const content = serializedInlineContent(panel);
     panel.currentCanonical = content.canonical;
     panel.bufferedContent = content.serialized;
+    const integrity = window.GCKEditorDocument
+      ? window.GCKEditorDocument.validateCompleteSnapshot(
+          path,
+          content.serialized
+        )
+      : { valid: true, message: "" };
+    if (!integrity.valid) {
+      setEditorSyncState(
+        panel,
+        "invalid",
+        integrity.message,
+        "error"
+      );
+      return null;
+    }
     if (
       panel.dataset.baseSha &&
       content.serialized === panel.repositoryBaseContent
@@ -2319,23 +2344,75 @@
     state.inlinePanel = panel;
     const textarea = query("[data-inline-input]", panel);
     try {
-      const draft = state.drafts.find(function (item) {
+      let draft = state.drafts.find(function (item) {
         return item.path === sourcePath;
       });
       let baseEntry = (state.baseTree?.entries || []).find(function (item) {
         return item.path === sourcePath;
       });
-      const currentEntry = (state.currentTree?.entries || []).find(
+      let currentEntry = (state.currentTree?.entries || []).find(
         function (item) {
           return item.path === sourcePath &&
             item.operation !== "delete";
         }
       );
-      const cached = readEditorBuffer(sourcePath);
+      let cached = readEditorBuffer(sourcePath);
+      const markdownDocument = sourcePath.toLowerCase().endsWith(".md");
+      const baseNeedsHydration = Boolean(
+        baseEntry &&
+        (
+          typeof baseEntry.content !== "string" ||
+          (
+            markdownDocument &&
+            window.GCKEditorDocument &&
+            !window.GCKEditorDocument.validateCompleteSnapshot(
+              sourcePath,
+              baseEntry.content
+            ).valid
+          )
+        )
+      );
+      let deployedBase = null;
+      if (baseNeedsHydration) {
+        deployedBase = await loadDeployedSource(sourcePath);
+        if (!deployedBase) {
+          deployedBase = await api(
+            "/repository/file?path=" + encodeURIComponent(sourcePath)
+          );
+          deployedBase.sourceType = "repository-api";
+        }
+        if (
+          deployedBase &&
+          (!baseEntry.sha || deployedBase.sha === baseEntry.sha)
+        ) {
+          const hydrated = window.GCKWorkspaceStore.hydrateBaseFile(
+            window.localStorage,
+            editorUserId(),
+            workspaceRepository(),
+            sourcePath,
+            deployedBase.sha,
+            deployedBase.content
+          );
+          applyWorkspaceState(hydrated);
+          baseEntry = (state.baseTree?.entries || []).find(function (item) {
+            return item.path === sourcePath;
+          });
+          currentEntry = (state.currentTree?.entries || []).find(
+            function (item) {
+              return item.path === sourcePath &&
+                item.operation !== "delete";
+            }
+          );
+          cached = readEditorBuffer(sourcePath);
+          draft = state.drafts.find(function (item) {
+            return item.path === sourcePath;
+          });
+        }
+      }
       let source =
         currentEntry && typeof currentEntry.content === "string"
           ? { ...currentEntry, sourceType: "current-tree" }
-          : await loadDeployedSource(sourcePath);
+          : deployedBase || await loadDeployedSource(sourcePath);
       if (!source && cached && !cached.baseSha) {
         source = {
           path: sourcePath,
@@ -2353,6 +2430,7 @@
       if (
         baseEntry &&
         typeof baseEntry.content !== "string" &&
+        source.sourceType !== "current-tree" &&
         source.sha === baseEntry.sha
       ) {
         const hydrated = window.GCKWorkspaceStore.hydrateBaseFile(
@@ -2368,13 +2446,54 @@
           return item.path === sourcePath;
         });
       }
-      let repositoryBaseContent =
-        cached && typeof cached.baseContent === "string"
-          ? cached.baseContent
-          : typeof baseEntry?.content === "string"
-            ? baseEntry.content
-            : source.content;
-      const editorContent = cached ? cached.content : source.content;
+      const cachedMatchesBase = Boolean(
+        cached &&
+        baseEntry &&
+        (!cached.baseSha || cached.baseSha === baseEntry.sha)
+      );
+      const repositoryBaseContent =
+        cachedMatchesBase && typeof baseEntry.content === "string"
+          ? baseEntry.content
+          : cached && typeof cached.baseContent === "string"
+            ? cached.baseContent
+            : typeof baseEntry?.content === "string"
+              ? baseEntry.content
+              : source.content;
+      let editorContent = cached ? cached.content : source.content;
+      if (
+        cachedMatchesBase &&
+        window.GCKEditorDocument &&
+        !window.GCKEditorDocument.validateCompleteSnapshot(
+          sourcePath,
+          editorContent
+        ).valid
+      ) {
+        const repaired =
+          window.GCKEditorDocument.repairLegacyPartialSnapshot(
+            sourcePath,
+            repositoryBaseContent,
+            cached.baseContent,
+            editorContent
+          );
+        if (repaired.repaired) {
+          editorContent = repaired.content;
+          writeEditorBuffer(sourcePath, {
+            content: editorContent,
+            baseSha: baseEntry.sha,
+            baseContent: repositoryBaseContent,
+            operation: "upsert",
+            updatedAt: Date.now()
+          });
+          cached = readEditorBuffer(sourcePath);
+          draft = state.drafts.find(function (item) {
+            return item.path === sourcePath;
+          });
+          panel.repairedLegacySnapshot = true;
+        } else {
+          editorContent = repositoryBaseContent;
+          panel.unrepairedLegacySnapshot = true;
+        }
+      }
       panel.dataset.baseSha =
         (cached && cached.baseSha) ||
         baseEntry?.sha ||
@@ -2382,14 +2501,14 @@
         "";
       panel.repositoryBaseContent = repositoryBaseContent;
       panel.lastSyncedContent = editorContent;
-      panel.renderedContent = draft ? draft.content : source.content;
+      panel.renderedContent = editorContent;
       panel.bufferedContent = editorContent;
       const deleteButton = query("[data-inline-delete]", panel);
       if (deleteButton) {
         deleteButton.textContent =
           panel.dataset.baseSha ? "删除文件" : "删除新增文件";
       }
-      if (sourcePath.toLowerCase().endsWith(".md")) {
+      if (markdownDocument) {
         initializeVisualEditor(panel, host, editorContent);
       } else {
         query("[data-visual-editor]", panel).hidden = true;
@@ -2402,7 +2521,22 @@
       textarea.addEventListener("input", function () {
         cacheInlineEditor(panel);
       });
-      if (cached && cached.content !== source.content) {
+      if (panel.repairedLegacySnapshot) {
+        setEditorSyncState(
+          panel,
+          "local",
+          "已将旧的局部缓存修复为完整文档。",
+          "success"
+        );
+      } else if (panel.unrepairedLegacySnapshot) {
+        setEditorSyncState(
+          panel,
+          "invalid",
+          "检测到不完整旧缓存，已加载 Base Tree 完整文档；" +
+            "重新编辑后会替换损坏缓存。",
+          "error"
+        );
+      } else if (cached && cached.content !== source.content) {
         setEditorSyncState(
           panel,
           "local",

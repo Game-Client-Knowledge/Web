@@ -895,7 +895,16 @@ function renderCachedLineDiff(rows) {
 }
 
 async function baseContentForDraft(draft) {
-  if (typeof draft.base_content === "string") {
+  const cachedBaseIsComplete =
+    typeof draft.base_content === "string" &&
+    (
+      !window.GCKEditorDocument ||
+      window.GCKEditorDocument.validateCompleteSnapshot(
+        draft.path,
+        draft.base_content
+      ).valid
+    );
+  if (cachedBaseIsComplete) {
     return draft.base_content;
   }
   if (!draft.base_sha) return "";
@@ -909,7 +918,56 @@ async function baseContentForDraft(draft) {
   return file.content;
 }
 
+async function ensureCompleteDraftSnapshot(draft) {
+  if (
+    !draft ||
+    draft.operation === "delete" ||
+    !window.GCKEditorDocument ||
+    window.GCKEditorDocument.validateCompleteSnapshot(
+      draft.path,
+      draft.content
+    ).valid ||
+    !draft.base_sha
+  ) {
+    return draft;
+  }
+  const completeBase = await baseContentForDraft(draft);
+  const repaired = window.GCKEditorDocument.repairLegacyPartialSnapshot(
+    draft.path,
+    completeBase,
+    draft.base_content,
+    draft.content
+  );
+  if (!repaired.repaired) return draft;
+
+  const hydrated = workspaceStore().hydrateBaseFile(
+    window.localStorage,
+    workspaceUserId(),
+    workspaceRepository(),
+    draft.path,
+    draft.base_sha,
+    completeBase
+  );
+  applyWorkspaceState(hydrated);
+  const diff = localLineDiff(
+    completeBase,
+    repaired.content,
+    "upsert"
+  );
+  applyLocalChange({
+    path: draft.path,
+    content: repaired.content,
+    operation: "upsert",
+    baseSha: draft.base_sha,
+    baseContent: completeBase,
+    ...diff,
+    updatedAt: Date.now()
+  });
+  return state.drafts.find((item) => item.path === draft.path) || draft;
+}
+
 async function showChangeDiff(draft) {
+  draft = await ensureCompleteDraftSnapshot(draft);
   destroyVisualEditor();
   state.previewing = false;
   byId("emptyEditor").hidden = true;
@@ -1050,6 +1108,15 @@ function persistActiveChange() {
   const path = byId("filePath").value || state.active.path;
   const { canonicalContent, serializedContent } =
     activeSerializedContent();
+  const integrity = window.GCKEditorDocument
+    ? window.GCKEditorDocument.validateCompleteSnapshot(
+        path,
+        serializedContent
+      )
+    : { valid: true, message: "" };
+  if (!integrity.valid) {
+    throw new Error(integrity.message);
+  }
   const baseContent = state.active.baseContent || "";
   if (
     state.active.baseSha &&
@@ -1115,6 +1182,7 @@ async function saveActiveLocally() {
 }
 
 async function openDraft(draft, forceEditor = false) {
+  draft = await ensureCompleteDraftSnapshot(draft);
   state.active = {
     draftId: draft.id,
     path: draft.path,
@@ -2011,6 +2079,25 @@ byId("submitForm").addEventListener("submit", async (event) => {
   try {
     if (state.active?.operation !== "delete") {
       persistActiveChange();
+    }
+    for (const draft of state.drafts.slice()) {
+      await ensureCompleteDraftSnapshot(draft);
+    }
+    const invalidSnapshot = state.drafts.find((draft) => {
+      return (
+        draft.operation !== "delete" &&
+        window.GCKEditorDocument &&
+        !window.GCKEditorDocument.validateCompleteSnapshot(
+          draft.path,
+          draft.content
+        ).valid
+      );
+    });
+    if (invalidSnapshot) {
+      throw new Error(
+        `${invalidSnapshot.path} 不是完整 Markdown 文档，` +
+          "请打开该更改并重新编辑后再提交。"
+      );
     }
     if (!state.drafts.length) {
       throw new Error("没有可提交的本地更改。");

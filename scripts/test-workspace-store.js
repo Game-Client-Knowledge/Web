@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const store = require("../src/assets/js/workspace-store.js");
+const documentApi = require("../src/assets/js/editor-document.js");
 
 function memoryStorage() {
   const values = new Map();
@@ -238,5 +239,81 @@ assert.equal(
   "C++",
   "the repaired metadata must flow into an unchanged Current Tree"
 );
+
+const damagedStorage = memoryStorage();
+const damagedPath =
+  "program/knowledge/engine/01-memory-allocators.md";
+const oldHeading = "## 1. 为什么引擎要自定义分配器";
+const newHeading = oldHeading + "17717";
+const completeBase = `# 内存分配器与分配器上下文
+
+${oldHeading}
+
+正文仍然存在。
+
+## 2. 各策略要点
+
+更多正文。
+`;
+store.syncBase(
+  damagedStorage,
+  userId,
+  repository,
+  "commit-damaged",
+  [
+    {
+      path: damagedPath,
+      sha: "allocator-sha",
+      content: oldHeading
+    }
+  ]
+);
+workspace = store.applyChange(
+  damagedStorage,
+  userId,
+  repository,
+  {
+    path: damagedPath,
+    content: newHeading,
+    baseSha: "allocator-sha",
+    baseContent: oldHeading,
+    operation: "upsert"
+  }
+);
+assert.equal(workspace.changes[0].content, newHeading);
+workspace = store.hydrateBaseFile(
+  damagedStorage,
+  userId,
+  repository,
+  damagedPath,
+  "allocator-sha",
+  completeBase
+);
+const damagedChange = workspace.changes[0];
+const repaired = documentApi.repairLegacyPartialSnapshot(
+  damagedPath,
+  completeBase,
+  damagedChange.baseContent,
+  damagedChange.content
+);
+assert.equal(repaired.repaired, true);
+workspace = store.applyChange(
+  damagedStorage,
+  userId,
+  repository,
+  {
+    path: damagedPath,
+    content: repaired.content,
+    baseSha: "allocator-sha",
+    baseContent: completeBase,
+    operation: "upsert"
+  }
+);
+assert.equal(workspace.changes[0].baseContent, completeBase);
+assert.equal(
+  workspace.changes[0].content,
+  completeBase.replace(oldHeading, newHeading)
+);
+assert(workspace.changes[0].content.includes("## 2. 各策略要点"));
 
 process.stdout.write("Local base/current workspace checks passed\n");

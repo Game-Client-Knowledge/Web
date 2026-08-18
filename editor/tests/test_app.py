@@ -1813,6 +1813,41 @@ def test_submission_accepts_client_workspace_changes_without_server_drafts(
     assert changes[0]["content"] == "# Local tree\n"
 
 
+def test_submission_rejects_partial_markdown_workspace_snapshot(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "partial-tree@example.test",
+            "username": "partial-tree",
+            "password": "local-password-123",
+        },
+    ).json()
+    client.app.state.github.submit = AsyncMock()
+    response = client.post(
+        "/api/submit",
+        headers={"X-CSRF-Token": registered["csrf_token"]},
+        json={
+            "custom_head": "partial-workspace",
+            "title": "docs: partial workspace must fail",
+            "changes": [
+                {
+                    "path": "knowledge/cpp/partial.md",
+                    "content": "## 1. 只有被修改的一行\n",
+                    "operation": "upsert",
+                    "base_sha": "base-blob",
+                    "base_content": "## 1. 原始的一行\n",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 422
+    assert "一级标题" in response.text
+    assert client.app.state.github.submit.await_count == 0
+
+
 def test_submission_reports_remote_tree_merge_conflict(
     client: TestClient,
 ) -> None:

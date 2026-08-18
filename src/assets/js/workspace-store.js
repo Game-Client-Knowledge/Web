@@ -372,7 +372,11 @@
         entries: overlayChanges(savedBase.entries, changes)
       }
     );
-    return { base: savedBase, current: savedCurrent };
+    return {
+      base: savedBase,
+      current: savedCurrent,
+      changes: deriveChanges(savedBase, savedCurrent)
+    };
   }
 
   function applyChange(
