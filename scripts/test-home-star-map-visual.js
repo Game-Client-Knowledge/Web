@@ -43,30 +43,42 @@ async function runScenario(browser, scenario) {
     viewport: scenario.viewport,
     reducedMotion: "reduce"
   });
-  await context.addInitScript((scope) => {
+  const starSettings = {
+    home_intro_enabled: false,
+    home_intro_mode: "off",
+    home_background_style: "contribution_star_map",
+    home_star_scope: scenario.scope,
+    home_star_relation_visibility: "near",
+    home_star_strong_relation_style: "solid",
+    home_star_reference_relation_style: "dashed",
+    home_star_contributor_relation_style: "glow",
+    home_star_brightness_variation_enabled: true,
+    home_star_brightness_variation_amount: 3,
+    home_star_brightness_transition_ms: 500,
+    home_star_brightness_interval_ms: 800,
+    home_star_color_random_enabled: true,
+    home_star_illumination_rule: "depth_contributor_terminal",
+    home_star_illumination_depth: 2,
+    home_star_selection_duration_ms: 1000,
+    home_star_label_duration_ms: 1800
+  };
+  await context.addInitScript((settings) => {
     localStorage.setItem(
       "gck-home-intro-settings",
-      JSON.stringify({
-        home_intro_enabled: false,
-        home_intro_mode: "off",
-        home_background_style: "contribution_star_map",
-        home_star_scope: scope,
-        home_star_relation_visibility: "near",
-        home_star_strong_relation_style: "solid",
-        home_star_reference_relation_style: "dashed",
-        home_star_contributor_relation_style: "glow",
-        home_star_brightness_variation_enabled: true,
-        home_star_brightness_variation_amount: 3,
-        home_star_brightness_transition_ms: 500,
-        home_star_brightness_interval_ms: 800,
-        home_star_color_random_enabled: true,
-        home_star_illumination_rule: "depth_contributor_terminal",
-        home_star_illumination_depth: 2,
-        home_star_selection_duration_ms: 1000,
-        home_star_label_duration_ms: 1800
-      })
+      JSON.stringify(settings)
     );
-  }, scenario.scope);
+  }, starSettings);
+  await context.route("**/editor/api/bootstrap**", (route) => {
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        config: starSettings,
+        session: { authenticated: false },
+        drafts: []
+      })
+    });
+  });
 
   const page = await context.newPage();
   const errors = [];
