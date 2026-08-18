@@ -147,6 +147,36 @@ def _matching_user(
     ).fetchone()
 
 
+def _canonical_contributor_names(
+    connection: sqlite3.Connection,
+) -> dict[str, str]:
+    canonical = {
+        f"user:{row['id']}": row["username"]
+        for row in connection.execute(
+            """
+            SELECT id, username FROM users
+            WHERE status = 'active'
+            """
+        ).fetchall()
+    }
+    rows = connection.execute(
+        """
+        SELECT contributor_id, contributor_name, last_contributed_at
+        FROM document_contributors
+        ORDER BY contributor_id,
+                 last_contributed_at DESC,
+                 contributor_name COLLATE NOCASE,
+                 path
+        """
+    ).fetchall()
+    for row in rows:
+        canonical.setdefault(
+            row["contributor_id"],
+            row["contributor_name"],
+        )
+    return canonical
+
+
 def _public_comment(row: sqlite3.Row, mentions: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "id": row["id"],
@@ -231,6 +261,7 @@ def contribution_graph_payload(db: Database) -> dict[str, Any]:
             ORDER BY path, contributor_name COLLATE NOCASE
             """
         ).fetchall()
+        canonical_names = _canonical_contributor_names(connection)
     graph_settings = {row["key"]: row["value"] for row in settings_rows}
     try:
         graph_version = int(
@@ -241,7 +272,16 @@ def contribution_graph_payload(db: Database) -> dict[str, Any]:
     return {
         "version": graph_version,
         "revision": graph_settings.get("contribution_graph_revision", ""),
-        "links": [dict(row) for row in rows],
+        "links": [
+            {
+                **dict(row),
+                "contributor_name": canonical_names.get(
+                    row["contributor_id"],
+                    row["contributor_name"],
+                ),
+            }
+            for row in rows
+        ],
     }
 
 
@@ -427,6 +467,19 @@ def create_comments_router(
                 files += 1
                 lines += len(item.lines)
             if payload.complete:
+                canonical_names = _canonical_contributor_names(connection)
+                connection.executemany(
+                    """
+                    UPDATE document_contributors
+                    SET contributor_name = ?
+                    WHERE contributor_id = ?
+                    """,
+                    [
+                        (name, contributor_id)
+                        for contributor_id, name
+                        in canonical_names.items()
+                    ],
+                )
                 connection.execute(
                     """
                     INSERT INTO settings(key, value, updated_at)

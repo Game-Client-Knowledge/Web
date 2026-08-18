@@ -380,6 +380,28 @@ def test_line_attribution_and_comment_threads(client: TestClient) -> None:
                             "last_contributed_at": "2026-08-17T00:00:00Z",
                         }
                     ],
+                },
+                {
+                    "path": "planning/README.md",
+                    "commit": "a" * 40,
+                    "line_count": 1,
+                    "lines": [
+                        {
+                            "line": 1,
+                            "commit": "a" * 40,
+                            "name": "Preferred External",
+                            "email": "external@example.test",
+                        }
+                    ],
+                    "contributors": [
+                        {
+                            "id": "external-author",
+                            "name": "Preferred External",
+                            "email": "external@example.test",
+                            "commit_count": 2,
+                            "last_contributed_at": "2026-08-19T00:00:00Z",
+                        }
+                    ],
                 }
             ],
         },
@@ -397,9 +419,16 @@ def test_line_attribution_and_comment_threads(client: TestClient) -> None:
             "last_contributed_at": "2026-08-18T00:00:00Z",
         },
         {
+            "path": "planning/README.md",
+            "contributor_id": "external-author",
+            "contributor_name": "Preferred External",
+            "commit_count": 2,
+            "last_contributed_at": "2026-08-19T00:00:00Z",
+        },
+        {
             "path": "program/README.md",
             "contributor_id": "external-author",
-            "contributor_name": "external",
+            "contributor_name": "Preferred External",
             "commit_count": 1,
             "last_contributed_at": "2026-08-17T00:00:00Z",
         },

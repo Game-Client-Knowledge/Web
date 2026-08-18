@@ -67,10 +67,59 @@ def contributor_id(name: str, email: str) -> str:
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12]
 
 
+def contributor_display_name(name: str, email: str) -> str:
+    normalized_name = " ".join(name.strip().split())
+    if normalized_name and normalized_name.lower() not in {
+        "unknown",
+        "github contributor",
+    }:
+        return normalized_name
+    github_match = re.fullmatch(
+        r"\d+\+([^@]+)@users\.noreply\.github\.com",
+        email.strip().lower(),
+    )
+    if github_match:
+        return github_match.group(1)
+    local = email.split("@", 1)[0].strip()
+    return local or "Unknown"
+
+
+def canonical_contributor_names(
+    repo: str,
+    revision: str,
+) -> dict[str, str]:
+    output = git(
+        repo,
+        "log",
+        "--no-merges",
+        "--format=%x1e%cI%x1f%aN%x1f%aE",
+        revision,
+        "--",
+    )
+    identities: dict[str, dict[str, str]] = {}
+    for block in output.split("\x1e"):
+        fields = block.strip().split("\x1f")
+        if len(fields) != 3:
+            continue
+        timestamp, name, email = fields
+        identity = contributor_id(name, email)
+        current = identities.get(identity)
+        if current is None or timestamp > current["timestamp"]:
+            identities[identity] = {
+                "name": contributor_display_name(name, email),
+                "timestamp": timestamp,
+            }
+    return {
+        identity: value["name"]
+        for identity, value in identities.items()
+    }
+
+
 def contributors_for_file(
     repo: str,
     revision: str,
     path: str,
+    canonical_names: dict[str, str] | None = None,
 ) -> list[dict[str, object]]:
     output = git(
         repo,
@@ -89,11 +138,15 @@ def contributors_for_file(
             continue
         timestamp, name, email = fields
         identity = contributor_id(name, email)
+        canonical_name = (
+            (canonical_names or {}).get(identity)
+            or contributor_display_name(name, email)
+        )
         item = contributors.setdefault(
             identity,
             {
                 "id": identity,
-                "name": name.strip() or "Unknown",
+                "name": canonical_name,
                 "email": email.strip().lower(),
                 "commit_count": 0,
                 "last_contributed_at": "",
@@ -102,7 +155,7 @@ def contributors_for_file(
         item["commit_count"] = int(item["commit_count"]) + 1
         if timestamp > str(item["last_contributed_at"]):
             item["last_contributed_at"] = timestamp
-            item["name"] = name.strip() or str(item["name"])
+            item["name"] = canonical_name
     return sorted(
         contributors.values(),
         key=lambda item: (
@@ -161,6 +214,7 @@ def blame_file(
     revision: str,
     content_revision: str,
     path: str,
+    canonical_names: dict[str, str] | None = None,
 ) -> dict[str, object]:
     output = git(repo, "blame", "--line-porcelain", revision, "--", path)
     lines: list[dict[str, object]] = []
@@ -192,7 +246,12 @@ def blame_file(
         "commit": content_revision,
         "line_count": len(lines),
         "lines": lines,
-        "contributors": contributors_for_file(repo, revision, path),
+        "contributors": contributors_for_file(
+            repo,
+            revision,
+            path,
+            canonical_names,
+        ),
     }
 
 
@@ -297,12 +356,17 @@ def main() -> None:
         arguments.revision,
         arguments.include_track_readmes,
     )
+    canonical_names = canonical_contributor_names(
+        arguments.repo,
+        arguments.revision,
+    )
     files = [
         blame_file(
             arguments.repo,
             arguments.revision,
             arguments.content_revision or arguments.revision,
             path,
+            canonical_names,
         )
         for path in paths
     ]

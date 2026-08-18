@@ -89,6 +89,7 @@ with tempfile.TemporaryDirectory(prefix="gck-attribution-") as temporary:
         "# Knowledge updated\n",
         encoding="utf-8",
     )
+    git(worktree, "config", "user.name", "Renamed Test")
     git(worktree, "add", ".")
     git(worktree, "commit", "-m", "test: update track and module entries")
     next_revision = git(worktree, "rev-parse", "HEAD")
@@ -103,6 +104,28 @@ with tempfile.TemporaryDirectory(prefix="gck-attribution-") as temporary:
     assert changed == [
         "program/README.md",
         "program/knowledge/README.md",
+    ]
+    canonical_names = MODULE.canonical_contributor_names(
+        str(bare),
+        next_revision,
+    )
+    identity = MODULE.contributor_id("Test", "test@example.com")
+    assert canonical_names[identity] == "Renamed Test"
+    old_file_contributors = MODULE.contributors_for_file(
+        str(bare),
+        next_revision,
+        "planning/cases/README.md",
+        canonical_names,
+    )
+    assert old_file_contributors == [
+        {
+            "id": identity,
+            "name": "Renamed Test",
+            "email": "test@example.com",
+            "commit_count": 1,
+            "last_contributed_at":
+                old_file_contributors[0]["last_contributed_at"],
+        }
     ]
 
 assert (

@@ -68,6 +68,14 @@ to the same website account. The browser treats the version-matched server
 contributor set as authoritative and rebuilds contributor stars from those
 canonical IDs, so stale alias stars cannot retain or hide edges.
 
+One contributor ID has exactly one display name across the complete graph.
+Website accounts always use their current public username. Unregistered Git
+identities use the valid name from their most recent commit in the target
+content revision, even for documents that were last changed under an older
+name. The service normalizes stored rows again when a sync batch completes and
+also normalizes every API response, so incremental updates cannot reintroduce
+per-document aliases.
+
 Track landing documents (`program/README.md` and `planning/README.md`) use a
 restricted attribution-only validator. They remain outside normal editable
 module paths but still receive contributor edges.
