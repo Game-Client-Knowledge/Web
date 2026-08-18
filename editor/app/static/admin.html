@@ -194,6 +194,51 @@
             <option value="glow">脉冲辉光</option>
           </select>
         </label>
+        <label>
+          点击点亮规则
+          <select name="home_star_illumination_rule">
+            <option value="bfs">完整关系网（BFS）</option>
+            <option value="depth">限制 N 层</option>
+            <option value="bfs_contributor_terminal">完整关系网 · 静星终止</option>
+            <option value="depth_contributor_terminal">限制 N 层 · 静星终止</option>
+            <option value="direct_neighbors">仅直接相邻节点</option>
+            <option value="strong_component">仅同最小模块</option>
+            <option value="reference_depth">仅引用链 N 层</option>
+          </select>
+        </label>
+        <label>
+          点亮溯源层数 N
+          <input
+            name="home_star_illumination_depth"
+            type="number"
+            min="1"
+            max="20"
+            step="1"
+            required
+          >
+        </label>
+        <label>
+          关系图持续时间（秒）
+          <input
+            name="home_star_selection_duration_seconds"
+            type="number"
+            min="0.5"
+            max="60"
+            step="0.5"
+            required
+          >
+        </label>
+        <label>
+          星星标题持续时间（秒）
+          <input
+            name="home_star_label_duration_seconds"
+            type="number"
+            min="0.5"
+            max="60"
+            step="0.5"
+            required
+          >
+        </label>
         <label class="check-label">
           <input name="home_star_brightness_variation_enabled" type="checkbox">
           随机浮动星星亮度

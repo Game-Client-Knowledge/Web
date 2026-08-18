@@ -288,7 +288,8 @@ and published code files.
 | --- | --- |
 | `src/assets/js/site.js` | Header/mobile nav, copy buttons, page TOC, reader sidebar state, comments loader. |
 | `src/assets/js/site-visuals.js` | Background visual effects, pointer effects, ambient visuals. |
-| `src/assets/js/home-star-map.js` | Old/contribution homepage star maps, document motion, relation rendering, labels, BFS coverage. |
+| `src/assets/js/home-star-illumination.js` | Pure illumination strategies and perceptual brightness mapping. |
+| `src/assets/js/home-star-map.js` | Old/contribution homepage star maps, document motion, relation rendering, timed labels, and coverage. |
 | `src/assets/js/home-intro-policy.js` | Home intro animation policy and device/session behavior. |
 | `src/assets/js/home-statistics.js` | Client-side track and rolling seven-day contribution filters over static build data. |
 | `src/assets/js/search.js` | Search dialog and weighted client-side search. |

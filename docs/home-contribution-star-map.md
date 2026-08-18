@@ -82,20 +82,35 @@ changes remain client-only under the dual-tree editor model.
 - `near` draws an edge only when its related stars are within the proximity
   threshold.
 - `hidden` suppresses normal edges.
-- A selected connected component always draws its internal edges, regardless
-  of distance.
+- A selected illumination set always draws its internal edges, regardless of
+  distance.
 
-Clicking a star shows a label that follows it for three seconds. Clicking the
-same document star or its label again navigates to the document. Contributor
-labels show the public contributor name.
+Clicking a star shows a moving label. Clicking the same document star or its
+label again navigates to the document. Contributor labels show the public
+contributor name. Label and relation-highlight durations are configured
+independently and default to three seconds.
 
-When edge visibility is not `always`, clicking a star runs BFS over all edge
-types. The complete connected component is highlighted and a fixed coverage
-panel reports:
+When edge visibility is not `always`, clicking a star applies the selected
+illumination rule:
+
+| Rule | Behavior |
+| --- | --- |
+| Full graph | BFS over every edge type until the connected component is exhausted. |
+| N levels | BFS stops after the configured graph depth. |
+| Full graph, contributor terminal | BFS, but a contributor reached from another star is illuminated without propagating further. A directly clicked contributor remains a valid source. |
+| N levels, contributor terminal | The same contributor boundary with a configurable depth limit. |
+| Direct neighbors | Illuminate the selected star and its immediate neighbors only. |
+| Smallest module | Traverse only strong edges inside the smallest content directory. |
+| Reference chain | Traverse only Markdown reference edges up to N levels. |
+
+The resulting set is highlighted and a fixed coverage panel reports:
 
 - highlighted stars and percentage of all stars;
 - highlighted contributor stars and percentage;
 - highlighted document stars and percentage.
+
+After the configured relation duration, the set and coverage panel are cleared
+while normal star movement continues.
 
 ## Brightness Rules
 
@@ -119,6 +134,12 @@ administrator controls the offset magnitude, interpolation duration, and
 reselection interval. Random colors are disabled by default; disabled stars
 render white.
 
+The `[0, 30]` logical brightness is converted through a perceptual power curve,
+`luminous = (brightness / 30)^1.55`. The result controls core opacity, core
+radius, glow blur, and a translucent outer halo. High values are therefore
+materially brighter instead of merely a fraction larger. Selection adds a
+bounded highlight boost without replacing the underlying brightness.
+
 ## Administration Settings
 
 `PUT /api/admin/visual-settings` persists:
@@ -126,6 +147,8 @@ render white.
 - homepage background engine and hero/full scope;
 - relation visibility;
 - strong, reference, and contribution styles (`solid`, `dashed`, `glow`);
+- illumination rule and N-level depth;
+- relation-highlight and moving-label durations;
 - brightness variation enablement, magnitude, transition, and interval;
 - random color enablement;
 - enabled brightness rules and priorities.
@@ -138,8 +161,11 @@ from its first rendered frame.
 
 - `npm run test:home-star-graph` validates smallest-directory grouping,
   Markdown references, and contributor edges.
+- `npm run test:home-star-illumination` validates all propagation boundaries
+  and the perceptual brightness mapping.
 - `editor/tests/test_app.py` validates persistence, public propagation,
   versioned contribution links, and administrator input validation.
 - `scripts/test-home-star-map-visual.js` checks hero/full desktop and full
   mobile rendering, nonblank Canvas pixels, star/edge counts, horizontal
-  overflow, BFS coverage, labels, and screenshots.
+  overflow, rule selection, independent expiration timers, labels, and
+  screenshots.

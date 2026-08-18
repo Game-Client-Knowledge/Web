@@ -101,6 +101,15 @@ DEFAULT_STAR_BRIGHTNESS_RULES = [
     {"id": "document_contributor_count", "priority": 200},
     {"id": "document_recent_activity", "priority": 100},
 ]
+STAR_ILLUMINATION_RULE_IDS = {
+    "bfs",
+    "depth",
+    "bfs_contributor_terminal",
+    "depth_contributor_terminal",
+    "direct_neighbors",
+    "strong_component",
+    "reference_depth",
+}
 
 
 class RegisterRequest(BaseModel):
@@ -266,6 +275,18 @@ class VisualSettingsRequest(BaseModel):
         le=30000,
     )
     home_star_color_random_enabled: bool = False
+    home_star_illumination_rule: str = "bfs"
+    home_star_illumination_depth: int = Field(default=3, ge=1, le=20)
+    home_star_selection_duration_ms: int = Field(
+        default=3000,
+        ge=500,
+        le=60000,
+    )
+    home_star_label_duration_ms: int = Field(
+        default=3000,
+        ge=500,
+        le=60000,
+    )
     home_star_brightness_rules: list[StarBrightnessRuleRequest] = Field(
         default_factory=lambda: [
             StarBrightnessRuleRequest(**item)
@@ -844,6 +865,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except (TypeError, ValueError):
                 return default
 
+        illumination_rule = db.setting(
+            "home_star_illumination_rule", "bfs"
+        )
+        if illumination_rule not in STAR_ILLUMINATION_RULE_IDS:
+            illumination_rule = "bfs"
         return {
             "home_background_style": db.setting(
                 "home_background_style", "old_star_map"
@@ -896,6 +922,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_star_color_random_enabled": (
                 db.setting("home_star_color_random_enabled", "0") == "1"
+            ),
+            "home_star_illumination_rule": illumination_rule,
+            "home_star_illumination_depth": max(
+                1,
+                min(
+                    20,
+                    setting_int("home_star_illumination_depth", 3),
+                ),
+            ),
+            "home_star_selection_duration_ms": max(
+                500,
+                min(
+                    60000,
+                    setting_int("home_star_selection_duration_ms", 3000),
+                ),
+            ),
+            "home_star_label_duration_ms": max(
+                500,
+                min(
+                    60000,
+                    setting_int("home_star_label_duration_ms", 3000),
+                ),
             ),
             "home_star_brightness_rules": resolved_star_brightness_rules(),
         }
@@ -3256,6 +3304,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
         if not relation_styles.issubset({"solid", "dashed", "glow"}):
             raise HTTPException(status_code=422, detail="星图联系样式无效")
+        if (
+            payload.home_star_illumination_rule
+            not in STAR_ILLUMINATION_RULE_IDS
+        ):
+            raise HTTPException(status_code=422, detail="星图点亮规则无效")
         rule_ids = [
             rule.id for rule in payload.home_star_brightness_rules
         ]
@@ -3339,6 +3392,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_star_color_random_enabled": (
                 "1" if payload.home_star_color_random_enabled else "0"
+            ),
+            "home_star_illumination_rule": (
+                payload.home_star_illumination_rule
+            ),
+            "home_star_illumination_depth": str(
+                payload.home_star_illumination_depth
+            ),
+            "home_star_selection_duration_ms": str(
+                payload.home_star_selection_duration_ms
+            ),
+            "home_star_label_duration_ms": str(
+                payload.home_star_label_duration_ms
             ),
             "home_star_brightness_rules": json.dumps(
                 [

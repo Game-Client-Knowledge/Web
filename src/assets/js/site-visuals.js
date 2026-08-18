@@ -159,6 +159,14 @@
             settings.home_star_brightness_interval_ms,
           home_star_color_random_enabled:
             settings.home_star_color_random_enabled,
+          home_star_illumination_rule:
+            settings.home_star_illumination_rule,
+          home_star_illumination_depth:
+            settings.home_star_illumination_depth,
+          home_star_selection_duration_ms:
+            settings.home_star_selection_duration_ms,
+          home_star_label_duration_ms:
+            settings.home_star_label_duration_ms,
           home_star_brightness_rules:
             settings.home_star_brightness_rules
         })

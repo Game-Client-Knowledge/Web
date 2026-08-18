@@ -281,6 +281,10 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert payload["config"]["home_intro_hold_duration_ms"] == 630
     assert payload["config"]["home_intro_lock_scroll"] is True
     assert payload["config"]["home_intro_contributor_limit"] == 8
+    assert payload["config"]["home_star_illumination_rule"] == "bfs"
+    assert payload["config"]["home_star_illumination_depth"] == 3
+    assert payload["config"]["home_star_selection_duration_ms"] == 3000
+    assert payload["config"]["home_star_label_duration_ms"] == 3000
     assert [item["path"] for item in payload["drafts"]] == [
         "knowledge/cpp/bootstrap/README.md"
     ]
@@ -945,6 +949,10 @@ def test_admin_can_configure_client_visual_effects(
             "home_star_strong_relation_style": "glow",
             "home_star_reference_relation_style": "dashed",
             "home_star_contributor_relation_style": "solid",
+            "home_star_illumination_rule": "depth_contributor_terminal",
+            "home_star_illumination_depth": 4,
+            "home_star_selection_duration_ms": 4500,
+            "home_star_label_duration_ms": 6500,
             "home_star_brightness_variation_enabled": True,
             "home_star_brightness_variation_amount": 4.5,
             "home_star_brightness_transition_ms": 1200,
@@ -980,6 +988,10 @@ def test_admin_can_configure_client_visual_effects(
         "home_star_strong_relation_style": "glow",
         "home_star_reference_relation_style": "dashed",
         "home_star_contributor_relation_style": "solid",
+        "home_star_illumination_rule": "depth_contributor_terminal",
+        "home_star_illumination_depth": 4,
+        "home_star_selection_duration_ms": 4500,
+        "home_star_label_duration_ms": 6500,
         "home_star_brightness_variation_enabled": True,
         "home_star_brightness_variation_amount": 4.5,
         "home_star_brightness_transition_ms": 1200,
@@ -1011,6 +1023,13 @@ def test_admin_can_configure_client_visual_effects(
     assert config["home_star_scope"] == "full"
     assert config["home_star_relation_visibility"] == "hidden"
     assert config["home_star_strong_relation_style"] == "glow"
+    assert (
+        config["home_star_illumination_rule"]
+        == "depth_contributor_terminal"
+    )
+    assert config["home_star_illumination_depth"] == 4
+    assert config["home_star_selection_duration_ms"] == 4500
+    assert config["home_star_label_duration_ms"] == 6500
     assert config["home_star_brightness_variation_enabled"] is True
     assert config["home_star_brightness_variation_amount"] == 4.5
     assert config["home_star_brightness_rules"][0] == {
@@ -1092,6 +1111,19 @@ def test_admin_can_configure_client_visual_effects(
         },
     )
     assert invalid_mode.status_code == 422
+
+    invalid_illumination = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "catalog_background_style": "circuit",
+            "reader_background_style": "blueprint",
+            "pointer_effect_enabled": True,
+            "home_intro_enabled": True,
+            "home_star_illumination_rule": "recursive_everything",
+        },
+    )
+    assert invalid_illumination.status_code == 422
 
 
 def test_admin_can_save_encrypted_smtp_configuration(

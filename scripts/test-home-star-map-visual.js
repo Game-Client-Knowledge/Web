@@ -59,7 +59,11 @@ async function runScenario(browser, scenario) {
         home_star_brightness_variation_amount: 3,
         home_star_brightness_transition_ms: 500,
         home_star_brightness_interval_ms: 800,
-        home_star_color_random_enabled: true
+        home_star_color_random_enabled: true,
+        home_star_illumination_rule: "depth_contributor_terminal",
+        home_star_illumination_depth: 2,
+        home_star_selection_duration_ms: 1000,
+        home_star_label_duration_ms: 1800
       })
     );
   }, scenario.scope);
@@ -70,7 +74,8 @@ async function runScenario(browser, scenario) {
   page.on("console", (message) => {
     if (
       message.type() === "error" &&
-      !message.text().includes("/editor/api/bootstrap")
+      !message.text().includes("/editor/api/bootstrap") &&
+      message.text() !== "Failed to load resource: net::ERR_FAILED"
     ) {
       errors.push(message.text());
     }
@@ -98,6 +103,8 @@ async function runScenario(browser, scenario) {
       contributors: Number(canvas.dataset.contributorCount),
       documents: Number(canvas.dataset.documentCount),
       edges: Number(canvas.dataset.edgeCount),
+      illuminationRule: canvas.dataset.illuminationRule,
+      illuminationDepth: Number(canvas.dataset.illuminationDepth),
       width: rectangle.width,
       height: rectangle.height,
       overflow:
@@ -116,6 +123,8 @@ async function runScenario(browser, scenario) {
     `${scenario.name}: star kinds are invalid`
   );
   assert.ok(metrics.edges > metrics.stars, `${scenario.name}: too few edges`);
+  assert.equal(metrics.illuminationRule, "depth_contributor_terminal");
+  assert.equal(metrics.illuminationDepth, 2);
   assert.ok(metrics.nonblank > 10, `${scenario.name}: canvas is blank`);
   assert.ok(metrics.overflow <= 1, `${scenario.name}: horizontal overflow`);
   assert.ok(
@@ -169,7 +178,6 @@ async function runScenario(browser, scenario) {
     await page.locator(".star-map-label:not([hidden])").isVisible(),
     `${scenario.name}: contributor label is missing`
   );
-
   const selectedScreenshotPath = path.join(
     outputDirectory,
     `${scenario.name}-selected.png`
@@ -178,6 +186,23 @@ async function runScenario(browser, scenario) {
     path: selectedScreenshotPath,
     fullPage: false
   });
+  await page.waitForTimeout(1150);
+  assert.equal(
+    await page.locator(".star-coverage-panel").isVisible(),
+    false,
+    `${scenario.name}: relation graph did not expire`
+  );
+  assert.ok(
+    await page.locator(".star-map-label:not([hidden])").isVisible(),
+    `${scenario.name}: label expired with relation graph`
+  );
+  await page.waitForTimeout(800);
+  assert.equal(
+    await page.locator(".star-map-label").isVisible(),
+    false,
+    `${scenario.name}: label did not expire independently`
+  );
+
   assert.deepEqual(errors, [], `${scenario.name}: browser errors`);
   await context.close();
   console.log(

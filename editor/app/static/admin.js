@@ -586,6 +586,14 @@ async function loadOverview() {
     data.settings.home_star_reference_relation_style;
   byId("visualSettingsForm").home_star_contributor_relation_style.value =
     data.settings.home_star_contributor_relation_style;
+  byId("visualSettingsForm").home_star_illumination_rule.value =
+    data.settings.home_star_illumination_rule;
+  byId("visualSettingsForm").home_star_illumination_depth.value =
+    String(data.settings.home_star_illumination_depth);
+  byId("visualSettingsForm").home_star_selection_duration_seconds.value =
+    String(data.settings.home_star_selection_duration_ms / 1000);
+  byId("visualSettingsForm").home_star_label_duration_seconds.value =
+    String(data.settings.home_star_label_duration_ms / 1000);
   byId("visualSettingsForm").home_star_brightness_variation_enabled.checked =
     data.settings.home_star_brightness_variation_enabled;
   byId("visualSettingsForm").home_star_brightness_variation_amount.value =
@@ -691,6 +699,17 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
           form.home_star_reference_relation_style.value,
         home_star_contributor_relation_style:
           form.home_star_contributor_relation_style.value,
+        home_star_illumination_rule:
+          form.home_star_illumination_rule.value,
+        home_star_illumination_depth: Number(
+          form.home_star_illumination_depth.value
+        ),
+        home_star_selection_duration_ms: Math.round(
+          Number(form.home_star_selection_duration_seconds.value) * 1000
+        ),
+        home_star_label_duration_ms: Math.round(
+          Number(form.home_star_label_duration_seconds.value) * 1000
+        ),
         home_star_brightness_variation_enabled:
           form.home_star_brightness_variation_enabled.checked,
         home_star_brightness_variation_amount: Number(
@@ -741,6 +760,14 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         saved.home_star_reference_relation_style,
       home_star_contributor_relation_style:
         saved.home_star_contributor_relation_style,
+      home_star_illumination_rule:
+        saved.home_star_illumination_rule,
+      home_star_illumination_depth:
+        saved.home_star_illumination_depth,
+      home_star_selection_duration_ms:
+        saved.home_star_selection_duration_ms,
+      home_star_label_duration_ms:
+        saved.home_star_label_duration_ms,
       home_star_brightness_variation_enabled:
         saved.home_star_brightness_variation_enabled,
       home_star_brightness_variation_amount:

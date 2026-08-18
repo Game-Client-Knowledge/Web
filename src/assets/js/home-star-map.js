@@ -15,6 +15,10 @@
     home_star_brightness_transition_ms: 900,
     home_star_brightness_interval_ms: 2400,
     home_star_color_random_enabled: false,
+    home_star_illumination_rule: "bfs",
+    home_star_illumination_depth: 3,
+    home_star_selection_duration_ms: 3000,
+    home_star_label_duration_ms: 3000,
     home_star_brightness_rules: [
       { id: "contributor_contribution_count", priority: 500 },
       { id: "contributor_recent_activity", priority: 400 },
@@ -29,7 +33,8 @@
   if (!canvas || !hero || !graph) return;
 
   const context = canvas.getContext("2d");
-  if (!context) return;
+  const illumination = window.GCK_HOME_STAR_ILLUMINATION;
+  if (!context || !illumination) return;
 
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)"
@@ -208,6 +213,28 @@
       home_star_brightness_interval_ms: Math.max(
         200,
         Math.min(30000, Number(merged.home_star_brightness_interval_ms) || 2400)
+      ),
+      home_star_illumination_rule: illumination.RULES.has(
+        merged.home_star_illumination_rule
+      )
+        ? merged.home_star_illumination_rule
+        : defaults.home_star_illumination_rule,
+      home_star_illumination_depth: illumination.normalizedDepth(
+        merged.home_star_illumination_depth
+      ),
+      home_star_selection_duration_ms: Math.max(
+        500,
+        Math.min(
+          60000,
+          Number(merged.home_star_selection_duration_ms) || 3000
+        )
+      ),
+      home_star_label_duration_ms: Math.max(
+        500,
+        Math.min(
+          60000,
+          Number(merged.home_star_label_duration_ms) || 3000
+        )
       ),
       home_star_brightness_rules: validRules
         .filter((rule) => rule && rule.id)
@@ -452,11 +479,6 @@
     const edges = sourceGraph.edges.filter((edge) => {
       return starById.has(edge.source) && starById.has(edge.target);
     });
-    const adjacency = new Map(stars.map((star) => [star.id, new Set()]));
-    for (const edge of edges) {
-      adjacency.get(edge.source).add(edge.target);
-      adjacency.get(edge.target).add(edge.source);
-    }
 
     const panel = createCoveragePanel();
     const label = createLabel();
@@ -470,6 +492,7 @@
     let labelStar = null;
     let labelExpiresAt = 0;
     let labelTimer = 0;
+    let selectionTimer = 0;
     let lastVariationAt = 0;
 
     function positionStars(initial) {
@@ -616,26 +639,57 @@
         Math.min(30, star.baseBrightness + variation(star, time))
       );
       const selected = selectedIds.has(star.id);
-      const radius =
-        star.kind === "contributor"
-          ? 1.5 + brightness * 0.12
-          : 0.65 + brightness * 0.085;
-      const alpha = Math.max(0.22, Math.min(1, 0.34 + brightness / 22));
+      const presentation = illumination.brightnessPresentation(
+        brightness,
+        star.kind,
+        selected
+      );
+
       context.fillStyle = star.color;
-      context.globalAlpha = alpha;
-      context.shadowColor = star.color;
-      context.shadowBlur = selected ? 15 : Math.max(2, brightness * 0.35);
+      context.globalAlpha = presentation.haloAlpha;
+      context.shadowBlur = 0;
       context.beginPath();
-      context.arc(star.x, star.y, radius, 0, Math.PI * 2);
+      context.arc(
+        star.x,
+        star.y,
+        presentation.haloRadius,
+        0,
+        Math.PI * 2
+      );
+      context.fill();
+
+      context.globalAlpha = presentation.alpha;
+      context.shadowColor = star.color;
+      context.shadowBlur = presentation.shadowBlur;
+      context.beginPath();
+      context.arc(
+        star.x,
+        star.y,
+        presentation.radius,
+        0,
+        Math.PI * 2
+      );
       context.fill();
       if (star.kind === "contributor") {
         context.strokeStyle = star.color;
         context.lineWidth = selected ? 1.3 : 0.75;
         context.beginPath();
-        context.moveTo(star.x - radius * 2.4, star.y);
-        context.lineTo(star.x + radius * 2.4, star.y);
-        context.moveTo(star.x, star.y - radius * 2.4);
-        context.lineTo(star.x, star.y + radius * 2.4);
+        context.moveTo(
+          star.x - presentation.radius * 2.4,
+          star.y
+        );
+        context.lineTo(
+          star.x + presentation.radius * 2.4,
+          star.y
+        );
+        context.moveTo(
+          star.x,
+          star.y - presentation.radius * 2.4
+        );
+        context.lineTo(
+          star.x,
+          star.y + presentation.radius * 2.4
+        );
         context.stroke();
       }
       context.globalAlpha = 1;
@@ -708,20 +762,6 @@
       frame = window.requestAnimationFrame(animate);
     }
 
-    function componentFrom(startId) {
-      const visited = new Set([startId]);
-      const queue = [startId];
-      while (queue.length) {
-        const current = queue.shift();
-        for (const neighbor of adjacency.get(current) || []) {
-          if (visited.has(neighbor)) continue;
-          visited.add(neighbor);
-          queue.push(neighbor);
-        }
-      }
-      return visited;
-    }
-
     function percentage(value, total) {
       return total ? `${(value / total * 100).toFixed(1)}%` : "0.0%";
     }
@@ -762,23 +802,45 @@
       labelStar = star;
       label.textContent = star.kind === "document" ? star.title : star.name;
       label.dataset.starKind = star.kind;
-      labelExpiresAt = now + 3000;
+      labelExpiresAt =
+        now + runtimeSettings.home_star_label_duration_ms;
       window.clearTimeout(labelTimer);
       labelTimer = window.setTimeout(() => {
         label.hidden = true;
         labelStar = null;
-      }, 3000);
+      }, runtimeSettings.home_star_label_duration_ms);
       updateLabel(now);
+    }
+
+    function clearSelection() {
+      selectedRoot = "";
+      selectedIds = new Set();
+      panel.hidden = true;
+      canvas.dataset.selectedCount = "0";
+      if (reducedMotion) draw(performance.now());
     }
 
     function selectStar(star, now) {
       showLabel(star, now);
+      window.clearTimeout(selectionTimer);
+      if (runtimeSettings.home_star_relation_visibility === "always") {
+        clearSelection();
+        return;
+      }
       selectedRoot = star.id;
-      selectedIds =
-        runtimeSettings.home_star_relation_visibility === "always"
-          ? new Set()
-          : componentFrom(star.id);
+      selectedIds = illumination.illuminate(
+        stars,
+        edges,
+        star.id,
+        runtimeSettings.home_star_illumination_rule,
+        runtimeSettings.home_star_illumination_depth
+      );
+      canvas.dataset.selectedCount = String(selectedIds.size);
       updateCoverage();
+      selectionTimer = window.setTimeout(
+        clearSelection,
+        runtimeSettings.home_star_selection_duration_ms
+      );
       if (reducedMotion) draw(now);
     }
 
@@ -839,6 +901,12 @@
     resize();
     canvas.dataset.starCount = String(stars.length);
     canvas.dataset.edgeCount = String(edges.length);
+    canvas.dataset.illuminationRule =
+      runtimeSettings.home_star_illumination_rule;
+    canvas.dataset.illuminationDepth = String(
+      runtimeSettings.home_star_illumination_depth
+    );
+    canvas.dataset.selectedCount = "0";
     canvas.dataset.contributorCount = String(
       stars.filter((star) => star.kind === "contributor").length
     );
@@ -851,6 +919,7 @@
       disposed = true;
       if (frame) window.cancelAnimationFrame(frame);
       window.clearTimeout(labelTimer);
+      window.clearTimeout(selectionTimer);
       if (resizeObserver) resizeObserver.disconnect();
       else window.removeEventListener("resize", resize);
       document.removeEventListener("click", documentClick, true);
