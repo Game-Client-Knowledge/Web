@@ -619,9 +619,14 @@ async function inspectPage(browser, scenario) {
       );
       return {
         labels: groups.map((group) => {
-          return group.querySelector(".module-unit-content-label")
-            ?.textContent.trim() || "文件";
+          return group.querySelector(".module-subtopics > summary span")
+            ?.textContent.trim() ||
+            group.querySelector(".module-unit-content-label")
+              ?.textContent.trim() ||
+            "文件";
         }),
+        subtopicsOpen: groups[0]?.querySelector(".module-subtopics")
+          ?.hasAttribute("open") ?? null,
         child:
           groups[0]?.querySelector(".module-unit-branch.is-subunit h3")
             ?.textContent.trim() || "",
@@ -632,6 +637,7 @@ async function inspectPage(browser, scenario) {
     });
     assert(
       ordering.labels.join(",") === "子专题,文件" &&
+        ordering.subtopicsOpen === false &&
         ordering.child.includes("C++ 多态") &&
         ordering.file.includes("C++ 基础知识"),
       `${scenario.name}: topic/file ordering is ${JSON.stringify(ordering)}`

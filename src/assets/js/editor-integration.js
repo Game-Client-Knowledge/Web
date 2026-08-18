@@ -721,15 +721,21 @@
     if (unit.children.length) {
       const group = document.createElement("section");
       group.className = "module-unit-content-group";
-      const label = document.createElement("p");
-      label.className = "module-unit-content-label";
-      label.textContent = "子专题";
+      const details = document.createElement("details");
+      details.className = "module-subtopics";
+      const label = document.createElement("summary");
+      const labelText = document.createElement("span");
+      labelText.textContent = "子专题";
+      const count = document.createElement("small");
+      count.textContent = unit.children.length + " 个";
+      label.append(labelText, count);
       const children = document.createElement("div");
       children.className = "module-subunit-list";
       unit.children.forEach(function (child) {
         children.append(renderModuleUnit(child, depth + 1));
       });
-      group.append(label, children);
+      details.append(label, children);
+      group.append(details);
       content.append(group);
     }
     if (unit.documents.length) {

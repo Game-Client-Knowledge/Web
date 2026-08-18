@@ -1053,10 +1053,15 @@ body[data-editor-state="loading"] [data-account-label] {
 }
 
 .module-page-shell {
+  --module-page-padding-inline: clamp(28px, 3.2vw, 46px);
+  box-sizing: border-box;
   width: min(100% - 56px, 1220px);
   min-height: calc(100vh - var(--header-height));
   margin: 0 auto;
-  padding: 34px 0 72px;
+  padding:
+    34px
+    var(--module-page-padding-inline)
+    72px;
 }
 
 .module-page-header {
@@ -1132,6 +1137,10 @@ body[data-editor-state="loading"] [data-account-label] {
 
 .module-directory {
   padding-top: 38px;
+  max-height: min(1280px, calc(100vh + 260px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .filter-search {
@@ -1162,14 +1171,23 @@ body[data-editor-state="loading"] [data-account-label] {
 
 .module-unit {
   display: grid;
+  max-height: 430px;
   padding: 26px 0;
   border-bottom: 1px solid var(--line);
   grid-template-columns: minmax(0, 0.9fr) minmax(340px, 1.1fr);
   gap: 48px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .module-unit-content {
   min-width: 0;
+  max-height: 360px;
+  padding-right: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .module-unit-content-group + .module-unit-content-group {
@@ -1187,8 +1205,48 @@ body[data-editor-state="loading"] [data-account-label] {
 }
 
 .module-subunit-list {
+  margin-top: 10px;
   padding-left: 14px;
   border-left: 2px solid #dbe9e4;
+}
+
+.module-subtopics > summary {
+  display: inline-flex;
+  min-height: 30px;
+  padding: 4px 8px;
+  color: var(--ink-soft);
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+  list-style: none;
+}
+
+.module-subtopics > summary::-webkit-details-marker {
+  display: none;
+}
+
+.module-subtopics > summary::before {
+  color: var(--teal-dark);
+  content: "›";
+  font-size: 16px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 140ms ease;
+}
+
+.module-subtopics[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.module-subtopics > summary small {
+  color: var(--ink-faint);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .module-subunit-list .module-unit {
@@ -4003,6 +4061,7 @@ body.has-comments-open .reader-comments {
   }
 
   .module-unit {
+    max-height: 520px;
     gap: 28px;
     grid-template-columns: minmax(0, 0.8fr) minmax(300px, 1.2fr);
   }
@@ -4337,7 +4396,22 @@ body.has-comments-open .reader-comments {
 
   .module-page-shell {
     width: calc(100% - 32px);
+    --module-page-padding-inline: 18px;
     padding-top: 24px;
+  }
+
+  .module-directory {
+    max-height: min(980px, calc(100vh + 180px));
+  }
+
+  .module-unit {
+    display: block;
+    max-height: 560px;
+  }
+
+  .module-unit-content {
+    max-height: 340px;
+    margin-top: 18px;
   }
 
   .guide-shell {

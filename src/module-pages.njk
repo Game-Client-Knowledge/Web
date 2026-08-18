@@ -66,12 +66,17 @@ eleventyComputed:
       <div class="module-unit-content">
         {% if unit.children.length %}
           <section class="module-unit-content-group">
-            <p class="module-unit-content-label">子专题</p>
-            <div class="module-subunit-list">
-              {% for child in unit.children %}
-                {{ renderUnit(child, module, depth + 1) }}
-              {% endfor %}
-            </div>
+            <details class="module-subtopics">
+              <summary>
+                <span>子专题</span>
+                <small>{{ unit.children.length }} 个</small>
+              </summary>
+              <div class="module-subunit-list">
+                {% for child in unit.children %}
+                  {{ renderUnit(child, module, depth + 1) }}
+                {% endfor %}
+              </div>
+            </details>
           </section>
         {% endif %}
         {% if unit.documents.length %}
