@@ -35,7 +35,6 @@ def editable(path: str) -> bool:
     parts = PurePosixPath(path).parts
     return (
         len(parts) >= 2
-        and (parts[0] not in TRACK_ROOTS or len(parts) >= 3)
         and not any(part.startswith(".") for part in parts)
         and PurePosixPath(path).suffix.lower() in EDITABLE_EXTENSIONS
     )
@@ -52,12 +51,13 @@ def contributor_id(name: str, email: str) -> str:
         r"\d+\+([^@]+)@users\.noreply\.github\.com",
         normalized_email,
     )
-    tokens = [
-        f"name:{normalized_name}" if normalized_name else "",
-        f"email:{normalized_email}" if normalized_email else "",
-        f"github:{github_match.group(1)}" if github_match else "",
-    ]
-    identity = "\n".join(sorted(token for token in tokens if token))
+    identity = (
+        f"github:{github_match.group(1)}"
+        if github_match
+        else f"email:{normalized_email}"
+        if normalized_email
+        else f"name:{normalized_name}"
+    )
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12]
 
 
@@ -88,6 +88,7 @@ def contributors_for_file(
             {
                 "id": identity,
                 "name": name.strip() or "Unknown",
+                "email": email.strip().lower(),
                 "commit_count": 0,
                 "last_contributed_at": "",
             },

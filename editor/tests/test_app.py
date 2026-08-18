@@ -341,23 +341,67 @@ def test_line_attribution_and_comment_threads(client: TestClient) -> None:
                             "email": "author@example.test",
                         },
                     ],
+                    "contributors": [
+                        {
+                            "id": "legacy-line-author",
+                            "name": "Legacy Line Author",
+                            "email": "author@example.test",
+                            "commit_count": 3,
+                            "last_contributed_at": "2026-08-18T00:00:00Z",
+                        },
+                        {
+                            "id": "renamed-line-author",
+                            "name": "Renamed Line Author",
+                            "email": "author@example.test",
+                            "commit_count": 2,
+                            "last_contributed_at": "2026-08-16T00:00:00Z",
+                        }
+                    ],
+                },
+                {
+                    "path": "program/README.md",
+                    "commit": "a" * 40,
+                    "line_count": 1,
+                    "lines": [
+                        {
+                            "line": 1,
+                            "commit": "a" * 40,
+                            "name": "Unknown",
+                            "email": "external@example.test",
+                        }
+                    ],
+                    "contributors": [
+                        {
+                            "id": "external-author",
+                            "name": "Unknown",
+                            "email": "external@example.test",
+                            "commit_count": 1,
+                            "last_contributed_at": "2026-08-17T00:00:00Z",
+                        }
+                    ],
                 }
             ],
         },
     )
     assert sync.status_code == 200, sync.text
     graph = client.get("/api/config").json()["contribution_graph"]
+    assert graph["version"] == 2
     assert graph["revision"] == "a" * 40
     assert graph["links"] == [
         {
             "path": "knowledge/cpp/example.md",
-            "contributor_id": graph["links"][0]["contributor_id"],
-            "contributor_name": "Line Author",
+            "contributor_id": f"user:{author['user']['id']}",
+            "contributor_name": "line-author",
+            "commit_count": 5,
+            "last_contributed_at": "2026-08-18T00:00:00Z",
+        },
+        {
+            "path": "program/README.md",
+            "contributor_id": "external-author",
+            "contributor_name": "external",
             "commit_count": 1,
-            "last_contributed_at": graph["links"][0][
-                "last_contributed_at"
-            ],
-        }
+            "last_contributed_at": "2026-08-17T00:00:00Z",
+        },
     ]
 
     created = client.post(

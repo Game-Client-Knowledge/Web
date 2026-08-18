@@ -22,7 +22,7 @@ tree at runtime.
 | Kind | Motion | Source | Default brightness |
 | --- | --- | --- | --- |
 | Contributor | Static | Contributors across all tracks | `10` |
-| Document | Moving | Every readable Markdown route | `10` |
+| Document | Moving | Every readable Markdown or source-code route, excluding generated `bin/obj` files | `10` |
 
 Contributor records expose names and aggregate activity only. Email addresses
 are never included in the browser payload.
@@ -53,6 +53,24 @@ deleted paths between content revisions, so the same pass now:
 2. Removes deleted documents through the existing revision cascade.
 3. Marks the graph revision as `syncing:<revision>` before the first batch.
 4. Publishes the new revision only after the final batch succeeds.
+
+Contribution identities are canonicalized before persistence:
+
+1. A matching website account becomes `user:<database id>` and uses the public
+   website username.
+2. Otherwise a GitHub noreply address uses its normalized GitHub login.
+3. Otherwise a normalized email identity is used.
+4. Display names equal to `Unknown` fall back to the GitHub login or email
+   local part.
+
+This merges Git aliases such as `sourcecode` and `carbonbromine` when both map
+to the same website account. The browser treats the version-matched server
+contributor set as authoritative and rebuilds contributor stars from those
+canonical IDs, so stale alias stars cannot retain or hide edges.
+
+Track landing documents (`program/README.md` and `planning/README.md`) use a
+restricted attribution-only validator. They remain outside normal editable
+module paths but still receive contributor edges.
 
 Clients accept server contribution links only when their revision matches the
 embedded content revision. During synchronization or failure they continue to

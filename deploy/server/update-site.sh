@@ -466,7 +466,8 @@ fi
 
 IFS=$'\t' read -r \
   contribution_graph_initialized \
-  contribution_graph_revision < <(
+  contribution_graph_revision \
+  contribution_graph_version < <(
   python3 - "$EDITOR_DB_PATH" <<'PY'
 import sqlite3
 import sys
@@ -475,6 +476,7 @@ from pathlib import Path
 path = Path(sys.argv[1])
 initialized = 0
 revision = ""
+version = "0"
 if path.exists():
     try:
         with sqlite3.connect(path) as connection:
@@ -486,12 +488,18 @@ if path.exists():
                 "SELECT value FROM settings "
                 "WHERE key = 'contribution_graph_revision'"
             ).fetchone() if table else None
+            version_row = connection.execute(
+                "SELECT value FROM settings "
+                "WHERE key = 'contribution_graph_version'"
+            ).fetchone() if table else None
         if table and row and row[0]:
+            version = str(version_row[0]) if version_row else "1"
+        if table and row and row[0] and version == "2":
             initialized = 1
             revision = str(row[0])
     except sqlite3.Error:
         pass
-print(f"{initialized}\t{revision}")
+print(f"{initialized}\t{revision}\t{version}")
 PY
 )
 
@@ -584,11 +592,13 @@ if [[ "$contribution_graph_initialized" == "1" && -f "$ATTRIBUTION_STATE_FILE" ]
       previous_attribution_commit="$candidate"
   fi
 fi
-python3 scripts/sync-line-authors.py \
-  --repo "$CONTENT_GIT_MIRROR" \
-  --revision "$mirror_revision" \
-  --content-revision "$content_commit" \
-  --previous "$previous_attribution_commit"
+if [[ "$contribution_graph_initialized" == "1" ]]; then
+  python3 scripts/sync-line-authors.py \
+    --repo "$CONTENT_GIT_MIRROR" \
+    --revision "$mirror_revision" \
+    --content-revision "$content_commit" \
+    --previous "$previous_attribution_commit"
+fi
 
 release_id="$(
   printf '%s-%s-%s' \
@@ -700,14 +710,6 @@ if [[ "$update_mode" != "content" && "$editor_is_current" != "1" ]]; then
     fail_update "Editor failed to restart from ${editor_release_dir}."
   fi
 
-  if [[ "$contribution_graph_initialized" != "1" ]]; then
-    update_stage="backfill-contribution-graph"
-    python3 scripts/sync-line-authors.py \
-      --repo "$CONTENT_GIT_MIRROR" \
-      --revision "$mirror_revision" \
-      --content-revision "$content_commit"
-  fi
-
   find "${EDITOR_RELEASE_ROOT}/releases" \
     -mindepth 1 \
     -maxdepth 1 \
@@ -717,6 +719,14 @@ if [[ "$update_mode" != "content" && "$editor_is_current" != "1" ]]; then
     tail -n +6 |
     cut -d' ' -f2- |
     xargs -r rm -rf
+fi
+
+if [[ "$contribution_graph_initialized" != "1" ]]; then
+  update_stage="backfill-contribution-graph"
+  python3 scripts/sync-line-authors.py \
+    --repo "$CONTENT_GIT_MIRROR" \
+    --revision "$mirror_revision" \
+    --content-revision "$content_commit"
 fi
 
 update_stage="publish-release"

@@ -60,6 +60,8 @@ assert.match(updater, /Editor port 8790 is not owned by the managed service/);
 assert.match(updater, /kill -TERM "\$editor_service_pid"/);
 assert.match(updater, /editor_next_cwd/);
 assert.match(updater, /update_stage="backfill-contribution-graph"/);
+assert.match(updater, /contribution_graph_version/);
+assert.match(updater, /version == "2"/);
 assert.match(updater, /editor_previous_target/);
 assert.match(
   updateService,

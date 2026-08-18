@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from .config import Settings
 from .database import Database, utc_now
 from .notifications import deliver_email
-from .security import validate_content_path
+from .security import TRACK_ROOTS, validate_content_path
 
 
 class AttributionLine(BaseModel):
@@ -40,6 +40,7 @@ class AttributionFile(BaseModel):
 class DocumentContributor(BaseModel):
     id: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=200)
+    email: str = Field(default="", max_length=254)
     commit_count: int = Field(default=1, ge=1)
     last_contributed_at: str = Field(default="", max_length=64)
 
@@ -85,6 +86,65 @@ def _github_login(email: str) -> str | None:
         email.lower(),
     )
     return match.group(1) if match else None
+
+
+def _validate_attribution_path(value: str) -> str:
+    raw = value.strip().replace("\\", "/")
+    path = PurePosixPath(raw)
+    if (
+        len(path.parts) == 2
+        and path.parts[0] in TRACK_ROOTS
+        and path.parts[1].lower() == "readme.md"
+        and raw == path.as_posix()
+        and len(raw) <= 240
+    ):
+        return raw
+    return validate_content_path(value)
+
+
+def _contributor_display_name(
+    name: str,
+    email: str,
+    github_login: str | None,
+) -> str:
+    normalized = " ".join(name.strip().split())
+    if normalized and normalized.lower() not in {
+        "unknown",
+        "github contributor",
+    }:
+        return normalized
+    if github_login:
+        return github_login
+    local = email.split("@", 1)[0].strip()
+    return local or "未命名贡献者"
+
+
+def _matching_user(
+    connection: sqlite3.Connection,
+    email: str,
+    github_login: str | None,
+) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT id, username FROM users
+        WHERE status = 'active' AND (
+            lower(email) = ?
+            OR lower(COALESCE(github_email, '')) = ?
+            OR (
+                ? != ''
+                AND lower(COALESCE(github_login, '')) = ?
+            )
+        )
+        ORDER BY github_verified DESC, id
+        LIMIT 1
+        """,
+        (
+            email,
+            email,
+            (github_login or "").lower(),
+            (github_login or "").lower(),
+        ),
+    ).fetchone()
 
 
 def _public_comment(row: sqlite3.Row, mentions: list[dict[str, Any]]) -> dict[str, Any]:
@@ -154,12 +214,15 @@ def _comment_url(settings: Settings, path: str, comment_id: int) -> str:
 
 def contribution_graph_payload(db: Database) -> dict[str, Any]:
     with db.connect() as connection:
-        revision = connection.execute(
+        settings_rows = connection.execute(
             """
-            SELECT value FROM settings
-            WHERE key = 'contribution_graph_revision'
+            SELECT key, value FROM settings
+            WHERE key IN (
+                'contribution_graph_revision',
+                'contribution_graph_version'
+            )
             """
-        ).fetchone()
+        ).fetchall()
         rows = connection.execute(
             """
             SELECT path, contributor_id, contributor_name,
@@ -168,9 +231,16 @@ def contribution_graph_payload(db: Database) -> dict[str, Any]:
             ORDER BY path, contributor_name COLLATE NOCASE
             """
         ).fetchall()
+    graph_settings = {row["key"]: row["value"] for row in settings_rows}
+    try:
+        graph_version = int(
+            graph_settings.get("contribution_graph_version", "1")
+        )
+    except (TypeError, ValueError):
+        graph_version = 1
     return {
-        "version": 1,
-        "revision": revision["value"] if revision else "",
+        "version": graph_version,
+        "revision": graph_settings.get("contribution_graph_revision", ""),
         "links": [dict(row) for row in rows],
     }
 
@@ -224,7 +294,7 @@ def create_comments_router(
                 )
             for raw_path in payload.deleted:
                 try:
-                    path = validate_content_path(raw_path)
+                    path = _validate_attribution_path(raw_path)
                 except ValueError as exc:
                     raise HTTPException(status_code=422, detail=str(exc)) from exc
                 connection.execute(
@@ -234,7 +304,7 @@ def create_comments_router(
 
             for item in payload.files:
                 try:
-                    path = validate_content_path(item.path)
+                    path = _validate_attribution_path(item.path)
                 except ValueError as exc:
                     raise HTTPException(status_code=422, detail=str(exc)) from exc
                 if len(item.lines) != item.line_count:
@@ -264,27 +334,7 @@ def create_comments_router(
                 for line in item.lines:
                     email = line.email.strip().lower()
                     login = _github_login(email)
-                    user = connection.execute(
-                        """
-                        SELECT id FROM users
-                        WHERE status = 'active' AND (
-                            lower(email) = ?
-                            OR lower(COALESCE(github_email, '')) = ?
-                            OR (
-                                ? != ''
-                                AND lower(COALESCE(github_login, '')) = ?
-                            )
-                        )
-                        ORDER BY github_verified DESC, id
-                        LIMIT 1
-                        """,
-                        (
-                            email,
-                            email,
-                            (login or "").lower(),
-                            (login or "").lower(),
-                        ),
-                    ).fetchone()
+                    user = _matching_user(connection, email, login)
                     connection.execute(
                         """
                         INSERT INTO line_authors(
@@ -317,11 +367,43 @@ def create_comments_router(
                             DocumentContributor(
                                 id=contributor_id,
                                 name=line.name,
+                                email=email,
                                 commit_count=1,
                                 last_contributed_at=now,
                             ),
                         )
                     contributors = list(inferred.values())
+                canonical_contributors: dict[str, dict[str, Any]] = {}
+                for contributor in contributors:
+                    email = contributor.email.strip().lower()
+                    login = _github_login(email)
+                    user = _matching_user(connection, email, login)
+                    canonical_id = (
+                        f"user:{user['id']}" if user else contributor.id
+                    )
+                    canonical_name = (
+                        user["username"]
+                        if user
+                        else _contributor_display_name(
+                            contributor.name,
+                            email,
+                            login,
+                        )
+                    )
+                    current = canonical_contributors.setdefault(
+                        canonical_id,
+                        {
+                            "name": canonical_name,
+                            "commit_count": 0,
+                            "last_contributed_at": "",
+                        },
+                    )
+                    current["commit_count"] += contributor.commit_count
+                    contributed_at = contributor.last_contributed_at or now
+                    if contributed_at > current["last_contributed_at"]:
+                        current["last_contributed_at"] = contributed_at
+                        current["name"] = canonical_name
+
                 connection.executemany(
                     """
                     INSERT INTO document_contributors(
@@ -333,17 +415,28 @@ def create_comments_router(
                     [
                         (
                             path,
-                            contributor.id,
-                            contributor.name,
-                            contributor.commit_count,
-                            contributor.last_contributed_at or now,
+                            contributor_id,
+                            contributor["name"],
+                            contributor["commit_count"],
+                            contributor["last_contributed_at"],
                         )
-                        for contributor in contributors
+                        for contributor_id, contributor
+                        in canonical_contributors.items()
                     ],
                 )
                 files += 1
                 lines += len(item.lines)
             if payload.complete:
+                connection.execute(
+                    """
+                    INSERT INTO settings(key, value, updated_at)
+                    VALUES('contribution_graph_version', '2', ?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_at = excluded.updated_at
+                    """,
+                    (now,),
+                )
                 connection.execute(
                     """
                     INSERT INTO settings(key, value, updated_at)

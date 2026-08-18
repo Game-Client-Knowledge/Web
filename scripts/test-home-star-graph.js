@@ -88,6 +88,26 @@ function fixtureCatalog() {
         title: "C",
         route: "/program/knowledge/root/child/01-c/",
         body: ""
+      },
+      {
+        kind: "code",
+        trackKey: "program",
+        moduleKey: "program/knowledge",
+        sourceRelative: "program/knowledge/root/example.cpp",
+        sourceDirectory: "program/knowledge/root",
+        title: "example.cpp",
+        route: "/program/knowledge/root/files/example.cpp/",
+        source: "int main() {}"
+      },
+      {
+        kind: "code",
+        trackKey: "program",
+        moduleKey: "program/knowledge",
+        sourceRelative: "program/knowledge/root/obj/generated.cpp",
+        sourceDirectory: "program/knowledge/root/obj",
+        title: "generated.cpp",
+        route: "/program/knowledge/root/obj/files/generated.cpp/",
+        source: "generated"
       }
     ],
     contentStatistics: {
@@ -158,7 +178,22 @@ assert.equal(
 );
 assert.equal(
   graph.stars.filter((star) => star.kind === "document").length,
-  7
+  8
+);
+assert.ok(
+  graph.stars.some((star) => {
+    return (
+      star.kind === "document" &&
+      star.sourcePath === "program/knowledge/root/example.cpp"
+    );
+  }),
+  "readable source files must receive document stars"
+);
+assert.ok(
+  !graph.stars.some((star) => {
+    return star.sourcePath?.includes("/obj/");
+  }),
+  "generated build directories must not receive document stars"
 );
 assert.ok(
   strongEdges.some((edge) => {

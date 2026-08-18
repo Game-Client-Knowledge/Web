@@ -25,8 +25,8 @@ def git(directory: Path, *arguments: str) -> str:
     ).strip()
 
 
-assert not MODULE.editable("program/README.md")
-assert not MODULE.editable("planning/README.md")
+assert MODULE.editable("program/README.md")
+assert MODULE.editable("planning/README.md")
 assert MODULE.editable("program/knowledge/README.md")
 assert MODULE.editable("planning/cases/README.md")
 assert MODULE.editable("knowledge/cpp/README.md")
@@ -62,7 +62,9 @@ with tempfile.TemporaryDirectory(prefix="gck-attribution-") as temporary:
     )
     assert deleted == []
     assert changed == [
+        "planning/README.md",
         "planning/cases/README.md",
+        "program/README.md",
         "program/knowledge/README.md",
     ]
 
@@ -84,6 +86,24 @@ with tempfile.TemporaryDirectory(prefix="gck-attribution-") as temporary:
         next_revision,
     )
     assert deleted == []
-    assert changed == ["program/knowledge/README.md"]
+    assert changed == [
+        "program/README.md",
+        "program/knowledge/README.md",
+    ]
+
+assert (
+    MODULE.contributor_id("SourceCode", "same@example.com")
+    == MODULE.contributor_id("Renamed", "same@example.com")
+)
+assert (
+    MODULE.contributor_id(
+        "GitHub Name",
+        "123+Example@users.noreply.github.com",
+    )
+    == MODULE.contributor_id(
+        "Another Name",
+        "456+example@users.noreply.github.com",
+    )
+)
 
 print("Line attribution path checks passed")

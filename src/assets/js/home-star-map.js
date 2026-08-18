@@ -87,7 +87,13 @@
   }
 
   function cacheContributionGraph(value) {
-    if (!value || !matchingRevision(value.revision)) return;
+    if (
+      !value ||
+      Number(value.version) !== 2 ||
+      !matchingRevision(value.revision)
+    ) {
+      return;
+    }
     try {
       window.localStorage.setItem(
         `${cachePrefix}${window.GCK_CONFIG.contentVersion}`,
@@ -105,7 +111,13 @@
           `${cachePrefix}${window.GCK_CONFIG.contentVersion}`
         ) || "null"
       );
-      return value && matchingRevision(value.revision) ? value : null;
+      return (
+        value &&
+        Number(value.version) === 2 &&
+        matchingRevision(value.revision)
+          ? value
+          : null
+      );
     } catch {
       return null;
     }
@@ -113,12 +125,22 @@
 
   function graphWithCachedContributions(source, cached) {
     if (!cached || !Array.isArray(cached.links)) return source;
+    const sourceContributorMetrics = new Map(
+      source.stars
+        .filter((star) => star.kind === "contributor")
+        .map((star) => [
+          normalizeName(star.name),
+          { ...(star.metrics || {}) }
+        ])
+    );
     const result = {
       ...source,
-      stars: source.stars.map((star) => ({
-        ...star,
-        metrics: { ...(star.metrics || {}) }
-      })),
+      stars: source.stars
+        .filter((star) => star.kind === "document")
+        .map((star) => ({
+          ...star,
+          metrics: { ...(star.metrics || {}) }
+        })),
       edges: source.edges.filter((edge) => edge.type !== "contribution")
     };
     const documents = new Map(
@@ -127,9 +149,7 @@
         .map((star) => [star.sourcePath, star])
     );
     const contributors = new Map(
-      result.stars
-        .filter((star) => star.kind === "contributor")
-        .map((star) => [normalizeName(star.name), star])
+      []
     );
     const contributorSets = new Map();
 
@@ -137,23 +157,44 @@
       const documentStar = documents.get(link.path);
       if (!documentStar) continue;
       const name = String(link.contributor_name || "Unknown");
-      const normalized = normalizeName(name);
-      let contributorStar = contributors.get(normalized);
+      const contributorId = String(
+        link.contributor_id || normalizeName(name)
+      );
+      let contributorStar = contributors.get(contributorId);
       if (!contributorStar) {
+        const sourceMetrics =
+          sourceContributorMetrics.get(normalizeName(name)) || {};
         contributorStar = {
-          id: `contributor:server:${link.contributor_id}`,
+          id: `contributor:server:${contributorId}`,
           kind: "contributor",
-          contributorId: link.contributor_id,
+          contributorId,
           name,
           brightness: 10,
           metrics: {
-            contributionCount: 0,
-            commitCount: Number(link.commit_count || 0),
-            lastActiveAt: link.last_contributed_at || ""
+            ...sourceMetrics,
+            contributionCount: Number(
+              sourceMetrics.contributionCount || 0
+            ),
+            commitCount: 0,
+            lastActiveAt: ""
           }
         };
         result.stars.push(contributorStar);
-        contributors.set(normalized, contributorStar);
+        contributors.set(contributorId, contributorStar);
+      }
+      contributorStar.metrics.commitCount += Number(
+        link.commit_count || 0
+      );
+      contributorStar.metrics.contributionCount += Number(
+        link.commit_count || 0
+      );
+      if (
+        link.last_contributed_at &&
+        link.last_contributed_at >
+          String(contributorStar.metrics.lastActiveAt || "")
+      ) {
+        contributorStar.metrics.lastActiveAt =
+          link.last_contributed_at;
       }
       result.edges.push({
         type: "contribution",

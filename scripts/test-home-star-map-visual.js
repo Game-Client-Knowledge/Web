@@ -214,6 +214,65 @@ async function runScenario(browser, scenario) {
     false,
     `${scenario.name}: label did not expire independently`
   );
+  if (scenario.name === "hero-desktop") {
+    const canonical = await page.evaluate(() => {
+      const revision = window.GCK_CONFIG.contentVersion;
+      window.dispatchEvent(
+        new CustomEvent("gck:visual-settings", {
+          detail: {
+            home_intro_enabled: false,
+            home_intro_mode: "off",
+            home_background_style: "contribution_star_map",
+            home_star_scope: "hero",
+            home_star_relation_visibility: "near",
+            home_star_illumination_rule:
+              "depth_contributor_terminal",
+            home_star_illumination_depth: 2,
+            contribution_graph: {
+              version: 2,
+              revision,
+              links: [
+                {
+                  path: "program/README.md",
+                  contributor_id: "user:1",
+                  contributor_name: "sourcecode",
+                  commit_count: 2,
+                  last_contributed_at: "2026-08-18T00:00:00Z"
+                },
+                {
+                  path: "planning/README.md",
+                  contributor_id: "user:1",
+                  contributor_name: "sourcecode",
+                  commit_count: 1,
+                  last_contributed_at: "2026-08-18T00:00:00Z"
+                },
+                {
+                  path: "program/examples/cpp/polymorphism/main.cpp",
+                  contributor_id: "external:2",
+                  contributor_name: "external",
+                  commit_count: 1,
+                  last_contributed_at: "2026-08-17T00:00:00Z"
+                }
+              ]
+            }
+          }
+        })
+      );
+      const canvas = document.querySelector("[data-knowledge-field]");
+      return new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          resolve({
+            contributors: Number(canvas.dataset.contributorCount),
+            documents: Number(canvas.dataset.documentCount),
+            edges: Number(canvas.dataset.edgeCount)
+          });
+        });
+      });
+    });
+    assert.equal(canonical.contributors, 2);
+    assert.equal(canonical.documents, 148);
+    assert.ok(canonical.edges >= 3);
+  }
 
   assert.deepEqual(errors, [], `${scenario.name}: browser errors`);
   await context.close();
