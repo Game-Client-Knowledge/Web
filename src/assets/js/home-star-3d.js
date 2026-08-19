@@ -20,10 +20,18 @@
 (function () {
   "use strict";
 
-  const WEBGL_MODES = ["3d", "2d-webgl", "3d-drift", "3d-galaxy", "3d-orbit"];
+  const WEBGL_MODES = [
+    "3d",
+    "2d-webgl",
+    "3d-drift",
+    "3d-drift-anchored",
+    "3d-galaxy",
+    "3d-orbit"
+  ];
   const CAMERA_RADIUS = {
     "3d": 700,
     "3d-drift": 620,
+    "3d-drift-anchored": 620,
     "3d-galaxy": 780,
     "3d-orbit": 820
   };
@@ -323,10 +331,71 @@
     };
   }
 
+  // Anchored drift: contributor stars hold their positions while
+  // documents wander; close pairs link up transiently.
+  function anchoredDriftStrategy() {
+    const BOUNDS = { x: 380, y: 190, z: 380 };
+    return {
+      camera: "orbit",
+      proximity: true,
+      bounds: BOUNDS,
+      init(stars, ctx) {
+        const { random } = ctx;
+        const contributors = stars.filter((s) => s.kind === "contributor");
+        const documents = stars.filter((s) => s.kind !== "contributor");
+        // Static stars rest on a stable fibonacci shell.
+        const golden = Math.PI * (3 - Math.sqrt(5));
+        contributors.forEach((star, index) => {
+          const y = 1 - (index / Math.max(1, contributors.length - 1)) * 2;
+          const ring = Math.sqrt(Math.max(0, 1 - y * y));
+          const theta = golden * index;
+          star.x = Math.cos(theta) * ring * 300;
+          star.y = y * 300 * 0.6;
+          star.z = Math.sin(theta) * ring * 300;
+        });
+        documents.forEach((star) => {
+          star.x = (random() * 2 - 1) * BOUNDS.x;
+          star.y = (random() * 2 - 1) * BOUNDS.y;
+          star.z = (random() * 2 - 1) * BOUNDS.z;
+          const speed = 9 + random() * 13;
+          const theta = random() * Math.PI * 2;
+          const cosPhi = random() * 2 - 1;
+          const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
+          star.vx = speed * sinPhi * Math.cos(theta);
+          star.vy = speed * cosPhi * 0.5;
+          star.vz = speed * sinPhi * Math.sin(theta);
+        });
+      },
+      fit() {},
+      move(stars, dt) {
+        const step = Math.min(dt, 100) / 1000;
+        for (const star of stars) {
+          if (star.kind === "contributor") continue;
+          star.x += star.vx * step;
+          star.y += star.vy * step;
+          star.z += star.vz * step;
+          if (Math.abs(star.x) > BOUNDS.x) {
+            star.x = Math.sign(star.x) * BOUNDS.x;
+            star.vx *= -1;
+          }
+          if (Math.abs(star.y) > BOUNDS.y) {
+            star.y = Math.sign(star.y) * BOUNDS.y;
+            star.vy *= -1;
+          }
+          if (Math.abs(star.z) > BOUNDS.z) {
+            star.z = Math.sign(star.z) * BOUNDS.z;
+            star.vz *= -1;
+          }
+        }
+      }
+    };
+  }
+
   const STRATEGIES = {
     "2d-webgl": flatStrategy,
     "3d": depthStrategy,
     "3d-drift": driftStrategy,
+    "3d-drift-anchored": anchoredDriftStrategy,
     "3d-galaxy": galaxyStrategy,
     "3d-orbit": orbitStrategy
   };
