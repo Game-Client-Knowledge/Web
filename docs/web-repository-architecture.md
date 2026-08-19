@@ -381,7 +381,7 @@ local unpushed worktree.
 
 Content contribution history is computed during the immutable build, never on a
 reader request. The cache is keyed by the full content commit. Production keeps
-it at `/home/sourcecode/gck-builder/content-statistics-v2.json`; an unchanged
+it at `/home/sourcecode/gck-builder/content-statistics-v3.json`; an unchanged
 commit is a direct cache hit, while a descendant commit scans only the new Git
 range. The browser receives compact static events and calculates the rolling
 seven-day window locally.

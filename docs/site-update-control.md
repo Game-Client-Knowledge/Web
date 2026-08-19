@@ -92,7 +92,7 @@ installation failures are reported as the `install-build-browser` stage.
 Contribution history is cached across immutable releases at:
 
 ```text
-/home/sourcecode/gck-builder/content-statistics-v2.json
+/home/sourcecode/gck-builder/content-statistics-v3.json
 ```
 
 The cache is keyed by the full content commit. Rebuilding the same revision is a
