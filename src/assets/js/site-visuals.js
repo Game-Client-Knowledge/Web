@@ -147,6 +147,7 @@
             settings.home_content_idle_timeout_seconds,
           home_background_style: settings.home_background_style,
           home_star_scope: settings.home_star_scope,
+          home_star_render_mode: settings.home_star_render_mode,
           home_star_relation_visibility:
             settings.home_star_relation_visibility,
           home_star_strong_relation_style:

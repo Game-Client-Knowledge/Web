@@ -268,6 +268,7 @@ class VisualSettingsRequest(BaseModel):
         le=3600,
     )
     home_star_scope: str = "hero"
+    home_star_render_mode: str = "2d"
     home_star_relation_visibility: str = "near"
     home_star_strong_relation_style: str = "solid"
     home_star_reference_relation_style: str = "dashed"
@@ -965,6 +966,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
             ),
             "home_star_scope": db.setting("home_star_scope", "hero"),
+            "home_star_render_mode": db.setting(
+                "home_star_render_mode", "2d"
+            ),
             "home_star_relation_visibility": db.setting(
                 "home_star_relation_visibility", "near"
             ),
@@ -3158,6 +3162,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail="主页背景样式无效")
         if payload.home_star_scope not in {"hero", "full"}:
             raise HTTPException(status_code=422, detail="主页星图范围无效")
+        if payload.home_star_render_mode not in {"2d", "3d"}:
+            raise HTTPException(status_code=422, detail="主页星图渲染模式无效")
         if payload.home_star_relation_visibility not in {
             "always",
             "near",
@@ -3277,6 +3283,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_background_style": payload.home_background_style,
             "home_star_scope": payload.home_star_scope,
+            "home_star_render_mode": payload.home_star_render_mode,
             "home_star_relation_visibility": (
                 payload.home_star_relation_visibility
             ),
