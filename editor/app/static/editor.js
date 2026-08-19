@@ -18,6 +18,7 @@ const state = {
   localSaveFrame: 0,
   remoteContent: new Map(),
   onboardingStep: 0,
+  onboardingManual: false,
   onboardingSaving: false,
   cachedSessionApplied: false
 };
@@ -283,14 +284,19 @@ function renderOnboarding() {
     state.onboardingStep === steps.length - 1;
   byId("onboardingFinish").hidden =
     state.onboardingStep !== steps.length - 1;
+  byId("onboardingSkip").textContent =
+    state.onboardingManual ? "关闭引导" : "跳过引导";
+  byId("onboardingFinish").textContent =
+    state.onboardingManual ? "完成浏览" : "完成引导";
   refreshIcons(byId("onboardingDialog"));
 }
 
-function openOnboardingIfNeeded() {
+function openOnboarding(manual = false) {
   const user = state.session?.authenticated ? state.session.user : null;
-  if (!user || user.must_change_password || !user.needs_onboarding) {
+  if (!user || user.must_change_password) {
     return false;
   }
+  state.onboardingManual = Boolean(manual);
   state.onboardingStep = 0;
   renderOnboarding();
   clearFeedback(byId("onboardingFeedback"));
@@ -298,6 +304,14 @@ function openOnboardingIfNeeded() {
     byId("onboardingDialog").showModal();
   }
   return true;
+}
+
+function openOnboardingIfNeeded() {
+  const user = state.session?.authenticated ? state.session.user : null;
+  if (!user || user.must_change_password || !user.needs_onboarding) {
+    return false;
+  }
+  return openOnboarding(false);
 }
 
 function openRequestedModuleDialog() {
@@ -314,6 +328,16 @@ async function completeOnboarding() {
   if (state.onboardingSaving) return;
   state.onboardingSaving = true;
   const dialog = byId("onboardingDialog");
+  if (
+    state.onboardingManual ||
+    !state.session?.user?.needs_onboarding
+  ) {
+    state.onboardingManual = false;
+    state.onboardingSaving = false;
+    dialog.close();
+    openRequestedModuleDialog();
+    return;
+  }
   const buttons = dialog.querySelectorAll("button");
   buttons.forEach((button) => {
     button.disabled = true;
@@ -1927,6 +1951,9 @@ byId("newModuleButton").addEventListener("click", () => {
   clearFeedback(byId("moduleDialogFeedback"));
   byId("moduleDialog").showModal();
 });
+byId("onboardingOpenButton").addEventListener("click", () => {
+  openOnboarding(true);
+});
 byId("onboardingNext").addEventListener("click", () => {
   state.onboardingStep = Math.min(
     state.onboardingStep + 1,
@@ -1941,6 +1968,10 @@ byId("onboardingPrevious").addEventListener("click", () => {
 byId("onboardingSkip").addEventListener("click", completeOnboarding);
 byId("onboardingFinish").addEventListener("click", completeOnboarding);
 byId("onboardingDialog").addEventListener("cancel", (event) => {
+  if (state.onboardingManual) {
+    state.onboardingManual = false;
+    return;
+  }
   event.preventDefault();
 });
 byId("resourceSearch").addEventListener("input", (event) => {

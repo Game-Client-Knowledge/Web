@@ -22,6 +22,7 @@
     inlinePanel: null,
     inlineEditor: null,
     onboardingStep: 0,
+    onboardingManual: false,
     onboardingSaving: false,
     identityLoaded: false,
     identityPromise: null,
@@ -1483,7 +1484,34 @@
       state.onboardingStep === steps.length - 1;
     query("[data-onboarding-finish]").hidden =
       state.onboardingStep !== steps.length - 1;
+    query("[data-onboarding-skip]").textContent =
+      state.onboardingManual ? "关闭引导" : "跳过引导";
+    query("[data-onboarding-finish]").textContent =
+      state.onboardingManual ? "完成浏览" : "完成引导";
     refreshIcons(query("[data-onboarding-dialog]"));
+  }
+
+  function openOnboarding(manual) {
+    const user =
+      state.session && state.session.authenticated
+        ? state.session.user
+        : null;
+    if (!user || user.must_change_password) {
+      return false;
+    }
+    const account = query("[data-account-dialog]");
+    const dialog = query("[data-onboarding-dialog]");
+    if (account && account.open) {
+      account.close();
+    }
+    state.onboardingManual = Boolean(manual);
+    state.onboardingStep = 0;
+    renderOnboarding();
+    feedback(query("[data-onboarding-feedback]"), "");
+    if (!dialog.open) {
+      dialog.showModal();
+    }
+    return true;
   }
 
   function openOnboardingIfNeeded() {
@@ -1494,18 +1522,7 @@
     if (!user || user.must_change_password || !user.needs_onboarding) {
       return false;
     }
-    const account = query("[data-account-dialog]");
-    const dialog = query("[data-onboarding-dialog]");
-    if (account && account.open) {
-      account.close();
-    }
-    state.onboardingStep = 0;
-    renderOnboarding();
-    feedback(query("[data-onboarding-feedback]"), "");
-    if (!dialog.open) {
-      dialog.showModal();
-    }
-    return true;
+    return openOnboarding(false);
   }
 
   async function completeOnboarding() {
@@ -1514,6 +1531,15 @@
     }
     state.onboardingSaving = true;
     const dialog = query("[data-onboarding-dialog]");
+    if (
+      state.onboardingManual ||
+      !state.session?.user?.needs_onboarding
+    ) {
+      state.onboardingManual = false;
+      state.onboardingSaving = false;
+      dialog.close();
+      return;
+    }
     const buttons = queryAll("button", dialog);
     buttons.forEach(function (button) {
       button.disabled = true;
@@ -3138,6 +3164,9 @@
       link.textContent = "正在前往 GitHub";
       window.location.assign(link.href);
     });
+    query("[data-onboarding-open]").addEventListener("click", function () {
+      openOnboarding(true);
+    });
     document.addEventListener("click", function (event) {
       const removeTarget = event.target.closest("[data-delete-path]");
       if (removeTarget) {
@@ -3192,6 +3221,10 @@
       completeOnboarding
     );
     query("[data-onboarding-dialog]").addEventListener("cancel", function (event) {
+      if (state.onboardingManual) {
+        state.onboardingManual = false;
+        return;
+      }
       event.preventDefault();
     });
     document.addEventListener("visibilitychange", function () {

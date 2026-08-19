@@ -384,6 +384,10 @@
               <i data-lucide="folder-tree" aria-hidden="true"></i>
               打开编辑工作台
             </a>
+            <button class="secondary-button" type="button" data-onboarding-open>
+              <i data-lucide="circle-help" aria-hidden="true"></i>
+              共建引导
+            </button>
             <a class="secondary-button" data-account-bind-github href="{{ site.editorUrl }}api/auth/github?mode=bind">
               <i data-lucide="github" aria-hidden="true"></i>
               绑定 GitHub
@@ -416,12 +420,15 @@
       <section class="onboarding-panel">
         <header class="onboarding-header">
           <div>
-            <p class="eyebrow">First login guide</p>
-            <h2 id="onboarding-title">开始参与知识库共建</h2>
+            <p class="eyebrow">Contribution guide</p>
+            <h2 id="onboarding-title">知识库共建完整引导</h2>
           </div>
-          <span data-onboarding-counter>1 / 4</span>
+          <span data-onboarding-counter>1 / 7</span>
         </header>
         <div class="onboarding-progress" aria-hidden="true">
+          <span data-onboarding-progress></span>
+          <span data-onboarding-progress></span>
+          <span data-onboarding-progress></span>
           <span data-onboarding-progress></span>
           <span data-onboarding-progress></span>
           <span data-onboarding-progress></span>
@@ -430,15 +437,21 @@
         <div class="onboarding-steps">
           <article data-onboarding-step>
             <span class="onboarding-icon">
-              <i data-lucide="notebook-tabs" aria-hidden="true"></i>
+              <i data-lucide="git-branch" aria-hidden="true"></i>
             </span>
             <div>
-              <p class="eyebrow">01 · 先读规范</p>
-              <h3>目录结构决定导航结构</h3>
+              <p class="eyebrow">01 · 开始之前</p>
+              <h3>先理解账号权限和本地双树</h3>
               <p>
-                提交前请确认文件位置、Markdown 标题、命名和内容范围。
-                规范页面包含知识、面经与代码示例的完整约定。
+                登录后，每台设备会维护不可修改的 Base Tree 和可编辑的
+                Current Tree。编辑、新建和删除只改变本机 Current Tree，
+                不会直接写入 GitHub main。
               </p>
+              <ul class="onboarding-checklist">
+                <li>右上角个人设置用于登录、绑定 GitHub 和打开工作台。</li>
+                <li>后台可要求 GitHub 认证；遇到阻止提示时先完成绑定。</li>
+                <li>先阅读目录、标题和内容范围规范，再决定文件位置。</li>
+              </ul>
               <a href="{{ '/contribute/' | withBase }}" target="_blank">
                 打开建设规范
                 <i data-lucide="arrow-up-right" aria-hidden="true"></i>
@@ -447,48 +460,129 @@
           </article>
           <article data-onboarding-step hidden>
             <span class="onboarding-icon is-orange">
-              <i data-lucide="user-plus" aria-hidden="true"></i>
+              <i data-lucide="square-pen" aria-hidden="true"></i>
             </span>
             <div>
-              <p class="eyebrow">02 · 加入组织</p>
-              <h3>申请后还要接受 GitHub 邀请</h3>
+              <p class="eyebrow">02 · 编辑文档</p>
+              <h3>在阅读页直接进入无缝编辑</h3>
               <p>
-                加入页会自动创建组织邀请。收到 GitHub 邮件或通知后，
-                仍需手动接受，账号才会成为组织成员。
+                打开目标文档，点击右上角“编辑”。页面会保持阅读排版，
+                你可以直接修改正文；改动立即写入 Current Tree，并同步刷新
+                “更改”计数和当前页面内容。
               </p>
-              <a href="{{ site.joinUrl }}" target="_blank" rel="noreferrer">
-                前往加入页面
+              <ul class="onboarding-checklist">
+                <li>退出编辑模式只关闭编辑状态，不会丢弃本地更改。</li>
+                <li>标题、表格和列表按 Markdown 结构保存为完整文件。</li>
+                <li>需要撤销时，在文档操作区或工作台选择“撤销更改”。</li>
+              </ul>
+            </div>
+          </article>
+          <article data-onboarding-step hidden>
+            <span class="onboarding-icon is-gold">
+              <i data-lucide="folder-plus" aria-hidden="true"></i>
+            </span>
+            <div>
+              <p class="eyebrow">03 · 新建结构</p>
+              <h3>按层级创建大模块、子模块和文件</h3>
+              <p>
+                进入编辑模式后，模块和专题旁会出现“子模块”“文件”入口。
+                新内容会立即加入 Current Tree，导航和页面会在本机重新计算。
+              </p>
+              <ul class="onboarding-checklist">
+                <li>子模块：在当前专题下创建目录及其 README 页面。</li>
+                <li>文件：在当前目录新增一篇 Markdown 或允许的源码文件。</li>
+                <li>大模块：只在编辑工作台点击“新增大模块”，并选择岗位赛道。</li>
+              </ul>
+              <p class="onboarding-note">
+                模块 README 的内容由模块标题打开，不会重复显示为普通文件。
+              </p>
+              <a href="{{ site.editorUrl }}?new_module=1" target="_blank">
+                在工作台新建大模块
+                <i data-lucide="arrow-up-right" aria-hidden="true"></i>
+              </a>
+            </div>
+          </article>
+          <article data-onboarding-step hidden>
+            <span class="onboarding-icon is-orange">
+              <i data-lucide="message-square-text" aria-hidden="true"></i>
+            </span>
+            <div>
+              <p class="eyebrow">04 · 评论协作</p>
+              <h3>对整篇文档或选中原文发起讨论</h3>
+              <p>
+                在文档标题旁点击“评论”打开侧栏。也可以选中正文，
+                点击浮出的评论图标，让讨论自动引用对应原文。
+              </p>
+              <ul class="onboarding-checklist">
+                <li>登录用户可评论、回复，并使用 @ 提及成员。</li>
+                <li>评论与编辑草稿相互独立，不需要创建 PR。</li>
+                <li>作者或管理员可删除评论；邮件通知可在个人设置中关闭。</li>
+              </ul>
+            </div>
+          </article>
+          <article data-onboarding-step hidden>
+            <span class="onboarding-icon">
+              <i data-lucide="file-diff" aria-hidden="true"></i>
+            </span>
+            <div>
+              <p class="eyebrow">05 · 检查更改</p>
+              <h3>在工作台核对 A/M/D 和完整文件差异</h3>
+              <p>
+                打开“更改总览”或编辑工作台的“更改”标签，逐个检查新增、
+                修改和删除。行级 Diff 仅用于审阅，提交内容始终是完整文件。
+              </p>
+              <ul class="onboarding-checklist">
+                <li>A / M / D 分别表示新增、修改、删除。</li>
+                <li>“同步远程”只在没有本地更改时推进 Base Tree。</li>
+                <li>“释放缓存”会清空本机全部未提交更改，请谨慎使用。</li>
+              </ul>
+              <a href="{{ site.editorUrl }}" target="_blank">
+                打开更改总览
                 <i data-lucide="arrow-up-right" aria-hidden="true"></i>
               </a>
             </div>
           </article>
           <article data-onboarding-step hidden>
             <span class="onboarding-icon is-gold">
-              <i data-lucide="square-pen" aria-hidden="true"></i>
+              <i data-lucide="git-pull-request-arrow" aria-hidden="true"></i>
             </span>
             <div>
-              <p class="eyebrow">03 · 页面内编辑</p>
-              <h3>使用右上角“编辑”进入或退出编辑模式</h3>
+              <p class="eyebrow">06 · 发布更改</p>
+              <h3>统一创建分支、commit 和 Draft PR</h3>
               <p>
-                进入后可直接修改当前文档，也可在模块中创建子模块和文件。
-                保存只会写入你的个人草稿，不会直接修改 main。
+                在工作台填写提交头、PR 标题和说明，再点击“提交全部更改”。
+                当前 Current Tree 相对 Base Tree 的全部 A/M/D 会组成一次提交。
               </p>
+              <ul class="onboarding-checklist">
+                <li>分支格式为 web/用户名/提交头；同名时会询问是否覆盖。</li>
+                <li>Draft PR 仍需审核和合并，不会直接修改 main。</li>
+                <li>main 已前进时由 GitHub 判断冲突；成功后会发送感谢邮件。</li>
+              </ul>
+              <a href="{{ site.editorUrl }}" target="_blank">
+                打开编辑工作台
+                <i data-lucide="arrow-up-right" aria-hidden="true"></i>
+              </a>
             </div>
           </article>
           <article data-onboarding-step hidden>
             <span class="onboarding-icon">
-              <i data-lucide="git-pull-request-arrow" aria-hidden="true"></i>
+              <i data-lucide="chart-no-axes-combined" aria-hidden="true"></i>
             </span>
             <div>
-              <p class="eyebrow">04 · 统一提交</p>
-              <h3>在工作台检查更改并创建 Draft PR</h3>
+              <p class="eyebrow">07 · 查看贡献</p>
+              <h3>跟踪 PR 状态和已合并贡献</h3>
               <p>
-                工作台会用 A/M/D 标记全部草稿。填写提交头和说明后，
-                系统创建个人分支、一个 commit 和一份 Draft Pull Request。
+                工作台“最近提交”显示 Draft PR、分支和处理状态。PR 合并并完成
+                内容发布后，主页贡献看板会更新新增、修改、删除行数。
               </p>
-              <a href="{{ site.editorUrl }}" target="_blank">
-                打开编辑工作台
-                <i data-lucide="arrow-up-right" aria-hidden="true"></i>
+              <ul class="onboarding-checklist">
+                <li>主页可按全部、程序、策划赛道筛选贡献。</li>
+                <li>“累计 / 最近 7 天”用于查看总贡献和近期活跃。</li>
+                <li>贡献空间可查看星体等级、亮度和文档关系。</li>
+              </ul>
+              <a href="{{ '/' | withBase }}#contribution-ledger-title">
+                查看贡献看板
+                <i data-lucide="arrow-down" aria-hidden="true"></i>
               </a>
             </div>
           </article>

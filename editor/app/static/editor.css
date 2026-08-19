@@ -1366,7 +1366,7 @@ dialog::backdrop {
 }
 
 .onboarding-dialog {
-  width: min(680px, calc(100% - 28px));
+  width: min(760px, calc(100% - 28px));
   max-height: calc(100vh - 32px);
   overflow: auto;
 }
@@ -1398,7 +1398,7 @@ dialog::backdrop {
   display: grid;
   margin: 22px 0 30px;
   gap: 7px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 .onboarding-progress span {
@@ -1412,7 +1412,7 @@ dialog::backdrop {
 
 .onboarding-steps article {
   display: grid;
-  min-height: 220px;
+  min-height: 330px;
   align-items: start;
   gap: 18px;
   grid-template-columns: 48px minmax(0, 1fr);
@@ -1453,11 +1453,50 @@ dialog::backdrop {
 }
 
 .onboarding-steps article p:not(.eyebrow) {
-  max-width: 520px;
+  max-width: 620px;
   margin: 0;
   color: var(--ink-soft);
   font-size: 14px;
   line-height: 1.75;
+}
+
+.onboarding-checklist {
+  display: grid;
+  max-width: 620px;
+  margin: 15px 0 0;
+  padding: 0;
+  gap: 8px;
+  list-style: none;
+}
+
+.onboarding-checklist li {
+  position: relative;
+  padding-left: 18px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.onboarding-checklist li::before {
+  position: absolute;
+  top: 8px;
+  left: 2px;
+  width: 6px;
+  height: 6px;
+  background: var(--teal);
+  border-radius: 50%;
+  content: "";
+}
+
+.onboarding-steps .onboarding-note {
+  max-width: 620px;
+  margin-top: 14px;
+  padding: 9px 12px;
+  color: var(--ink-soft);
+  background: var(--canvas);
+  border-left: 3px solid var(--gold);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .onboarding-steps article a {
@@ -2536,7 +2575,7 @@ dialog::backdrop {
 
   .onboarding-steps article {
     display: block;
-    min-height: 290px;
+    min-height: 430px;
   }
 
   .onboarding-icon {
