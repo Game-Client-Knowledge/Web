@@ -162,6 +162,12 @@
             settings.home_star_brightness_variation_enabled,
           home_star_brightness_min:
             settings.home_star_brightness_min,
+          home_star_edge_glow_strength:
+            settings.home_star_edge_glow_strength,
+          home_star_edge_color_saturation:
+            settings.home_star_edge_color_saturation,
+          home_star_edge_tier_mix:
+            settings.home_star_edge_tier_mix,
           home_star_brightness_initial:
             settings.home_star_brightness_initial,
           home_star_brightness_max:

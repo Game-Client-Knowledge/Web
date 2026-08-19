@@ -10,6 +10,7 @@
     "3d",
     "2d-webgl",
     "3d-drift",
+    "3d-drift-anchored",
     "3d-galaxy",
     "3d-orbit"
   ];
@@ -19,6 +20,9 @@
     home_star_scope: "hero",
     home_star_render_mode: "2d",
     home_star_relation_visibility: "near",
+    home_star_edge_glow_strength: 1,
+    home_star_edge_color_saturation: 2.2,
+    home_star_edge_tier_mix: 0.65,
     home_star_strong_relation_style: "solid",
     home_star_reference_relation_style: "dashed",
     home_star_contributor_relation_style: "solid",
@@ -720,6 +724,21 @@
         ? merged.home_star_relation_visibility
         : defaults.home_star_relation_visibility,
       home_star_brightness_min: brightnessMinimum,
+      home_star_edge_glow_strength: Math.max(
+        0.1,
+        Math.min(2, Number(merged.home_star_edge_glow_strength) || 1)
+      ),
+      home_star_edge_color_saturation: Math.max(
+        0.5,
+        Math.min(4, Number(merged.home_star_edge_color_saturation) || 2.2)
+      ),
+      home_star_edge_tier_mix: Math.max(
+        0,
+        Math.min(
+          1,
+          Number(merged.home_star_edge_tier_mix ?? 0.65) || 0
+        )
+      ),
       home_star_brightness_initial: brightnessInitial,
       home_star_brightness_max: brightnessMax,
       home_star_brightness_variation_amount: Math.max(
@@ -1286,10 +1305,15 @@
       // a stamped grid of identical crosses.
       const spike = spikeSprite(star.brightnessTier, star.color);
       if (spike && presentation.luminous > 0.06) {
+        // Spike length is proportional to the star's own halo, so rays
+        // can never dwarf their host. Tier hierarchy is preserved via
+        // spikeLength (yellow-dwarf ~1.75x halo, blue-giant ~2.2x).
+        const spikeTierScale = 1 + profile.spikeLength * 0.15;
         const spikeExtent = Math.max(
-          tierHaloRadius * 1.25,
-          tierRadius * profile.spikeLength,
-          14
+          tierHaloRadius *
+            spikeTierScale *
+            (0.7 + presentation.luminous * 0.6),
+          4
         );
         const rotation =
           (((star.index * 53) % 50) - 25) * (Math.PI / 180);

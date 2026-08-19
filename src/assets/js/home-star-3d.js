@@ -20,10 +20,18 @@
 (function () {
   "use strict";
 
-  const WEBGL_MODES = ["3d", "2d-webgl", "3d-drift", "3d-galaxy", "3d-orbit"];
+  const WEBGL_MODES = [
+    "3d",
+    "2d-webgl",
+    "3d-drift",
+    "3d-drift-anchored",
+    "3d-galaxy",
+    "3d-orbit"
+  ];
   const CAMERA_RADIUS = {
     "3d": 700,
     "3d-drift": 620,
+    "3d-drift-anchored": 620,
     "3d-galaxy": 780,
     "3d-orbit": 820
   };
@@ -323,10 +331,71 @@
     };
   }
 
+  // Anchored drift: contributor stars hold their positions while
+  // documents wander; close pairs link up transiently.
+  function anchoredDriftStrategy() {
+    const BOUNDS = { x: 380, y: 190, z: 380 };
+    return {
+      camera: "orbit",
+      proximity: true,
+      bounds: BOUNDS,
+      init(stars, ctx) {
+        const { random } = ctx;
+        const contributors = stars.filter((s) => s.kind === "contributor");
+        const documents = stars.filter((s) => s.kind !== "contributor");
+        // Static stars rest on a stable fibonacci shell.
+        const golden = Math.PI * (3 - Math.sqrt(5));
+        contributors.forEach((star, index) => {
+          const y = 1 - (index / Math.max(1, contributors.length - 1)) * 2;
+          const ring = Math.sqrt(Math.max(0, 1 - y * y));
+          const theta = golden * index;
+          star.x = Math.cos(theta) * ring * 300;
+          star.y = y * 300 * 0.6;
+          star.z = Math.sin(theta) * ring * 300;
+        });
+        documents.forEach((star) => {
+          star.x = (random() * 2 - 1) * BOUNDS.x;
+          star.y = (random() * 2 - 1) * BOUNDS.y;
+          star.z = (random() * 2 - 1) * BOUNDS.z;
+          const speed = 9 + random() * 13;
+          const theta = random() * Math.PI * 2;
+          const cosPhi = random() * 2 - 1;
+          const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
+          star.vx = speed * sinPhi * Math.cos(theta);
+          star.vy = speed * cosPhi * 0.5;
+          star.vz = speed * sinPhi * Math.sin(theta);
+        });
+      },
+      fit() {},
+      move(stars, dt) {
+        const step = Math.min(dt, 100) / 1000;
+        for (const star of stars) {
+          if (star.kind === "contributor") continue;
+          star.x += star.vx * step;
+          star.y += star.vy * step;
+          star.z += star.vz * step;
+          if (Math.abs(star.x) > BOUNDS.x) {
+            star.x = Math.sign(star.x) * BOUNDS.x;
+            star.vx *= -1;
+          }
+          if (Math.abs(star.y) > BOUNDS.y) {
+            star.y = Math.sign(star.y) * BOUNDS.y;
+            star.vy *= -1;
+          }
+          if (Math.abs(star.z) > BOUNDS.z) {
+            star.z = Math.sign(star.z) * BOUNDS.z;
+            star.vz *= -1;
+          }
+        }
+      }
+    };
+  }
+
   const STRATEGIES = {
     "2d-webgl": flatStrategy,
     "3d": depthStrategy,
     "3d-drift": driftStrategy,
+    "3d-drift-anchored": anchoredDriftStrategy,
     "3d-galaxy": galaxyStrategy,
     "3d-orbit": orbitStrategy
   };
@@ -480,8 +549,21 @@
 
     // Tier canonical colors as 0..1 RGB, cached per tier id. Edges blend
     // these so a link between two different brightness tiers renders as
-    // a smooth nebula-like gradient.
+    // a smooth nebula-like gradient. Saturation is boosted because the
+    // canonical tier tints are mostly near-white (warm white, ice blue)
+    // and would otherwise read as plain white lines.
     const tierRgbCache = new Map();
+    // Admin-tunable gradient color: saturation of tier hues and the
+    // tier-vs-relation color mix.
+    const edgeColorSaturation = Math.max(
+      0.5,
+      Math.min(4, Number(runtimeSettings.home_star_edge_color_saturation) || 2.2)
+    );
+    const edgeTierMix = Math.max(
+      0,
+      Math.min(1, Number(runtimeSettings.home_star_edge_tier_mix ?? 0.65) || 0)
+    );
+    const edgeRelationMix = 1 - edgeTierMix;
     function tierRgbOf(star) {
       const id = tierIdOf(star);
       let rgb = tierRgbCache.get(id);
@@ -489,11 +571,15 @@
         const hex = String(
           tierProfile(star.brightnessTier).tintHex || "#ffffff"
         ).replace("#", "");
-        rgb = [
+        const raw = [
           parseInt(hex.slice(0, 2), 16) / 255 || 0,
           parseInt(hex.slice(2, 4), 16) / 255 || 0,
           parseInt(hex.slice(4, 6), 16) / 255 || 0
         ];
+        const avg = (raw[0] + raw[1] + raw[2]) / 3;
+        rgb = raw.map((channel) =>
+          Math.max(0, Math.min(1, avg + (channel - avg) * edgeColorSaturation))
+        );
         tierRgbCache.set(id, rgb);
       }
       return rgb;
@@ -629,6 +715,11 @@
     //   hidden — none
     const visibility = runtimeSettings.home_star_relation_visibility;
     const NEAR_LIMIT = 170;
+    // Admin-tunable global gain for relation edge brightness.
+    const edgeGlowStrength = Math.max(
+      0.1,
+      Math.min(2, Number(runtimeSettings.home_star_edge_glow_strength) || 1)
+    );
     const edgeLayers = [];
     if (visibility !== "hidden") {
       for (const type of ["strong", "reference", "contribution"]) {
@@ -650,7 +741,8 @@
           // brightness-scaled glow; opacity is just the global gain.
           vertexColors: true,
           transparent: true,
-          opacity: visibility === "always" ? 0.18 : 0.4,
+          opacity:
+            (visibility === "always" ? 0.18 : 0.4) * edgeGlowStrength,
           blending: THREE.AdditiveBlending,
           depthTest: false,
           depthWrite: false
@@ -683,7 +775,7 @@
         new THREE.LineBasicMaterial({
           vertexColors: true,
           transparent: true,
-          opacity: 0.2,
+          opacity: 0.2 * edgeGlowStrength,
           blending: THREE.AdditiveBlending,
           depthTest: false,
           depthWrite: false
@@ -913,10 +1005,15 @@
           presentation.radius *
           (1 + profile.radiusBoost * presentation.luminous);
         const tierHaloRadius = presentation.haloRadius * profile.haloScale;
+        // Spike length is proportional to the star's own halo, so rays
+        // can never dwarf their host. Tier hierarchy is preserved via
+        // spikeLength (yellow-dwarf ~1.75x halo, blue-giant ~2.2x).
+        const spikeTierScale = 1 + profile.spikeLength * 0.15;
         const spikeExtent = Math.max(
-          tierHaloRadius * 1.25,
-          tierRadius * profile.spikeLength,
-          14
+          tierHaloRadius *
+            spikeTierScale *
+            (0.7 + presentation.luminous * 0.6),
+          4
         );
         spikePosition.setXYZ(index, star.x, star.y, star.z);
         // The spike artwork occupies the central 72% of its tile, so the
@@ -982,15 +1079,15 @@
           const targetGain = gains.get(target.id);
           colorAttribute.setXYZ(
             count * 2,
-            (sourceTier[0] * 0.65 + relationRgb[0] * 0.35) * sourceGain,
-            (sourceTier[1] * 0.65 + relationRgb[1] * 0.35) * sourceGain,
-            (sourceTier[2] * 0.65 + relationRgb[2] * 0.35) * sourceGain
+            (sourceTier[0] * edgeTierMix + relationRgb[0] * edgeRelationMix) * sourceGain,
+            (sourceTier[1] * edgeTierMix + relationRgb[1] * edgeRelationMix) * sourceGain,
+            (sourceTier[2] * edgeTierMix + relationRgb[2] * edgeRelationMix) * sourceGain
           );
           colorAttribute.setXYZ(
             count * 2 + 1,
-            (targetTier[0] * 0.65 + relationRgb[0] * 0.35) * targetGain,
-            (targetTier[1] * 0.65 + relationRgb[1] * 0.35) * targetGain,
-            (targetTier[2] * 0.65 + relationRgb[2] * 0.35) * targetGain
+            (targetTier[0] * edgeTierMix + relationRgb[0] * edgeRelationMix) * targetGain,
+            (targetTier[1] * edgeTierMix + relationRgb[1] * edgeRelationMix) * targetGain,
+            (targetTier[2] * edgeTierMix + relationRgb[2] * edgeRelationMix) * targetGain
           );
           count += 1;
         }
