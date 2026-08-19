@@ -298,21 +298,6 @@ class VisualSettingsRequest(BaseModel):
         ge=0,
         le=100,
     )
-    home_star_edge_glow_strength: float = Field(
-        default=1.0,
-        ge=0.1,
-        le=2.0,
-    )
-    home_star_edge_color_saturation: float = Field(
-        default=2.2,
-        ge=0.5,
-        le=4.0,
-    )
-    home_star_edge_tier_mix: float = Field(
-        default=0.65,
-        ge=0.0,
-        le=1.0,
-    )
     home_star_brightness_initial: float = Field(
         default=10.0,
         ge=0,
@@ -1135,15 +1120,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "home_star_scope": db.setting("home_star_scope", "hero"),
             "home_star_render_mode": db.setting(
                 "home_star_render_mode", "2d"
-            ),
-            "home_star_edge_glow_strength": setting_float(
-                "home_star_edge_glow_strength", 1
-            ),
-            "home_star_edge_color_saturation": setting_float(
-                "home_star_edge_color_saturation", 2.2
-            ),
-            "home_star_edge_tier_mix": setting_float(
-                "home_star_edge_tier_mix", 0.65
             ),
             "home_star_relation_visibility": db.setting(
                 "home_star_relation_visibility", "near"
@@ -3418,7 +3394,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "2d-webgl",
             "3d",
             "3d-drift",
-            "3d-drift-anchored",
             "3d-galaxy",
             "3d-orbit",
         }:
@@ -3543,15 +3518,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "home_background_style": payload.home_background_style,
             "home_star_scope": payload.home_star_scope,
             "home_star_render_mode": payload.home_star_render_mode,
-            "home_star_edge_glow_strength": str(
-                payload.home_star_edge_glow_strength
-            ),
-            "home_star_edge_color_saturation": str(
-                payload.home_star_edge_color_saturation
-            ),
-            "home_star_edge_tier_mix": str(
-                payload.home_star_edge_tier_mix
-            ),
             "home_star_relation_visibility": (
                 payload.home_star_relation_visibility
             ),
