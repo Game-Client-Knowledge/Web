@@ -93,6 +93,12 @@ assert.match(html, /id="addStarBrightnessTier"/);
 assert.match(html, /id="starFormulaVariableReference"/);
 assert.match(html, /id="starFormulaFunctionReference"/);
 assert.match(html, /star-formula-engine\.js/);
+assert.match(
+  html,
+  /star-formula-engine\.js\?v=total-relations-v1/,
+  "the admin formula engine URL must invalidate the pre-variable bundle"
+);
+assert.doesNotMatch(html, /star-formula-engine\.js\?v=2/);
 assert.match(html, /id="commentAgentForm"/);
 assert.match(html, /id="commentAgentProvider"/);
 for (const field of [
