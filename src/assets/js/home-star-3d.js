@@ -510,13 +510,14 @@
 
     // Edge glow strength follows the star's brightness: the same edge is
     // radiant at a blue giant's end and faint at a brown dwarf's end.
+    // Kept deliberately subtle so lines never wash out the stars.
     function starEdgeGain(star, time) {
       const maximum = runtimeSettings.home_star_brightness_max || 100;
       const normalized = Math.max(
         0,
         Math.min(1, currentBrightness(star, time) / maximum)
       );
-      return 0.22 + 0.78 * Math.pow(normalized, 1.55);
+      return 0.14 + 0.58 * Math.pow(normalized, 1.55);
     }
 
     const scene = new THREE.Scene();
@@ -649,7 +650,7 @@
           // brightness-scaled glow; opacity is just the global gain.
           vertexColors: true,
           transparent: true,
-          opacity: visibility === "always" ? 0.4 : 0.85,
+          opacity: visibility === "always" ? 0.18 : 0.4,
           blending: THREE.AdditiveBlending,
           depthTest: false,
           depthWrite: false
@@ -682,7 +683,7 @@
         new THREE.LineBasicMaterial({
           vertexColors: true,
           transparent: true,
-          opacity: 0.4,
+          opacity: 0.2,
           blending: THREE.AdditiveBlending,
           depthTest: false,
           depthWrite: false
@@ -1011,8 +1012,8 @@
             attribute.setXYZ(count * 2 + 1, b.x, b.y, b.z);
             const aTier = tierRgbOf(a);
             const bTier = tierRgbOf(b);
-            const aGain = gains.get(a.id) * 0.8;
-            const bGain = gains.get(b.id) * 0.8;
+            const aGain = gains.get(a.id) * 0.6;
+            const bGain = gains.get(b.id) * 0.6;
             colorAttribute.setXYZ(
               count * 2,
               aTier[0] * aGain,
