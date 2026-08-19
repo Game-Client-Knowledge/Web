@@ -478,6 +478,47 @@
       return star.brightnessTier?.id || "default";
     }
 
+    // Tier canonical colors as 0..1 RGB, cached per tier id. Edges blend
+    // these so a link between two different brightness tiers renders as
+    // a smooth nebula-like gradient.
+    const tierRgbCache = new Map();
+    function tierRgbOf(star) {
+      const id = tierIdOf(star);
+      let rgb = tierRgbCache.get(id);
+      if (!rgb) {
+        const hex = String(
+          tierProfile(star.brightnessTier).tintHex || "#ffffff"
+        ).replace("#", "");
+        rgb = [
+          parseInt(hex.slice(0, 2), 16) / 255 || 0,
+          parseInt(hex.slice(2, 4), 16) / 255 || 0,
+          parseInt(hex.slice(4, 6), 16) / 255 || 0
+        ];
+        tierRgbCache.set(id, rgb);
+      }
+      return rgb;
+    }
+
+    function relationRgbOf(type) {
+      const parts = String(relationColors[type] || "255, 255, 255").split(",");
+      return [
+        (Number(parts[0]) || 255) / 255,
+        (Number(parts[1]) || 255) / 255,
+        (Number(parts[2]) || 255) / 255
+      ];
+    }
+
+    // Edge glow strength follows the star's brightness: the same edge is
+    // radiant at a blue giant's end and faint at a brown dwarf's end.
+    function starEdgeGain(star, time) {
+      const maximum = runtimeSettings.home_star_brightness_max || 100;
+      const normalized = Math.max(
+        0,
+        Math.min(1, currentBrightness(star, time) / maximum)
+      );
+      return 0.22 + 0.78 * Math.pow(normalized, 1.55);
+    }
+
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(50, 1, 1, 5000);
     const cameraState = {
@@ -593,15 +634,22 @@
         const typeEdges = edges.filter((edge) => edge.type === type);
         if (!typeEdges.length) continue;
         const positions = new Float32Array(typeEdges.length * 6);
+        const colors = new Float32Array(typeEdges.length * 6);
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute(
           "position",
           new THREE.BufferAttribute(positions, 3)
         );
+        geometry.setAttribute(
+          "color",
+          new THREE.BufferAttribute(colors, 3)
+        );
         const material = new THREE.LineBasicMaterial({
-          color: new THREE.Color(`rgb(${relationColors[type]})`),
+          // Per-vertex colors carry the tier gradient and the
+          // brightness-scaled glow; opacity is just the global gain.
+          vertexColors: true,
           transparent: true,
-          opacity: visibility === "always" ? 0.16 : 0.34,
+          opacity: visibility === "always" ? 0.4 : 0.85,
           blending: THREE.AdditiveBlending,
           depthTest: false,
           depthWrite: false
@@ -609,6 +657,7 @@
         const lines = new THREE.LineSegments(geometry, material);
         lines.renderOrder = 0;
         lines.userData.edges = typeEdges;
+        lines.userData.relationRgb = relationRgbOf(type);
         scene.add(lines);
         edgeLayers.push(lines);
       }
@@ -624,12 +673,16 @@
         "position",
         new THREE.BufferAttribute(new Float32Array(PROXIMITY_MAX * 6), 3)
       );
+      geometry.setAttribute(
+        "color",
+        new THREE.BufferAttribute(new Float32Array(PROXIMITY_MAX * 6), 3)
+      );
       proximityLayer = new THREE.LineSegments(
         geometry,
         new THREE.LineBasicMaterial({
-          color: new THREE.Color("rgb(150, 210, 220)"),
+          vertexColors: true,
           transparent: true,
-          opacity: 0.13,
+          opacity: 0.4,
           blending: THREE.AdditiveBlending,
           depthTest: false,
           depthWrite: false
@@ -897,9 +950,17 @@
       spikeRot.needsUpdate = true;
     }
 
-    function writeEdgePositions() {
+    function writeEdgePositions(time) {
+      // Per-frame glow strength of every star, so each edge end can be
+      // tinted and scaled by its own star's brightness tier.
+      const gains = new Map();
+      for (const star of stars) {
+        gains.set(star.id, starEdgeGain(star, time));
+      }
       for (const layer of edgeLayers) {
         const attribute = layer.geometry.attributes.position;
+        const colorAttribute = layer.geometry.attributes.color;
+        const relationRgb = layer.userData.relationRgb;
         let count = 0;
         for (const edge of layer.userData.edges) {
           const source = starById.get(edge.source);
@@ -914,13 +975,31 @@
           }
           attribute.setXYZ(count * 2, source.x, source.y, source.z);
           attribute.setXYZ(count * 2 + 1, target.x, target.y, target.z);
+          const sourceTier = tierRgbOf(source);
+          const targetTier = tierRgbOf(target);
+          const sourceGain = gains.get(source.id);
+          const targetGain = gains.get(target.id);
+          colorAttribute.setXYZ(
+            count * 2,
+            (sourceTier[0] * 0.65 + relationRgb[0] * 0.35) * sourceGain,
+            (sourceTier[1] * 0.65 + relationRgb[1] * 0.35) * sourceGain,
+            (sourceTier[2] * 0.65 + relationRgb[2] * 0.35) * sourceGain
+          );
+          colorAttribute.setXYZ(
+            count * 2 + 1,
+            (targetTier[0] * 0.65 + relationRgb[0] * 0.35) * targetGain,
+            (targetTier[1] * 0.65 + relationRgb[1] * 0.35) * targetGain,
+            (targetTier[2] * 0.65 + relationRgb[2] * 0.35) * targetGain
+          );
           count += 1;
         }
         layer.geometry.setDrawRange(0, count * 2);
         attribute.needsUpdate = true;
+        colorAttribute.needsUpdate = true;
       }
       if (proximityLayer) {
         const attribute = proximityLayer.geometry.attributes.position;
+        const colorAttribute = proximityLayer.geometry.attributes.color;
         let count = 0;
         for (let i = 0; i < stars.length && count < PROXIMITY_MAX; i += 1) {
           for (let j = i + 1; j < stars.length && count < PROXIMITY_MAX; j += 1) {
@@ -930,11 +1009,28 @@
             if (distance > PROXIMITY_LIMIT) continue;
             attribute.setXYZ(count * 2, a.x, a.y, a.z);
             attribute.setXYZ(count * 2 + 1, b.x, b.y, b.z);
+            const aTier = tierRgbOf(a);
+            const bTier = tierRgbOf(b);
+            const aGain = gains.get(a.id) * 0.8;
+            const bGain = gains.get(b.id) * 0.8;
+            colorAttribute.setXYZ(
+              count * 2,
+              aTier[0] * aGain,
+              aTier[1] * aGain,
+              aTier[2] * aGain
+            );
+            colorAttribute.setXYZ(
+              count * 2 + 1,
+              bTier[0] * bGain,
+              bTier[1] * bGain,
+              bTier[2] * bGain
+            );
             count += 1;
           }
         }
         proximityLayer.geometry.setDrawRange(0, count * 2);
         attribute.needsUpdate = true;
+        colorAttribute.needsUpdate = true;
       }
       // Highlight path follows the moving stars.
       if (highlightEdges.length) {
@@ -1039,7 +1135,7 @@
         camera.lookAt(0, 0, 0);
       }
       writePointAttributes(time);
-      writeEdgePositions();
+      writeEdgePositions(time);
       writePulses(time);
       renderer.render(scene, camera);
       updateLabel(time);
