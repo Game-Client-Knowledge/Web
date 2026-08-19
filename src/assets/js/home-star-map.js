@@ -158,61 +158,98 @@
     return family[Math.floor(random() * family.length)];
   }
 
-  // Per-tier visual profile. Each brightness tier has its own texture: color
-  // tint mixed with the star's color, halo scale, chromatic ring, and
-  // diffraction spike shape. `default` covers stars without a tier match.
+  // Per-tier visual profile. Sprites are rendered pixel-by-pixel with a
+  // point-spread-function model (gaussian Airy core + power-law wing + first
+  // Airy ring + gaussian-section diffraction spikes) so each tier reads like
+  // a real telescopic star instead of a flat gradient disc.
   const TIER_PROFILES = {
+    // 褐矮星：将熄未熄的暗红余烬，几乎无光晕，深藏进背景
     "brown-dwarf": {
-      tintHex: "#8a4a2b",
-      tintMix: 0.7,
-      coreMix: 0.55,
-      haloScale: 0.6,
-      haloAlphaScale: 0.55,
-      coreAlphaScale: 0.5,
+      tintHex: "#6e2f14",
+      tintMix: 0.72,
+      coreMix: 0.6,
+      haloScale: 0.5,
+      haloAlphaScale: 0.38,
+      coreAlphaScale: 0.35,
       radiusBoost: 0,
-      spikeCount: 0,
+      coreSigma: 0.055,
+      wingGain: 0.05,
+      wingScale: 0.16,
+      wingPower: 2.6,
+      ringGain: 0,
+      ringRadius: 0.3,
+      ringWidth: 0.02,
+      spikeGain: 0,
+      spikeWidth: 0.012,
       spikeLength: 0,
-      spikeAlpha: 0,
-      ringAlpha: 0
+      spikeEight: false,
+      spikeAlpha: 0
     },
+    // 红矮星：温暖的橙红小火苗，光晕收敛柔和
     "red-dwarf": {
-      tintHex: "#e07a3f",
-      tintMix: 0.45,
-      coreMix: 0.35,
-      haloScale: 0.88,
-      haloAlphaScale: 0.9,
-      coreAlphaScale: 0.85,
-      radiusBoost: 0.15,
-      spikeCount: 0,
+      tintHex: "#e2632f",
+      tintMix: 0.5,
+      coreMix: 0.4,
+      haloScale: 0.85,
+      haloAlphaScale: 0.8,
+      coreAlphaScale: 0.8,
+      radiusBoost: 0.12,
+      coreSigma: 0.06,
+      wingGain: 0.16,
+      wingScale: 0.2,
+      wingPower: 2.4,
+      ringGain: 0,
+      ringRadius: 0.3,
+      ringWidth: 0.02,
+      spikeGain: 0,
+      spikeWidth: 0.012,
       spikeLength: 0,
-      spikeAlpha: 0,
-      ringAlpha: 0
+      spikeEight: false,
+      spikeAlpha: 0
     },
+    // 黄矮星：类太阳暖白，明显辉光 + 纤细四芒
     "yellow-dwarf": {
-      tintHex: "#fbd07b",
-      tintMix: 0.32,
-      coreMix: 0.2,
-      haloScale: 1.18,
-      haloAlphaScale: 1.05,
-      coreAlphaScale: 1.05,
-      radiusBoost: 0.35,
-      spikeCount: 4,
-      spikeLength: 3.6,
-      spikeAlpha: 0.34,
-      ringAlpha: 0.09
+      tintHex: "#ffd9a0",
+      tintMix: 0.3,
+      coreMix: 0.18,
+      haloScale: 1.7,
+      haloAlphaScale: 1.15,
+      coreAlphaScale: 1.1,
+      radiusBoost: 0.3,
+      coreSigma: 0.05,
+      wingGain: 0.4,
+      wingScale: 0.22,
+      wingPower: 2.2,
+      ringGain: 0.06,
+      ringRadius: 0.3,
+      ringWidth: 0.016,
+      spikeGain: 0.75,
+      spikeWidth: 0.022,
+      spikeLength: 5.0,
+      spikeEight: false,
+      spikeAlpha: 0.5
     },
+    // 蓝巨星：冰蓝白炽亮星，大光晕 + 八芒 + 艾里环
     "blue-giant": {
-      tintHex: "#b8ddff",
-      tintMix: 0.42,
-      coreMix: 0.28,
-      haloScale: 1.65,
-      haloAlphaScale: 1.32,
-      coreAlphaScale: 1.35,
-      radiusBoost: 0.7,
-      spikeCount: 4,
-      spikeLength: 5.8,
-      spikeAlpha: 0.52,
-      ringAlpha: 0.24
+      tintHex: "#cfe4ff",
+      tintMix: 0.4,
+      coreMix: 0.22,
+      haloScale: 2.6,
+      haloAlphaScale: 1.5,
+      coreAlphaScale: 1.5,
+      radiusBoost: 0.65,
+      coreSigma: 0.045,
+      wingGain: 0.55,
+      wingScale: 0.26,
+      wingPower: 2.0,
+      ringGain: 0.2,
+      ringRadius: 0.34,
+      ringWidth: 0.014,
+      spikeGain: 1.0,
+      spikeWidth: 0.017,
+      spikeLength: 8.0,
+      spikeEight: true,
+      spikeAlpha: 0.75
     },
     default: {
       tintHex: null,
@@ -222,10 +259,18 @@
       haloAlphaScale: 1,
       coreAlphaScale: 1,
       radiusBoost: 0,
-      spikeCount: 0,
+      coreSigma: 0.055,
+      wingGain: 0.2,
+      wingScale: 0.2,
+      wingPower: 2.3,
+      ringGain: 0,
+      ringRadius: 0.3,
+      ringWidth: 0.02,
+      spikeGain: 0,
+      spikeWidth: 0.012,
       spikeLength: 0,
-      spikeAlpha: 0,
-      ringAlpha: 0
+      spikeEight: false,
+      spikeAlpha: 0
     }
   };
 
@@ -259,13 +304,14 @@
     return `${rgb.r}, ${rgb.g}, ${rgb.b}`;
   }
 
+  const HALO_SPRITE_SIZE = 128;
   const haloSprites = new Map();
   function haloSprite(tier, color) {
     const profile = tierProfile(tier);
     const key = `${tier?.id || "default"}\u0000${color}`;
     let sprite = haloSprites.get(key);
     if (sprite) return sprite;
-    const size = 128;
+    const size = HALO_SPRITE_SIZE;
     const half = size / 2;
     const bodyRgb = mixRgb(color, profile.tintHex, profile.tintMix);
     const coreRgb = mixRgb("#ffffff", profile.tintHex, profile.coreMix);
@@ -273,88 +319,113 @@
     sprite.width = size;
     sprite.height = size;
     const ctx = sprite.getContext("2d");
-    // Body glow — pre-rendered radial gradient, tier-tinted.
-    const gradient = ctx.createRadialGradient(half, half, 0, half, half, half);
-    gradient.addColorStop(0, `rgba(${rgbString(coreRgb)}, 0.95)`);
-    gradient.addColorStop(0.14, `rgba(${rgbString(bodyRgb)}, 0.72)`);
-    gradient.addColorStop(0.32, `rgba(${rgbString(bodyRgb)}, 0.32)`);
-    gradient.addColorStop(0.62, `rgba(${rgbString(bodyRgb)}, 0.08)`);
-    gradient.addColorStop(1, `rgba(${rgbString(bodyRgb)}, 0)`);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, size, size);
-    // Optional chromatic ring for high tiers, gives a photographic diffraction
-    // ring impression on bright stars without extra draw-time cost.
-    if (profile.ringAlpha > 0) {
-      ctx.strokeStyle = `rgba(${rgbString(bodyRgb)}, ${profile.ringAlpha})`;
-      ctx.lineWidth = size * 0.014;
-      ctx.beginPath();
-      ctx.arc(half, half, size * 0.24, 0, Math.PI * 2);
-      ctx.stroke();
+    const image = ctx.createImageData(size, size);
+    const data = image.data;
+    const sigma = Math.max(0.02, profile.coreSigma);
+    const wingScale = Math.max(0.05, profile.wingScale);
+    const colorFalloff = 1 / (wingScale * 1.6);
+    for (let y = 0; y < size; y += 1) {
+      const dy = (y + 0.5 - half) / half;
+      for (let x = 0; x < size; x += 1) {
+        const dx = (x + 0.5 - half) / half;
+        const r = Math.sqrt(dx * dx + dy * dy);
+        // Gaussian core approximating the Airy disk.
+        const core = Math.exp(-(r * r) / (2 * sigma * sigma));
+        // Power-law wing — the long smooth tail that makes stars feel
+        // photographic rather than sticker-like.
+        const wingRatio = r / wingScale;
+        const wing =
+          profile.wingGain *
+          Math.pow(1 + wingRatio * wingRatio, -profile.wingPower);
+        // Optional first Airy ring for the brightest tiers.
+        let ring = 0;
+        if (profile.ringGain > 0) {
+          const ringDr = (r - profile.ringRadius) / profile.ringWidth;
+          ring = profile.ringGain * Math.exp(-ringDr * ringDr);
+        }
+        const intensity = Math.min(1, core + wing + ring);
+        // Color travels from the white-hot core to the tier tint with radius.
+        const t = Math.min(1, r * colorFalloff);
+        const index = (y * size + x) * 4;
+        data[index] = Math.round(coreRgb.r + (bodyRgb.r - coreRgb.r) * t);
+        data[index + 1] = Math.round(coreRgb.g + (bodyRgb.g - coreRgb.g) * t);
+        data[index + 2] = Math.round(coreRgb.b + (bodyRgb.b - coreRgb.b) * t);
+        data[index + 3] = Math.round(intensity * 255);
+      }
     }
+    ctx.putImageData(image, 0, 0);
     haloSprites.set(key, sprite);
     return sprite;
   }
 
+  const SPIKE_SPRITE_SIZE = 192;
   const spikeSprites = new Map();
+  // One diffraction arm: gaussian cross-section perpendicular to the axis,
+  // power-law falloff along it. `alongScale`/`power` control reach — primary
+  // arms are long and sharp, secondary (diagonal) arms short and faint.
+  function spikeArm(perp, along, width, gain, alongScale, power) {
+    const section = Math.exp(-(perp * perp) / (2 * width * width));
+    const falloff = Math.pow(1 + along * alongScale, -power);
+    return gain * section * falloff;
+  }
   function spikeSprite(tier, color) {
     const profile = tierProfile(tier);
-    if (profile.spikeCount <= 0 || profile.spikeAlpha <= 0) return null;
+    if (profile.spikeGain <= 0 || profile.spikeAlpha <= 0) return null;
     const key = `${tier?.id || "default"}\u0000${color}`;
     let sprite = spikeSprites.get(key);
     if (sprite) return sprite;
-    const size = 128;
+    const size = SPIKE_SPRITE_SIZE;
     const half = size / 2;
-    const bodyRgb = mixRgb(color, profile.tintHex, profile.tintMix * 0.6);
+    const bodyRgb = mixRgb(color, profile.tintHex, profile.tintMix * 0.5);
+    const coreRgb = mixRgb("#ffffff", profile.tintHex, profile.coreMix * 0.5);
     sprite = document.createElement("canvas");
     sprite.width = size;
     sprite.height = size;
     const ctx = sprite.getContext("2d");
-    // Additive spikes — a soft gradient beam from center outward, then rotated
-    // to cover N points. Each beam fades to transparent at the edge so the
-    // sprite tiles cleanly.
-    const beamLength = size * 0.48;
-    const beamWidth = size * 0.05;
-    function drawBeam(angle) {
-      ctx.save();
-      ctx.translate(half, half);
-      ctx.rotate(angle);
-      const beamGradient = ctx.createLinearGradient(0, 0, beamLength, 0);
-      beamGradient.addColorStop(0, `rgba(${rgbString(bodyRgb)}, ${profile.spikeAlpha})`);
-      beamGradient.addColorStop(0.15, `rgba(${rgbString(bodyRgb)}, ${profile.spikeAlpha * 0.75})`);
-      beamGradient.addColorStop(0.6, `rgba(${rgbString(bodyRgb)}, ${profile.spikeAlpha * 0.15})`);
-      beamGradient.addColorStop(1, `rgba(${rgbString(bodyRgb)}, 0)`);
-      ctx.fillStyle = beamGradient;
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(beamLength, -beamWidth / 2);
-      ctx.lineTo(beamLength, beamWidth / 2);
-      ctx.closePath();
-      ctx.fill();
-      // Mirror beam for a bidirectional star spike.
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(-beamLength, -beamWidth / 2);
-      ctx.lineTo(-beamLength, beamWidth / 2);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    }
-    // 4-point uses a horizontal/vertical cross plus a subtler 45° pair so the
-    // star reads as a clean cross with soft secondary flares. 6-point evenly
-    // spaces beams around the circle.
-    if (profile.spikeCount === 6) {
-      for (let index = 0; index < 3; index += 1) {
-        drawBeam((Math.PI * index) / 3);
+    const image = ctx.createImageData(size, size);
+    const data = image.data;
+    const width = Math.max(0.004, profile.spikeWidth);
+    for (let y = 0; y < size; y += 1) {
+      const dy = (y + 0.5 - half) / half;
+      for (let x = 0; x < size; x += 1) {
+        const dx = (x + 0.5 - half) / half;
+        // Main 4-point cross: distance to the nearer axis is the
+        // cross-section, distance along it drives the falloff.
+        const crossPerp = Math.min(Math.abs(dx), Math.abs(dy));
+        const crossAlong = Math.max(Math.abs(dx), Math.abs(dy));
+        let intensity = spikeArm(
+          crossPerp,
+          crossAlong,
+          width,
+          profile.spikeGain,
+          5.0,
+          1.5
+        );
+        if (profile.spikeEight) {
+          // Diagonal 4-point set: clearly thinner, shorter and weaker than
+          // the primary cross so the 8-spike hierarchy reads distinctly.
+          const diagA = Math.abs((dx - dy) * Math.SQRT1_2);
+          const diagB = Math.abs((dx + dy) * Math.SQRT1_2);
+          intensity += spikeArm(
+            Math.min(diagA, diagB),
+            Math.max(diagA, diagB),
+            width * 0.6,
+            profile.spikeGain * 0.4,
+            10.0,
+            2.3
+          );
+        }
+        if (intensity <= 0.004) continue;
+        const r = Math.sqrt(dx * dx + dy * dy);
+        const t = Math.min(1, r * 2.2);
+        const index = (y * size + x) * 4;
+        data[index] = Math.round(coreRgb.r + (bodyRgb.r - coreRgb.r) * t);
+        data[index + 1] = Math.round(coreRgb.g + (bodyRgb.g - coreRgb.g) * t);
+        data[index + 2] = Math.round(coreRgb.b + (bodyRgb.b - coreRgb.b) * t);
+        data[index + 3] = Math.round(Math.min(1, intensity) * 255);
       }
-    } else {
-      drawBeam(0);
-      drawBeam(Math.PI / 2);
-      // Subtler diagonal flares — half the strength of the main cross.
-      ctx.globalAlpha = 0.4;
-      drawBeam(Math.PI / 4);
-      drawBeam(-Math.PI / 4);
-      ctx.globalAlpha = 1;
     }
+    ctx.putImageData(image, 0, 0);
     spikeSprites.set(key, sprite);
     return sprite;
   }
@@ -1084,27 +1155,36 @@
       }
 
       // Diffraction spikes for higher tiers (yellow-dwarf / blue-giant). The
-      // spike sprite is nullable — dim tiers skip this entirely.
+      // spike sprite is nullable — dim tiers skip this entirely. Each star
+      // gets a deterministic slight rotation so the field doesn't look like
+      // a stamped grid of identical crosses.
       const spike = spikeSprite(star.brightnessTier, star.color);
       if (spike && presentation.luminous > 0.06) {
         const spikeExtent = Math.max(
-          tierHaloRadius * 1.05,
-          tierRadius * profile.spikeLength
+          tierHaloRadius * 1.25,
+          tierRadius * profile.spikeLength,
+          14
         );
-        const previousComposite = context.globalCompositeOperation;
+        const rotation =
+          (((star.index * 53) % 50) - 25) * (Math.PI / 180);
+        context.save();
+        context.translate(star.x, star.y);
+        context.rotate(rotation);
         context.globalCompositeOperation = "lighter";
         context.globalAlpha = Math.min(
           1,
-          0.35 + presentation.luminous * 0.7 + (selected ? 0.15 : 0)
+          (0.35 + presentation.luminous * 0.7 + (selected ? 0.15 : 0)) *
+            profile.spikeAlpha *
+            2.2
         );
         context.drawImage(
           spike,
-          star.x - spikeExtent,
-          star.y - spikeExtent,
+          -spikeExtent,
+          -spikeExtent,
           spikeExtent * 2,
           spikeExtent * 2
         );
-        context.globalCompositeOperation = previousComposite;
+        context.restore();
       }
 
       context.fillStyle = star.color;
