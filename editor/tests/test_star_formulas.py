@@ -13,9 +13,14 @@ from app.star_formulas import (
 
 def test_formula_allowlist_accepts_supported_math() -> None:
     variables = validate_star_formula(
-        "sin(pi / 2) + exp(1) + (reference_count ^ 2) % 7"
+        "sin(pi / 2) + exp(1) + (reference_count ^ 2) % 7 + "
+        "total_relation_count"
     )
-    assert variables == {"pi", "reference_count"}
+    assert variables == {
+        "pi",
+        "reference_count",
+        "total_relation_count",
+    }
 
 
 @pytest.mark.parametrize(

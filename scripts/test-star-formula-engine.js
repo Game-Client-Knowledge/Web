@@ -1,7 +1,22 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const engine = require("../lib/star-formula-engine");
 
-assert.equal(engine.VARIABLE_DEFINITIONS.length, 17);
+const root = path.resolve(__dirname, "..");
+for (const relative of [
+  "src/assets/js/home-star-map.js",
+  "src/assets/js/home-star-3d.js"
+]) {
+  const source = fs.readFileSync(path.join(root, relative), "utf8");
+  assert.match(
+    source,
+    /totalRelationCount:\s*sourceGraph\.edges\.length/,
+    `${relative} must supply the complete relation count`
+  );
+}
+
+assert.equal(engine.VARIABLE_DEFINITIONS.length, 18);
 assert.ok(
   engine.VARIABLE_DEFINITIONS.every((definition) => {
     return (
@@ -24,11 +39,17 @@ assert.equal(engine.evaluateFormula("exp(1)", {}), Math.E);
 assert.equal(engine.evaluateFormula("pow(3, 2) + sqrt(16)", {}), 13);
 
 assert.deepEqual(
-  engine.validateFormula("current_brightness + reference_count * 2"),
+  engine.validateFormula(
+    "current_brightness + reference_count * 2 + total_relation_count"
+  ),
   {
     valid: true,
     message: "",
-    variables: ["current_brightness", "reference_count"]
+    variables: [
+      "current_brightness",
+      "reference_count",
+      "total_relation_count"
+    ]
   }
 );
 assert.equal(engine.validateFormula("unknown + 1").valid, false);
@@ -137,6 +158,18 @@ assert.deepEqual(
   engine.migrateDefaultBrightnessRules(previousDefaults),
   engine.DEFAULT_BRIGHTNESS_RULES
 );
+const rebalancedDefaults = engine.DEFAULT_BRIGHTNESS_RULES.map((rule) => ({
+  ...rule,
+  formula:
+    rule.id === "contributor-total"
+      ? "current_brightness + brightness_span * 0.40 * " +
+        "min(1, log(1 + contribution_count) / log(250001))"
+      : rule.formula
+}));
+assert.deepEqual(
+  engine.migrateDefaultBrightnessRules(rebalancedDefaults),
+  engine.DEFAULT_BRIGHTNESS_RULES
+);
 assert.equal(
   engine.migrateDefaultBrightnessRules([
     { ...previousDefaults[0], formula: "current_brightness + 1" }
@@ -156,14 +189,14 @@ const productionScaleFixtures = [
     maximum: 70
   },
   {
-    name: "regular contributor",
+    name: "established contributor",
     kind: "contributor",
     metrics: {
       contributionCount: 1431,
       modification30Count: 1431
     },
-    minimum: 35,
-    maximum: 50
+    minimum: 50,
+    maximum: 70
   },
   {
     name: "highly connected document",
@@ -198,7 +231,8 @@ for (const fixture of productionScaleFixtures) {
     engine.DEFAULT_BRIGHTNESS_RULES,
     0,
     20,
-    100
+    100,
+    { totalRelationCount: 890 }
   );
   assert.ok(
     brightness >= fixture.minimum && brightness < fixture.maximum,

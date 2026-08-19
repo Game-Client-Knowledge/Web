@@ -1420,9 +1420,6 @@ def test_admin_can_configure_client_visual_effects(
         "home_content_idle_timeout_seconds": 45,
         "home_star_scope": "full",
         "home_star_render_mode": "2d",
-        "home_star_edge_glow_strength": 1.0,
-        "home_star_edge_color_saturation": 2.2,
-        "home_star_edge_tier_mix": 0.65,
         "home_star_relation_visibility": "hidden",
         "home_star_strong_relation_style": "glow",
         "home_star_reference_relation_style": "dashed",
@@ -1501,9 +1498,6 @@ def test_admin_can_configure_client_visual_effects(
     assert config["home_content_mask_enabled"] is True
     assert config["home_content_idle_timeout_seconds"] == 45
     assert config["home_star_scope"] == "full"
-    assert config["home_star_edge_glow_strength"] == 1.0
-    assert config["home_star_edge_color_saturation"] == 2.2
-    assert config["home_star_edge_tier_mix"] == 0.65
     assert config["home_star_relation_visibility"] == "hidden"
     assert config["home_star_strong_relation_style"] == "glow"
     assert config["home_star_graph_direction"] == "undirected"

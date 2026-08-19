@@ -77,7 +77,8 @@ async function runScenario(browser, scenario) {
         name: "Visual contributor",
         enabled: true,
         target: "contributor",
-        formula: "current_brightness + 40"
+        formula:
+          "current_brightness + min(40, total_relation_count)"
       },
       {
         id: "visual-document",

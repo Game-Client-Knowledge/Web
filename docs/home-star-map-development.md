@@ -346,6 +346,7 @@ The browser evaluates a separate JSEP AST allowlist and never uses `eval`.
 | `contribution_count` | Contributor lifetime changed-line total |
 | `contributor_count` | Document/code-system contributor count |
 | `commit_count` | Contributor lifetime commit count |
+| `total_relation_count` | Complete graph edge count before visual pruning |
 
 Relation variables come from the complete embedded graph. Traversal direction,
 depth, BFS, and active-edge pruning do not change them. Code-system recent

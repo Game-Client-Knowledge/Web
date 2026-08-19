@@ -24,6 +24,7 @@ STAR_FORMULA_VARIABLES = {
     "contribution_count",
     "contributor_count",
     "commit_count",
+    "total_relation_count",
     "pi",
     "e",
 }
@@ -115,6 +116,43 @@ PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULE_SETS = [
         for rule in PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULES
         if rule["id"] != "document-strong"
     ],
+    [
+        {
+            **rule,
+            "formula": (
+                "current_brightness + brightness_span * 0.40 * "
+                "min(1, log(1 + contribution_count) / log(250001))"
+            ),
+        }
+        if rule["id"] == "contributor-total"
+        else {
+            **rule,
+            "formula": {
+                "contributor-recent": (
+                    "current_brightness + brightness_span * 0.05 * "
+                    "min(1, log(1 + modification_30_count) / log(5001))"
+                ),
+                "document-reference": (
+                    "current_brightness + brightness_span * 0.22 * "
+                    "min(1, sqrt((reference_count + "
+                    "referenced_by_count) / 24))"
+                ),
+                "document-strong": (
+                    "current_brightness + brightness_span * 0.08 * "
+                    "min(1, sqrt(strong_relation_count / 12))"
+                ),
+                "document-contributors": (
+                    "current_brightness + brightness_span * 0.06 * "
+                    "min(1, log(1 + contributor_count) / log(9))"
+                ),
+                "document-recent": (
+                    "current_brightness + brightness_span * 0.06 * "
+                    "min(1, log(1 + modification_30_count) / log(2001))"
+                ),
+            }[rule["id"]],
+        }
+        for rule in PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULES
+    ],
 ]
 
 DEFAULT_STAR_BRIGHTNESS_RULES = [
@@ -125,7 +163,8 @@ DEFAULT_STAR_BRIGHTNESS_RULES = [
         "target": "contributor",
         "formula": (
             "current_brightness + brightness_span * 0.40 * "
-            "min(1, log(1 + contribution_count) / log(250001))"
+            "min(1, log(1 + contribution_count) / "
+            "log(1 + total_relation_count))"
         ),
     },
     {

@@ -220,12 +220,12 @@ lines; they do not change computed brightness.
 
 The default curve keeps bright tiers selective. Contributor totals and recent
 changes use `0.40` and `0.05` of the configured brightness span, normalized
-against `250000` lifetime lines and `5000` recent lines. Documents use `0.22`
-for references, `0.08` for strong relations, `0.06` for contributor count, and
-`0.06` for recent changes. Reference degree is normalized against `24`, strong
-relations against `12`, and recent changes against `2000`. Existing databases
-that still contain either previous unmodified default rule set are upgraded to
-this curve; administrator-customized formulas remain unchanged.
+against the complete graph's `total_relation_count` and `5000` recent lines.
+Documents use `0.22` for references, `0.08` for strong relations, `0.06` for
+contributor count, and `0.06` for recent changes. Reference degree is normalized
+against `24`, strong relations against `12`, and recent changes against `2000`.
+Existing databases that still contain an earlier unmodified default rule set
+are upgraded to this curve; administrator-customized formulas remain unchanged.
 
 Configurable tier thresholds classify the formula result. Classification uses
 base brightness only, so optional random variation cannot move a star between

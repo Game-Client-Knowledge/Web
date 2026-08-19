@@ -476,7 +476,8 @@
         runtimeSettings.home_star_brightness_rules,
         runtimeSettings.home_star_brightness_min,
         runtimeSettings.home_star_brightness_initial,
-        runtimeSettings.home_star_brightness_max
+        runtimeSettings.home_star_brightness_max,
+        { totalRelationCount: sourceGraph.edges.length }
       ),
       variationFrom: 0,
       variationTo: 0,
