@@ -86,6 +86,126 @@ assert.equal(
   80
 );
 
+const previousDefaults = [
+  {
+    id: "contributor-total",
+    name: "静星累计贡献",
+    enabled: true,
+    target: "contributor",
+    formula:
+      "current_brightness + brightness_span * 0.55 * " +
+      "min(1, log(1 + contribution_count) / log(50001))"
+  },
+  {
+    id: "contributor-recent",
+    name: "静星近期修改",
+    enabled: true,
+    target: "contributor",
+    formula:
+      "current_brightness + brightness_span * 0.10 * " +
+      "min(1, log(1 + modification_30_count) / log(501))"
+  },
+  {
+    id: "document-reference",
+    name: "动星引用关系",
+    enabled: true,
+    target: "document",
+    formula:
+      "current_brightness + brightness_span * 0.25 * " +
+      "min(1, sqrt((reference_count + referenced_by_count) / 12))"
+  },
+  {
+    id: "document-contributors",
+    name: "动星贡献者",
+    enabled: true,
+    target: "document",
+    formula:
+      "current_brightness + brightness_span * 0.10 * " +
+      "min(1, log(1 + contributor_count) / log(9))"
+  },
+  {
+    id: "document-recent",
+    name: "动星近期修改",
+    enabled: true,
+    target: "document",
+    formula:
+      "current_brightness + brightness_span * 0.10 * " +
+      "min(1, log(1 + modification_30_count) / log(501))"
+  }
+];
+assert.deepEqual(
+  engine.migrateDefaultBrightnessRules(previousDefaults),
+  engine.DEFAULT_BRIGHTNESS_RULES
+);
+assert.equal(
+  engine.migrateDefaultBrightnessRules([
+    { ...previousDefaults[0], formula: "current_brightness + 1" }
+  ])[0].formula,
+  "current_brightness + 1"
+);
+
+const productionScaleFixtures = [
+  {
+    name: "core contributor",
+    kind: "contributor",
+    metrics: {
+      contributionCount: 57379,
+      modification30Count: 57379
+    },
+    minimum: 50,
+    maximum: 70
+  },
+  {
+    name: "regular contributor",
+    kind: "contributor",
+    metrics: {
+      contributionCount: 1431,
+      modification30Count: 1431
+    },
+    minimum: 35,
+    maximum: 50
+  },
+  {
+    name: "highly connected document",
+    kind: "document",
+    metrics: {
+      referenceCount: 10,
+      referencedByCount: 14,
+      strongRelationCount: 7,
+      contributorCount: 1,
+      modification30Count: 82
+    },
+    minimum: 50,
+    maximum: 60
+  },
+  {
+    name: "ordinary document",
+    kind: "document",
+    metrics: {
+      referenceCount: 1,
+      referencedByCount: 0,
+      strongRelationCount: 1,
+      contributorCount: 1,
+      modification30Count: 13
+    },
+    minimum: 20,
+    maximum: 40
+  }
+];
+for (const fixture of productionScaleFixtures) {
+  const brightness = engine.calculateBrightness(
+    fixture,
+    engine.DEFAULT_BRIGHTNESS_RULES,
+    0,
+    20,
+    100
+  );
+  assert.ok(
+    brightness >= fixture.minimum && brightness < fixture.maximum,
+    `${fixture.name} brightness ${brightness} is outside the intended band`
+  );
+}
+
 const tiers = [
   { id: "brown", name: "褐矮星", min_brightness: 0 },
   { id: "red", name: "红矮星", min_brightness: 25 },

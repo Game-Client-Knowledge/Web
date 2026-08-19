@@ -3,6 +3,8 @@ from __future__ import annotations
 import pytest
 
 from app.star_formulas import (
+    DEFAULT_STAR_BRIGHTNESS_RULES,
+    PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULE_SETS,
     resolved_star_brightness_rules,
     resolved_star_brightness_tiers,
     validate_star_formula,
@@ -45,6 +47,21 @@ def test_legacy_rules_migrate_in_priority_order() -> None:
         "document-recent",
     ]
     assert all("formula" in rule for rule in rules)
+
+
+@pytest.mark.parametrize(
+    "rules",
+    PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULE_SETS,
+)
+def test_previous_default_formulas_upgrade_without_overwriting_custom_rules(
+    rules: list[dict[str, object]],
+) -> None:
+    assert resolved_star_brightness_rules(rules) == (
+        DEFAULT_STAR_BRIGHTNESS_RULES
+    )
+    customized = [dict(rule) for rule in rules]
+    customized[0]["formula"] = "current_brightness + 1"
+    assert resolved_star_brightness_rules(customized) == customized
 
 
 def test_tiers_are_bounded_and_sorted() -> None:

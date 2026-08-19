@@ -14,6 +14,8 @@
     "3d-galaxy",
     "3d-orbit"
   ];
+  const formulaEngine = window.GCK_STAR_FORMULA_ENGINE;
+  if (!formulaEngine) return;
 
   const defaults = {
     home_background_style: "old_star_map",
@@ -45,62 +47,8 @@
     home_star_selected_glow_scale: 1.25,
     home_star_selected_contributor_line_width: 1.4,
     home_star_active_edge_mode: "single_path",
-    home_star_brightness_rules: [
-      {
-        id: "contributor-total",
-        name: "静星累计贡献",
-        enabled: true,
-        target: "contributor",
-        formula:
-          "current_brightness + brightness_span * 0.55 * " +
-          "min(1, log(1 + contribution_count) / log(50001))"
-      },
-      {
-        id: "contributor-recent",
-        name: "静星近期修改",
-        enabled: true,
-        target: "contributor",
-        formula:
-          "current_brightness + brightness_span * 0.10 * " +
-          "min(1, log(1 + modification_30_count) / log(501))"
-      },
-      {
-        id: "document-reference",
-        name: "动星引用关系",
-        enabled: true,
-        target: "document",
-        formula:
-          "current_brightness + brightness_span * 0.25 * " +
-          "min(1, sqrt((reference_count + referenced_by_count) / 12))"
-      },
-      {
-        id: "document-strong",
-        name: "动星强联系",
-        enabled: true,
-        target: "document",
-        formula:
-          "current_brightness + brightness_span * 0.10 * " +
-          "min(1, sqrt(strong_relation_count / 8))"
-      },
-      {
-        id: "document-contributors",
-        name: "动星贡献者",
-        enabled: true,
-        target: "document",
-        formula:
-          "current_brightness + brightness_span * 0.10 * " +
-          "min(1, log(1 + contributor_count) / log(9))"
-      },
-      {
-        id: "document-recent",
-        name: "动星近期修改",
-        enabled: true,
-        target: "document",
-        formula:
-          "current_brightness + brightness_span * 0.10 * " +
-          "min(1, log(1 + modification_30_count) / log(501))"
-      }
-    ],
+    home_star_brightness_rules:
+      formulaEngine.DEFAULT_BRIGHTNESS_RULES.map((rule) => ({ ...rule })),
     home_star_brightness_tiers: [
       { id: "brown-dwarf", name: "褐矮星", min_brightness: 0 },
       { id: "red-dwarf", name: "红矮星", min_brightness: 25 },
@@ -115,8 +63,7 @@
 
   const context = canvas.getContext("2d");
   const illumination = window.GCK_HOME_STAR_ILLUMINATION;
-  const formulaEngine = window.GCK_STAR_FORMULA_ENGINE;
-  if (!context || !illumination || !formulaEngine) return;
+  if (!context || !illumination) return;
 
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)"
@@ -684,7 +631,7 @@
     const defaultRulesById = new Map(
       defaults.home_star_brightness_rules.map((rule) => [rule.id, rule])
     );
-    const migratedRules =
+    const legacyMigratedRules =
       validRules.length &&
       validRules.every((rule) => legacyRuleIds.has(rule?.id))
         ? validRules
@@ -697,6 +644,9 @@
               return defaultRulesById.get(legacyRuleIds.get(rule.id));
             })
         : validRules;
+    const migratedRules = formulaEngine.migrateDefaultBrightnessRules(
+      legacyMigratedRules
+    );
     const validTiers = formulaEngine.normalizeTiers(
       merged.home_star_brightness_tiers,
       brightnessMinimum,

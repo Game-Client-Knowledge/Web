@@ -45,7 +45,7 @@ STAR_FORMULA_FUNCTIONS = {
 }
 STAR_FORMULA_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
-DEFAULT_STAR_BRIGHTNESS_RULES = [
+PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULES = [
     {
         "id": "contributor-total",
         "name": "静星累计贡献",
@@ -104,6 +104,78 @@ DEFAULT_STAR_BRIGHTNESS_RULES = [
         "formula": (
             "current_brightness + brightness_span * 0.10 * "
             "min(1, log(1 + modification_30_count) / log(501))"
+        ),
+    },
+]
+
+PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULE_SETS = [
+    PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULES,
+    [
+        rule
+        for rule in PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULES
+        if rule["id"] != "document-strong"
+    ],
+]
+
+DEFAULT_STAR_BRIGHTNESS_RULES = [
+    {
+        "id": "contributor-total",
+        "name": "静星累计贡献",
+        "enabled": True,
+        "target": "contributor",
+        "formula": (
+            "current_brightness + brightness_span * 0.40 * "
+            "min(1, log(1 + contribution_count) / log(250001))"
+        ),
+    },
+    {
+        "id": "contributor-recent",
+        "name": "静星近期修改",
+        "enabled": True,
+        "target": "contributor",
+        "formula": (
+            "current_brightness + brightness_span * 0.05 * "
+            "min(1, log(1 + modification_30_count) / log(5001))"
+        ),
+    },
+    {
+        "id": "document-reference",
+        "name": "动星引用关系",
+        "enabled": True,
+        "target": "document",
+        "formula": (
+            "current_brightness + brightness_span * 0.22 * "
+            "min(1, sqrt((reference_count + referenced_by_count) / 24))"
+        ),
+    },
+    {
+        "id": "document-strong",
+        "name": "动星强联系",
+        "enabled": True,
+        "target": "document",
+        "formula": (
+            "current_brightness + brightness_span * 0.08 * "
+            "min(1, sqrt(strong_relation_count / 12))"
+        ),
+    },
+    {
+        "id": "document-contributors",
+        "name": "动星贡献者",
+        "enabled": True,
+        "target": "document",
+        "formula": (
+            "current_brightness + brightness_span * 0.06 * "
+            "min(1, log(1 + contributor_count) / log(9))"
+        ),
+    },
+    {
+        "id": "document-recent",
+        "name": "动星近期修改",
+        "enabled": True,
+        "target": "document",
+        "formula": (
+            "current_brightness + brightness_span * 0.06 * "
+            "min(1, log(1 + modification_30_count) / log(2001))"
         ),
     },
 ]
@@ -191,6 +263,8 @@ def validate_star_formula(formula: str) -> set[str]:
 
 def resolved_star_brightness_rules(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
+        return deepcopy(DEFAULT_STAR_BRIGHTNESS_RULES)
+    if value in PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULE_SETS:
         return deepcopy(DEFAULT_STAR_BRIGHTNESS_RULES)
     if value and all(
         isinstance(item, dict)
