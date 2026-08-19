@@ -449,8 +449,11 @@ renderer available while presenting the graph as an explicit homepage portal:
 2. lower homepage bands return to light surfaces;
 3. the `贡献` portal occupies the upper-right side of the hero title row
    on desktop and remains right-aligned below the title copy on mobile;
-4. the same graph stars are deterministically packed inside an octahedral
-   volume and rendered at the configured collapsed scale inside the portal;
+4. the same graph stars are projected into the configured compact volume and
+   rendered at the configured collapsed scale inside the portal;
+   compact coordinates are projected from the live expanded coordinates, so
+   star direction and neighbourhood remain recognizable instead of being
+   independently randomized;
 5. pointer dragging changes the portal yaw and pitch without activating it;
    releasing preserves that orientation and resumes automatic rotation from
    the dragged yaw instead of restoring a time-derived angle;
@@ -526,6 +529,8 @@ Main settings:
 | `home_background_style` | `old_star_map`, `contribution_star_map` |
 | `home_star_scope` | `hero`, `full` |
 | `home_star_experience_mode` | `immersive`, `contribution_portal` |
+| `home_star_portal_collapsed_structure` | `match_expanded`, `octahedron`, `sphere`, `cube` |
+| `home_star_portal_expanded_structure` | `3d`, `3d-drift`, `3d-drift-anchored`, `3d-galaxy`, `3d-orbit` |
 | `home_star_portal_rotation_speed` | `0..30` degrees per second; default `2.6`, `0` disables automatic rotation |
 | `home_star_portal_size_percent` | `10..100` percent; default `34`, expands to `100%` |
 | `home_star_portal_brightness_percent` | `10..100` percent; default `42`, expands to `100%` |

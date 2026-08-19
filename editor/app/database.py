@@ -647,6 +647,8 @@ class Database:
                 "home_star_scope": "hero",
                 "home_star_render_mode": "2d",
                 "home_star_experience_mode": "immersive",
+                "home_star_portal_collapsed_structure": "octahedron",
+                "home_star_portal_expanded_structure": "3d-drift",
                 "home_star_portal_rotation_speed": "2.6",
                 "home_star_portal_size_percent": "34",
                 "home_star_portal_brightness_percent": "42",

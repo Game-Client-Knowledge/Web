@@ -534,9 +534,30 @@
           >
             <div class="subsection-heading">
               <h3 id="contributionPortalTitle">贡献空间</h3>
-              <p>仅作用于“贡献空间（试点）”的收拢状态；展开后平滑恢复为完整尺寸与亮度。</p>
+              <p>分别配置贡献空间的微缩投影和展开结构；尺寸与亮度在展开时平滑恢复至 100%。</p>
             </div>
             <div class="visual-group-grid">
+              <label>
+                微缩结构
+                <select name="home_star_portal_collapsed_structure">
+                  <option value="match_expanded">跟随展开结构</option>
+                  <option value="octahedron">八面菱形</option>
+                  <option value="sphere">球形空间</option>
+                  <option value="cube">立方体空间</option>
+                </select>
+                <small class="field-help">将展开坐标投影到所选形状，同一颗星保持空间对应关系。</small>
+              </label>
+              <label>
+                展开结构
+                <select name="home_star_portal_expanded_structure">
+                  <option value="3d">3D 立体</option>
+                  <option value="3d-drift">3D 随机漂移</option>
+                  <option value="3d-drift-anchored">3D 静星锚定漂移</option>
+                  <option value="3d-galaxy">3D 银河系</option>
+                  <option value="3d-orbit">3D 轨道星系</option>
+                </select>
+                <small class="field-help">仅用于贡献空间全屏展开后的星体组织和运动方式。</small>
+              </label>
               <label>
                 自动旋转速率（°/秒）
                 <input

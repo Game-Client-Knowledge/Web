@@ -1261,6 +1261,13 @@ body[data-editor-state="loading"] [data-account-label] {
   font-size: 17px;
 }
 
+.star-coverage-panel > small {
+  display: block;
+  margin-top: 2px;
+  color: #bfd0ca;
+  font-size: 11px;
+}
+
 .star-coverage-panel dl {
   display: grid;
   margin: 10px 0 0;
@@ -1289,6 +1296,11 @@ body[data-editor-state="loading"] [data-account-label] {
 .star-coverage-panel dd {
   color: #ffffff;
   font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+.home-contribution-space-expanded .star-map-label,
+.home-contribution-space-expanded .star-coverage-panel {
+  z-index: 10003;
 }
 
 @media (max-width: 700px) {

@@ -412,10 +412,28 @@
     const portalExperience =
       runtimeSettings.home_star_experience_mode ===
       "contribution_portal";
-    const configuredMode = WEBGL_MODES.includes(
-      runtimeSettings.home_star_render_mode
-    )
-      ? runtimeSettings.home_star_render_mode
+    const portalExpandedStructure = [
+      "3d",
+      "3d-drift",
+      "3d-drift-anchored",
+      "3d-galaxy",
+      "3d-orbit"
+    ].includes(runtimeSettings.home_star_portal_expanded_structure)
+      ? runtimeSettings.home_star_portal_expanded_structure
+      : "3d-drift";
+    const portalCollapsedStructure = [
+      "match_expanded",
+      "octahedron",
+      "sphere",
+      "cube"
+    ].includes(runtimeSettings.home_star_portal_collapsed_structure)
+      ? runtimeSettings.home_star_portal_collapsed_structure
+      : "octahedron";
+    const requestedMode = portalExperience
+      ? portalExpandedStructure
+      : runtimeSettings.home_star_render_mode;
+    const configuredMode = WEBGL_MODES.includes(requestedMode)
+      ? requestedMode
       : "3d-drift";
     const mode =
       portalExperience && configuredMode === "2d-webgl"
@@ -432,7 +450,9 @@
       spikeSprite,
       relationColors,
       hashSeed,
-      seededRandom
+      seededRandom,
+      starDisplayName,
+      starKindName
     } = host;
     const reducedMotion = host.reducedMotion;
     const portalElement = portalExperience
@@ -565,24 +585,6 @@
         runtimeSettings.home_star_brightness_max
       );
       star.colorGain = starColorGain(star);
-      if (portalExperience) {
-        const portalRandom = seededRandom(
-          hashSeed(
-            `${sourceGraph.revision}:${star.id}:contribution-space`
-          )
-        );
-        let x = 0;
-        let y = 0;
-        let z = 0;
-        do {
-          x = portalRandom() * 2 - 1;
-          y = portalRandom() * 2 - 1;
-          z = portalRandom() * 2 - 1;
-        } while (Math.abs(x) + Math.abs(y) + Math.abs(z) > 1);
-        star.portalX = x * CONTRIBUTION_SPACE_RADIUS;
-        star.portalY = y * CONTRIBUTION_SPACE_RADIUS;
-        star.portalZ = z * CONTRIBUTION_SPACE_RADIUS;
-      }
     }
     const starById = new Map(stars.map((star) => [star.id, star]));
     const edges = sourceGraph.edges.filter((edge) => {
@@ -1359,6 +1361,64 @@
       };
     }
 
+    function updatePortalTargets() {
+      if (!portalState.enabled) return;
+      let maxRadius = 1;
+      for (const star of stars) {
+        star.expandedX = star.x;
+        star.expandedY = star.y;
+        star.expandedZ = star.z;
+        maxRadius = Math.max(
+          maxRadius,
+          Math.hypot(star.x, star.y, star.z)
+        );
+      }
+      for (const star of stars) {
+        const radius = Math.hypot(star.x, star.y, star.z);
+        if (radius < 0.0001) {
+          star.portalX = 0;
+          star.portalY = 0;
+          star.portalZ = 0;
+          continue;
+        }
+        const directionX = star.x / radius;
+        const directionY = star.y / radius;
+        const directionZ = star.z / radius;
+        const fraction = Math.max(0, Math.min(1, radius / maxRadius));
+        let targetRadius = CONTRIBUTION_SPACE_RADIUS * fraction;
+        if (portalCollapsedStructure === "sphere") {
+          targetRadius =
+            CONTRIBUTION_SPACE_RADIUS *
+            (0.28 + Math.sqrt(fraction) * 0.72);
+        } else if (portalCollapsedStructure === "octahedron") {
+          const boundary =
+            CONTRIBUTION_SPACE_RADIUS /
+            Math.max(
+              0.0001,
+              Math.abs(directionX) +
+                Math.abs(directionY) +
+                Math.abs(directionZ)
+            );
+          targetRadius =
+            boundary * (0.18 + Math.sqrt(fraction) * 0.82);
+        } else if (portalCollapsedStructure === "cube") {
+          const boundary =
+            CONTRIBUTION_SPACE_RADIUS /
+            Math.max(
+              0.0001,
+              Math.abs(directionX),
+              Math.abs(directionY),
+              Math.abs(directionZ)
+            );
+          targetRadius =
+            boundary * (0.18 + Math.sqrt(fraction) * 0.82);
+        }
+        star.portalX = directionX * targetRadius;
+        star.portalY = directionY * targetRadius;
+        star.portalZ = directionZ * targetRadius;
+      }
+    }
+
     function updatePortalProgress(time) {
       if (!portalState.enabled) return 1;
       if (
@@ -1393,6 +1453,7 @@
       updatePortalRotation(time);
       const rawProgress = updatePortalProgress(time);
       if (!portalState.enabled || rawProgress >= 1) return;
+      updatePortalTargets();
       const progress = easePortal(rawProgress);
       for (const star of stars) {
         const fullX = star.x;
@@ -2166,7 +2227,6 @@
     }
     function animate(time) {
       frame = 0;
-      frame = 0;
       if (disposed || document.hidden) return;
       const delta = lastFrameAt ? time - lastFrameAt : 16;
       lastFrameAt = time;
@@ -2187,10 +2247,7 @@
     }
 
     function updateCoverage() {
-      if (
-        !selectedRoot ||
-        runtimeSettings.home_star_relation_visibility === "always"
-      ) {
+      if (!selectedRoot) {
         panel.hidden = true;
         return;
       }
@@ -2200,7 +2257,12 @@
       const litDocuments = documents.filter((star) =>
         selectedIds.has(star.id)
       ).length;
+      const selectedStar = starById.get(selectedRoot);
       panel.hidden = false;
+      panel.querySelector("[data-star-coverage-name]").textContent =
+        selectedStar ? starDisplayName(selectedStar) : "未选择";
+      panel.querySelector("[data-star-coverage-kind]").textContent =
+        selectedStar ? starKindName(selectedStar) : "";
       panel.querySelector("[data-star-coverage-tier]").textContent =
         selectedTier?.name || "未分级";
       panel.querySelector("[data-star-coverage-brightness]").textContent =
@@ -2231,7 +2293,7 @@
         return;
       }
       labelStar = star;
-      const title = star.kind === "document" ? star.title : star.name;
+      const title = starDisplayName(star);
       const tier = star.brightnessTier?.name || "未分级";
       label.textContent =
         `${title} · ${tier} · ${star.baseBrightness.toFixed(1)}`;
@@ -2280,13 +2342,26 @@
     function selectStar(star, now) {
       showLabel(star, now);
       window.clearTimeout(selectionTimer);
-      if (runtimeSettings.home_star_relation_visibility === "always") {
-        clearSelection();
-        return;
-      }
       selectedRoot = star.id;
       selectedBrightness = star.baseBrightness;
       selectedTier = star.brightnessTier;
+      if (runtimeSettings.home_star_relation_visibility === "always") {
+        selectedIds = new Set([star.id]);
+        activeRelationPlan = {
+          coverageCount: edges.filter((edge) => {
+            return edge.source === star.id || edge.target === star.id;
+          }).length,
+          totalCount: edges.length
+        };
+        glCanvas.dataset.selectedCount = "1";
+        glCanvas.dataset.selectedTier = selectedTier?.name || "";
+        updateCoverage();
+        selectionTimer = window.setTimeout(
+          clearSelection,
+          runtimeSettings.home_star_selection_duration_ms
+        );
+        return;
+      }
       selectedIds = illumination.illuminate(
         stars,
         edges,
@@ -2606,6 +2681,8 @@
       openContributionSpace,
       closeContributionSpace,
       portalSettings: {
+        collapsedStructure: portalCollapsedStructure,
+        expandedStructure: portalExpandedStructure,
         rotationDegreesPerSecond:
           portalRotationRadiansPerMs * 1000 * 180 / Math.PI,
         collapsedScale: portalCollapsedScale,

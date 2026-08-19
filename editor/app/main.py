@@ -289,6 +289,8 @@ class VisualSettingsRequest(BaseModel):
     home_star_scope: str = "hero"
     home_star_render_mode: str = "2d"
     home_star_experience_mode: str = "immersive"
+    home_star_portal_collapsed_structure: str = "octahedron"
+    home_star_portal_expanded_structure: str = "3d-drift"
     home_star_portal_rotation_speed: float = Field(
         default=2.6,
         ge=0,
@@ -1151,6 +1153,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "contribution_portal",
         }:
             experience_mode = "immersive"
+        collapsed_structure = db.setting(
+            "home_star_portal_collapsed_structure",
+            "octahedron",
+        )
+        if collapsed_structure not in {
+            "match_expanded",
+            "octahedron",
+            "sphere",
+            "cube",
+        }:
+            collapsed_structure = "octahedron"
+        expanded_structure = db.setting(
+            "home_star_portal_expanded_structure",
+            "3d-drift",
+        )
+        if expanded_structure not in {
+            "3d",
+            "3d-drift",
+            "3d-drift-anchored",
+            "3d-galaxy",
+            "3d-orbit",
+        }:
+            expanded_structure = "3d-drift"
         return {
             "home_background_style": db.setting(
                 "home_background_style", "old_star_map"
@@ -1172,6 +1197,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "home_star_render_mode", "2d"
             ),
             "home_star_experience_mode": experience_mode,
+            "home_star_portal_collapsed_structure": (
+                collapsed_structure
+            ),
+            "home_star_portal_expanded_structure": (
+                expanded_structure
+            ),
             "home_star_portal_rotation_speed": max(
                 0,
                 min(
@@ -3532,6 +3563,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "contribution_portal",
         }:
             raise HTTPException(status_code=422, detail="主页星图体验模式无效")
+        if payload.home_star_portal_collapsed_structure not in {
+            "match_expanded",
+            "octahedron",
+            "sphere",
+            "cube",
+        }:
+            raise HTTPException(status_code=422, detail="贡献空间微缩结构无效")
+        if payload.home_star_portal_expanded_structure not in {
+            "3d",
+            "3d-drift",
+            "3d-drift-anchored",
+            "3d-galaxy",
+            "3d-orbit",
+        }:
+            raise HTTPException(status_code=422, detail="贡献空间展开结构无效")
         if payload.home_star_relation_visibility not in {
             "always",
             "near",
@@ -3654,6 +3700,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "home_star_render_mode": payload.home_star_render_mode,
             "home_star_experience_mode": (
                 payload.home_star_experience_mode
+            ),
+            "home_star_portal_collapsed_structure": (
+                payload.home_star_portal_collapsed_structure
+            ),
+            "home_star_portal_expanded_structure": (
+                payload.home_star_portal_expanded_structure
             ),
             "home_star_portal_rotation_speed": str(
                 payload.home_star_portal_rotation_speed

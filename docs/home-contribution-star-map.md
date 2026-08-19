@@ -21,6 +21,11 @@ rotates it; clicking expands the black field and the same stars to the full
 viewport. The return control reverses the transition and restores the page
 scroll position.
 
+Compact and expanded structures are configured independently. Compact choices
+project each live expanded coordinate into a matching, octahedral, spherical,
+or cubic volume; they do not generate a second random layout. Expanded choices
+reuse the existing depth, drift, anchored-drift, galaxy, and orbital engines.
+
 In this experience, `home_content_idle_timeout_seconds` auto-opens the portal
 instead of hiding homepage content. The first subsequent activity reverses
 only an idle-triggered opening; manually entered full-screen space is not
@@ -267,6 +272,7 @@ shadow work to every animation frame.
 - immersive background or contribution-space pilot experience;
 - contribution-space automatic rotation speed, collapsed scale, and collapsed
   exposure; scale and exposure interpolate back to 100% while expanding;
+- independent compact and expanded contribution-space structures;
 - homepage idle timeout, which hides immersive content or auto-opens the
   contribution space depending on the selected experience;
 - relation visibility;

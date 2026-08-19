@@ -22,6 +22,8 @@
     home_star_scope: "hero",
     home_star_render_mode: "2d",
     home_star_experience_mode: "immersive",
+    home_star_portal_collapsed_structure: "octahedron",
+    home_star_portal_expanded_structure: "3d-drift",
     home_star_portal_rotation_speed: 2.6,
     home_star_portal_size_percent: 34,
     home_star_portal_brightness_percent: 42,
@@ -680,6 +682,23 @@
       ].includes(merged.home_star_experience_mode)
         ? merged.home_star_experience_mode
         : defaults.home_star_experience_mode,
+      home_star_portal_collapsed_structure: [
+        "match_expanded",
+        "octahedron",
+        "sphere",
+        "cube"
+      ].includes(merged.home_star_portal_collapsed_structure)
+        ? merged.home_star_portal_collapsed_structure
+        : defaults.home_star_portal_collapsed_structure,
+      home_star_portal_expanded_structure: [
+        "3d",
+        "3d-drift",
+        "3d-drift-anchored",
+        "3d-galaxy",
+        "3d-orbit"
+      ].includes(merged.home_star_portal_expanded_structure)
+        ? merged.home_star_portal_expanded_structure
+        : defaults.home_star_portal_expanded_structure,
       home_star_portal_rotation_speed: clampedSetting(
         "home_star_portal_rotation_speed",
         0,
@@ -931,11 +950,13 @@
     panel.hidden = true;
     panel.setAttribute("aria-live", "polite");
     panel.innerHTML =
-      "<span>Connection coverage</span>" +
-      "<strong data-star-coverage-total></strong>" +
+      "<span>Star profile</span>" +
+      "<strong data-star-coverage-name></strong>" +
+      "<small data-star-coverage-kind></small>" +
       "<dl>" +
       "<div><dt>星体等级</dt><dd data-star-coverage-tier></dd></div>" +
-      "<div><dt>起点亮度</dt><dd data-star-coverage-brightness></dd></div>" +
+      "<div><dt>基础亮度</dt><dd data-star-coverage-brightness></dd></div>" +
+      "<div><dt>点亮星体</dt><dd data-star-coverage-total></dd></div>" +
       "<div><dt>静星</dt><dd data-star-coverage-contributors></dd></div>" +
       "<div><dt>动星</dt><dd data-star-coverage-documents></dd></div>" +
       "<div><dt>关系</dt><dd data-star-coverage-relations></dd></div>" +
@@ -951,6 +972,16 @@
     label.hidden = true;
     document.body.append(label);
     return label;
+  }
+
+  function starDisplayName(star) {
+    return star.kind === "document" ? star.title : star.name;
+  }
+
+  function starKindName(star) {
+    if (star.kind === "contributor") return "静星 · 贡献者";
+    if (star.resourceKind === "code_system") return "动星 · 代码系统";
+    return "动星 · 文档";
   }
 
   function createContributionMap(runtimeSettings) {
@@ -1451,7 +1482,7 @@
     }
 
     function updateCoverage() {
-      if (!selectedRoot || runtimeSettings.home_star_relation_visibility === "always") {
+      if (!selectedRoot) {
         panel.hidden = true;
         return;
       }
@@ -1465,7 +1496,12 @@
       const litDocuments = documents.filter((star) =>
         selectedIds.has(star.id)
       ).length;
+      const selectedStar = starById.get(selectedRoot);
       panel.hidden = false;
+      panel.querySelector("[data-star-coverage-name]").textContent =
+        selectedStar ? starDisplayName(selectedStar) : "未选择";
+      panel.querySelector("[data-star-coverage-kind]").textContent =
+        selectedStar ? starKindName(selectedStar) : "";
       panel.querySelector("[data-star-coverage-tier]").textContent =
         selectedTier?.name || "未分级";
       panel.querySelector("[data-star-coverage-brightness]").textContent =
@@ -1496,7 +1532,7 @@
         return;
       }
       labelStar = star;
-      const title = star.kind === "document" ? star.title : star.name;
+      const title = starDisplayName(star);
       const tier = star.brightnessTier?.name || "未分级";
       label.textContent =
         `${title} · ${tier} · ${star.baseBrightness.toFixed(1)}`;
@@ -1531,13 +1567,24 @@
     function selectStar(star, now) {
       showLabel(star, now);
       window.clearTimeout(selectionTimer);
-      if (runtimeSettings.home_star_relation_visibility === "always") {
-        clearSelection();
-        return;
-      }
       selectedRoot = star.id;
       selectedBrightness = star.baseBrightness;
       selectedTier = star.brightnessTier;
+      if (runtimeSettings.home_star_relation_visibility === "always") {
+        selectedIds = new Set([star.id]);
+        activeRelationPlan = {
+          coverageCount: edges.filter((edge) => {
+            return edge.source === star.id || edge.target === star.id;
+          }).length,
+          totalCount: edges.length
+        };
+        updateCoverage();
+        selectionTimer = window.setTimeout(
+          clearSelection,
+          runtimeSettings.home_star_selection_duration_ms
+        );
+        return;
+      }
       selectedIds = illumination.illuminate(
         stars,
         edges,
@@ -1761,6 +1808,8 @@
       reducedMotion,
       createCoveragePanel,
       createLabel,
+      starDisplayName,
+      starKindName,
       hashSeed,
       seededRandom,
       fallback2D: () => createContributionMap(runtimeSettings)

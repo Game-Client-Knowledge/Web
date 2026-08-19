@@ -1054,6 +1054,10 @@ async function loadOverview() {
     data.settings.home_star_render_mode || "2d";
   byId("visualSettingsForm").home_star_experience_mode.value =
     data.settings.home_star_experience_mode || "immersive";
+  byId("visualSettingsForm").home_star_portal_collapsed_structure.value =
+    data.settings.home_star_portal_collapsed_structure || "octahedron";
+  byId("visualSettingsForm").home_star_portal_expanded_structure.value =
+    data.settings.home_star_portal_expanded_structure || "3d-drift";
   byId("visualSettingsForm").home_star_portal_rotation_speed.value =
     String(data.settings.home_star_portal_rotation_speed);
   byId("visualSettingsForm").home_star_portal_size_percent.value =
@@ -1245,6 +1249,10 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         home_star_render_mode: form.home_star_render_mode.value,
         home_star_experience_mode:
           form.home_star_experience_mode.value,
+        home_star_portal_collapsed_structure:
+          form.home_star_portal_collapsed_structure.value,
+        home_star_portal_expanded_structure:
+          form.home_star_portal_expanded_structure.value,
         home_star_portal_rotation_speed: Number(
           form.home_star_portal_rotation_speed.value
         ),
@@ -1364,6 +1372,10 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
       home_star_render_mode: saved.home_star_render_mode,
       home_star_experience_mode:
         saved.home_star_experience_mode,
+      home_star_portal_collapsed_structure:
+        saved.home_star_portal_collapsed_structure,
+      home_star_portal_expanded_structure:
+        saved.home_star_portal_expanded_structure,
       home_star_portal_rotation_speed:
         saved.home_star_portal_rotation_speed,
       home_star_portal_size_percent:

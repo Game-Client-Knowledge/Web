@@ -433,6 +433,14 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert payload["config"]["home_content_mask_enabled"] is False
     assert payload["config"]["home_content_idle_timeout_seconds"] == 30
     assert payload["config"]["home_star_experience_mode"] == "immersive"
+    assert (
+        payload["config"]["home_star_portal_collapsed_structure"]
+        == "octahedron"
+    )
+    assert (
+        payload["config"]["home_star_portal_expanded_structure"]
+        == "3d-drift"
+    )
     assert payload["config"]["home_star_portal_rotation_speed"] == 2.6
     assert payload["config"]["home_star_portal_size_percent"] == 34
     assert (
@@ -1352,6 +1360,8 @@ def test_admin_can_configure_client_visual_effects(
             "home_content_idle_timeout_seconds": 45,
             "home_star_scope": "full",
             "home_star_experience_mode": "contribution_portal",
+            "home_star_portal_collapsed_structure": "sphere",
+            "home_star_portal_expanded_structure": "3d-orbit",
             "home_star_portal_rotation_speed": 4.5,
             "home_star_portal_size_percent": 48,
             "home_star_portal_brightness_percent": 55,
@@ -1442,6 +1452,8 @@ def test_admin_can_configure_client_visual_effects(
         "home_star_scope": "full",
         "home_star_render_mode": "2d",
         "home_star_experience_mode": "contribution_portal",
+        "home_star_portal_collapsed_structure": "sphere",
+        "home_star_portal_expanded_structure": "3d-orbit",
         "home_star_portal_rotation_speed": 4.5,
         "home_star_portal_size_percent": 48,
         "home_star_portal_brightness_percent": 55,
@@ -1532,6 +1544,8 @@ def test_admin_can_configure_client_visual_effects(
         config["home_star_experience_mode"]
         == "contribution_portal"
     )
+    assert config["home_star_portal_collapsed_structure"] == "sphere"
+    assert config["home_star_portal_expanded_structure"] == "3d-orbit"
     assert config["home_star_portal_rotation_speed"] == 4.5
     assert config["home_star_portal_size_percent"] == 48
     assert config["home_star_portal_brightness_percent"] == 55
@@ -1697,6 +1711,16 @@ def test_admin_can_configure_client_visual_effects(
         },
     )
     assert invalid_experience_mode.status_code == 422
+
+    invalid_portal_structure = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "home_star_portal_collapsed_structure": "pyramid",
+            "home_star_portal_expanded_structure": "supernova",
+        },
+    )
+    assert invalid_portal_structure.status_code == 422
 
     invalid_portal_settings = client.put(
         "/api/admin/visual-settings",

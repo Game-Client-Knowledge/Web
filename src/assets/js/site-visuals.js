@@ -15,6 +15,8 @@
     home_content_mask_enabled: false,
     home_content_idle_timeout_seconds: 30,
     home_star_experience_mode: "immersive",
+    home_star_portal_collapsed_structure: "octahedron",
+    home_star_portal_expanded_structure: "3d-drift",
     home_star_portal_rotation_speed: 2.6,
     home_star_portal_size_percent: 34,
     home_star_portal_brightness_percent: 42
@@ -105,6 +107,23 @@
       ].includes(settings.home_star_experience_mode)
         ? settings.home_star_experience_mode
         : "immersive",
+      home_star_portal_collapsed_structure: [
+        "match_expanded",
+        "octahedron",
+        "sphere",
+        "cube"
+      ].includes(settings.home_star_portal_collapsed_structure)
+        ? settings.home_star_portal_collapsed_structure
+        : "octahedron",
+      home_star_portal_expanded_structure: [
+        "3d",
+        "3d-drift",
+        "3d-drift-anchored",
+        "3d-galaxy",
+        "3d-orbit"
+      ].includes(settings.home_star_portal_expanded_structure)
+        ? settings.home_star_portal_expanded_structure
+        : "3d-drift",
       home_star_portal_rotation_speed: Math.max(
         0,
         Math.min(
@@ -181,6 +200,10 @@
           home_star_render_mode: settings.home_star_render_mode,
           home_star_experience_mode:
             settings.home_star_experience_mode,
+          home_star_portal_collapsed_structure:
+            settings.home_star_portal_collapsed_structure,
+          home_star_portal_expanded_structure:
+            settings.home_star_portal_expanded_structure,
           home_star_portal_rotation_speed:
             settings.home_star_portal_rotation_speed,
           home_star_portal_size_percent:

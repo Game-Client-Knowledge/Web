@@ -79,6 +79,8 @@ for (const field of [
   "home_star_selected_halo_alpha_boost",
   "home_star_selected_glow_scale",
   "home_star_selected_contributor_line_width",
+  "home_star_portal_collapsed_structure",
+  "home_star_portal_expanded_structure",
   "home_star_portal_rotation_speed",
   "home_star_portal_size_percent",
   "home_star_portal_brightness_percent",
@@ -93,6 +95,8 @@ for (const field of [
 assert.match(html, /主动点亮星体效果/);
 assert.match(html, /<h3 id="contributionPortalTitle">贡献空间<\/h3>/);
 assert.match(html, /自动旋转速率（°\/秒）/);
+assert.match(html, /微缩结构/);
+assert.match(html, /展开结构/);
 assert.match(html, /收拢尺寸（%）/);
 assert.match(html, /收拢亮度（%）/);
 assert.match(html, /主页空闲触发（秒，0 为关闭）/);
@@ -174,6 +178,8 @@ assert.match(javascript, /starFormulaEngine\.validateFormula/);
 assert.match(javascript, /home_star_brightness_tiers/);
 assert.match(javascript, /home_star_3d_halo_max_css_size/);
 assert.match(javascript, /home_star_experience_mode/);
+assert.match(javascript, /home_star_portal_collapsed_structure/);
+assert.match(javascript, /home_star_portal_expanded_structure/);
 assert.match(javascript, /home_star_portal_rotation_speed/);
 assert.match(javascript, /home_star_portal_size_percent/);
 assert.match(javascript, /home_star_portal_brightness_percent/);
