@@ -66,6 +66,11 @@ async function runScenario(browser, scenario) {
     home_star_active_edge_mode: "single_path",
     home_star_selection_duration_ms: 1000,
     home_star_label_duration_ms: 1800,
+    home_star_selected_radius_boost: 1.4,
+    home_star_selected_alpha_boost: 0.2,
+    home_star_selected_halo_alpha_boost: 0.24,
+    home_star_selected_glow_scale: 1.5,
+    home_star_selected_contributor_line_width: 1.8,
     home_star_brightness_rules: [
       {
         id: "visual-contributor",
@@ -122,9 +127,28 @@ async function runScenario(browser, scenario) {
     }
   });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector(
-    '[data-knowledge-field][data-star-map="contribution"]'
-  );
+  try {
+    await page.waitForFunction(() => {
+      const canvas = document.querySelector(
+        '[data-knowledge-field][data-star-map="contribution"]'
+      );
+      return Boolean(
+        canvas &&
+        Number(canvas.dataset.starCount) > 100 &&
+        Number(canvas.dataset.edgeCount) > 100 &&
+        canvas.dataset.selectedGlowScale
+      );
+    });
+  } catch (error) {
+    const dataset = await page.locator("[data-knowledge-field]").evaluate(
+      (canvas) => ({ ...canvas.dataset })
+    );
+    throw new Error(
+      `${scenario.name}: star map initialization timed out; ` +
+      `dataset=${JSON.stringify(dataset)}; errors=${errors.join(" | ")}`,
+      { cause: error }
+    );
+  }
 
   const metrics = await page.evaluate(() => {
     const canvas = document.querySelector("[data-knowledge-field]");
@@ -151,6 +175,15 @@ async function runScenario(browser, scenario) {
       brightnessMin: Number(canvas.dataset.brightnessMin),
       brightnessInitial: Number(canvas.dataset.brightnessInitial),
       brightnessMax: Number(canvas.dataset.brightnessMax),
+      selectedRadiusBoost: Number(canvas.dataset.selectedRadiusBoost),
+      selectedAlphaBoost: Number(canvas.dataset.selectedAlphaBoost),
+      selectedHaloAlphaBoost: Number(
+        canvas.dataset.selectedHaloAlphaBoost
+      ),
+      selectedGlowScale: Number(canvas.dataset.selectedGlowScale),
+      selectedContributorLineWidth: Number(
+        canvas.dataset.selectedContributorLineWidth
+      ),
       activeEdgeMode: canvas.dataset.activeEdgeMode,
       width: rectangle.width,
       height: rectangle.height,
@@ -177,6 +210,11 @@ async function runScenario(browser, scenario) {
   assert.equal(metrics.brightnessMin, 5);
   assert.equal(metrics.brightnessInitial, 25);
   assert.equal(metrics.brightnessMax, 100);
+  assert.equal(metrics.selectedRadiusBoost, 1.4);
+  assert.equal(metrics.selectedAlphaBoost, 0.2);
+  assert.equal(metrics.selectedHaloAlphaBoost, 0.24);
+  assert.equal(metrics.selectedGlowScale, 1.5);
+  assert.equal(metrics.selectedContributorLineWidth, 1.8);
   assert.equal(metrics.activeEdgeMode, "single_path");
   assert.ok(metrics.nonblank > 10, `${scenario.name}: canvas is blank`);
   assert.ok(metrics.overflow <= 1, `${scenario.name}: horizontal overflow`);

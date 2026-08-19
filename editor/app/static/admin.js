@@ -933,6 +933,18 @@ async function loadOverview() {
     String(data.settings.home_star_selection_duration_ms / 1000);
   byId("visualSettingsForm").home_star_label_duration_seconds.value =
     String(data.settings.home_star_label_duration_ms / 1000);
+  byId("visualSettingsForm").home_star_selected_radius_boost.value =
+    String(data.settings.home_star_selected_radius_boost);
+  byId("visualSettingsForm").home_star_selected_alpha_boost.value =
+    String(data.settings.home_star_selected_alpha_boost);
+  byId("visualSettingsForm").home_star_selected_halo_alpha_boost.value =
+    String(data.settings.home_star_selected_halo_alpha_boost);
+  byId("visualSettingsForm").home_star_selected_glow_scale.value =
+    String(data.settings.home_star_selected_glow_scale);
+  byId(
+    "visualSettingsForm"
+  ).home_star_selected_contributor_line_width.value =
+    String(data.settings.home_star_selected_contributor_line_width);
   byId("visualSettingsForm").home_star_brightness_variation_enabled.checked =
     data.settings.home_star_brightness_variation_enabled;
   byId("visualSettingsForm").home_star_brightness_min.value =
@@ -1087,6 +1099,21 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         home_star_label_duration_ms: Math.round(
           Number(form.home_star_label_duration_seconds.value) * 1000
         ),
+        home_star_selected_radius_boost: Number(
+          form.home_star_selected_radius_boost.value
+        ),
+        home_star_selected_alpha_boost: Number(
+          form.home_star_selected_alpha_boost.value
+        ),
+        home_star_selected_halo_alpha_boost: Number(
+          form.home_star_selected_halo_alpha_boost.value
+        ),
+        home_star_selected_glow_scale: Number(
+          form.home_star_selected_glow_scale.value
+        ),
+        home_star_selected_contributor_line_width: Number(
+          form.home_star_selected_contributor_line_width.value
+        ),
         home_star_brightness_variation_enabled:
           form.home_star_brightness_variation_enabled.checked,
         home_star_brightness_min: Number(
@@ -1160,6 +1187,16 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         saved.home_star_selection_duration_ms,
       home_star_label_duration_ms:
         saved.home_star_label_duration_ms,
+      home_star_selected_radius_boost:
+        saved.home_star_selected_radius_boost,
+      home_star_selected_alpha_boost:
+        saved.home_star_selected_alpha_boost,
+      home_star_selected_halo_alpha_boost:
+        saved.home_star_selected_halo_alpha_boost,
+      home_star_selected_glow_scale:
+        saved.home_star_selected_glow_scale,
+      home_star_selected_contributor_line_width:
+        saved.home_star_selected_contributor_line_width,
       home_star_brightness_variation_enabled:
         saved.home_star_brightness_variation_enabled,
       home_star_brightness_min:

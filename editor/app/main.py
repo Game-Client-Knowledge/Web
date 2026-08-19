@@ -317,6 +317,31 @@ class VisualSettingsRequest(BaseModel):
         ge=500,
         le=60000,
     )
+    home_star_selected_radius_boost: float = Field(
+        default=1.0,
+        ge=0,
+        le=4,
+    )
+    home_star_selected_alpha_boost: float = Field(
+        default=0.16,
+        ge=0,
+        le=0.5,
+    )
+    home_star_selected_halo_alpha_boost: float = Field(
+        default=0.18,
+        ge=0,
+        le=0.5,
+    )
+    home_star_selected_glow_scale: float = Field(
+        default=1.25,
+        ge=1,
+        le=3,
+    )
+    home_star_selected_contributor_line_width: float = Field(
+        default=1.4,
+        ge=0.5,
+        le=4,
+    )
     home_star_active_edge_mode: str = "single_path"
     home_star_brightness_rules: list[StarBrightnessRuleRequest] = Field(
         default_factory=lambda: [
@@ -1037,6 +1062,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 min(
                     60000,
                     setting_int("home_star_label_duration_ms", 3000),
+                ),
+            ),
+            "home_star_selected_radius_boost": max(
+                0,
+                min(
+                    4,
+                    setting_float("home_star_selected_radius_boost", 1),
+                ),
+            ),
+            "home_star_selected_alpha_boost": max(
+                0,
+                min(
+                    0.5,
+                    setting_float("home_star_selected_alpha_boost", 0.16),
+                ),
+            ),
+            "home_star_selected_halo_alpha_boost": max(
+                0,
+                min(
+                    0.5,
+                    setting_float(
+                        "home_star_selected_halo_alpha_boost",
+                        0.18,
+                    ),
+                ),
+            ),
+            "home_star_selected_glow_scale": max(
+                1,
+                min(
+                    3,
+                    setting_float("home_star_selected_glow_scale", 1.25),
+                ),
+            ),
+            "home_star_selected_contributor_line_width": max(
+                0.5,
+                min(
+                    4,
+                    setting_float(
+                        "home_star_selected_contributor_line_width",
+                        1.4,
+                    ),
                 ),
             ),
             "home_star_active_edge_mode": active_edge_mode,
@@ -3329,6 +3395,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_star_label_duration_ms": str(
                 payload.home_star_label_duration_ms
+            ),
+            "home_star_selected_radius_boost": str(
+                payload.home_star_selected_radius_boost
+            ),
+            "home_star_selected_alpha_boost": str(
+                payload.home_star_selected_alpha_boost
+            ),
+            "home_star_selected_halo_alpha_boost": str(
+                payload.home_star_selected_halo_alpha_boost
+            ),
+            "home_star_selected_glow_scale": str(
+                payload.home_star_selected_glow_scale
+            ),
+            "home_star_selected_contributor_line_width": str(
+                payload.home_star_selected_contributor_line_width
             ),
             "home_star_active_edge_mode": (
                 payload.home_star_active_edge_mode

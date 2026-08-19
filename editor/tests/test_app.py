@@ -365,6 +365,16 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert payload["config"]["home_star_illumination_depth"] == 3
     assert payload["config"]["home_star_selection_duration_ms"] == 3000
     assert payload["config"]["home_star_label_duration_ms"] == 3000
+    assert payload["config"]["home_star_selected_radius_boost"] == 1
+    assert payload["config"]["home_star_selected_alpha_boost"] == 0.16
+    assert (
+        payload["config"]["home_star_selected_halo_alpha_boost"] == 0.18
+    )
+    assert payload["config"]["home_star_selected_glow_scale"] == 1.25
+    assert (
+        payload["config"]["home_star_selected_contributor_line_width"]
+        == 1.4
+    )
     assert payload["config"]["home_star_active_edge_mode"] == "single_path"
     assert [item["path"] for item in payload["drafts"]] == [
         "knowledge/cpp/bootstrap/README.md"
@@ -1111,6 +1121,11 @@ def test_admin_can_configure_client_visual_effects(
             "home_star_illumination_depth": 4,
             "home_star_selection_duration_ms": 4500,
             "home_star_label_duration_ms": 6500,
+            "home_star_selected_radius_boost": 1.6,
+            "home_star_selected_alpha_boost": 0.22,
+            "home_star_selected_halo_alpha_boost": 0.26,
+            "home_star_selected_glow_scale": 1.5,
+            "home_star_selected_contributor_line_width": 1.8,
             "home_star_brightness_variation_enabled": True,
             "home_star_brightness_min": 5,
             "home_star_brightness_initial": 25,
@@ -1186,6 +1201,11 @@ def test_admin_can_configure_client_visual_effects(
         "home_star_illumination_depth": 4,
         "home_star_selection_duration_ms": 4500,
         "home_star_label_duration_ms": 6500,
+        "home_star_selected_radius_boost": 1.6,
+        "home_star_selected_alpha_boost": 0.22,
+        "home_star_selected_halo_alpha_boost": 0.26,
+        "home_star_selected_glow_scale": 1.5,
+        "home_star_selected_contributor_line_width": 1.8,
         "home_star_brightness_variation_enabled": True,
         "home_star_brightness_min": 5,
         "home_star_brightness_initial": 25,
@@ -1260,6 +1280,11 @@ def test_admin_can_configure_client_visual_effects(
     assert config["home_star_illumination_depth"] == 4
     assert config["home_star_selection_duration_ms"] == 4500
     assert config["home_star_label_duration_ms"] == 6500
+    assert config["home_star_selected_radius_boost"] == 1.6
+    assert config["home_star_selected_alpha_boost"] == 0.22
+    assert config["home_star_selected_halo_alpha_boost"] == 0.26
+    assert config["home_star_selected_glow_scale"] == 1.5
+    assert config["home_star_selected_contributor_line_width"] == 1.8
     assert config["home_star_brightness_variation_enabled"] is True
     assert config["home_star_brightness_min"] == 5
     assert config["home_star_brightness_initial"] == 25
@@ -1406,6 +1431,17 @@ def test_admin_can_configure_client_visual_effects(
         },
     )
     assert invalid_brightness_range.status_code == 422
+
+    invalid_selected_effect = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "home_star_selected_radius_boost": 4.1,
+            "home_star_selected_alpha_boost": 0.51,
+            "home_star_selected_glow_scale": 0.9,
+        },
+    )
+    assert invalid_selected_effect.status_code == 422
 
     invalid_formula = client.put(
         "/api/admin/visual-settings",

@@ -420,6 +420,77 @@
           >
         </label>
           </div>
+          <section
+            class="active-star-effect-editor"
+            aria-labelledby="activeStarEffectTitle"
+          >
+            <div class="subsection-heading">
+              <h3 id="activeStarEffectTitle">主动点亮星体效果</h3>
+              <p>仅增强已点亮星体的绘制效果，不修改逻辑亮度、等级或覆盖统计。</p>
+            </div>
+            <div class="visual-group-grid">
+              <label>
+                半径增量（px）
+                <input
+                  name="home_star_selected_radius_boost"
+                  type="number"
+                  min="0"
+                  max="4"
+                  step="0.1"
+                  required
+                >
+                <small class="field-help">增加点亮星体核心尺寸；过大会遮挡邻近星体。</small>
+              </label>
+              <label>
+                星体透明度增量
+                <input
+                  name="home_star_selected_alpha_boost"
+                  type="number"
+                  min="0"
+                  max="0.5"
+                  step="0.01"
+                  required
+                >
+                <small class="field-help">提高星体本体清晰度，最终透明度不会超过 1。</small>
+              </label>
+              <label>
+                光晕透明度增量
+                <input
+                  name="home_star_selected_halo_alpha_boost"
+                  type="number"
+                  min="0"
+                  max="0.5"
+                  step="0.01"
+                  required
+                >
+                <small class="field-help">增强外围辉光强度，最终光晕透明度不会超过 0.5。</small>
+              </label>
+              <label>
+                光晕范围倍率
+                <input
+                  name="home_star_selected_glow_scale"
+                  type="number"
+                  min="1"
+                  max="3"
+                  step="0.05"
+                  required
+                >
+                <small class="field-help">放大点亮光晕覆盖范围；替代未参与实际绘制的阴影参数。</small>
+              </label>
+              <label>
+                静星十字线宽（px）
+                <input
+                  name="home_star_selected_contributor_line_width"
+                  type="number"
+                  min="0.5"
+                  max="4"
+                  step="0.1"
+                  required
+                >
+                <small class="field-help">控制点亮贡献者静星的十字识别线粗细。</small>
+              </label>
+            </div>
+          </section>
         </fieldset>
 
         <fieldset

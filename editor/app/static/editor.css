@@ -1917,6 +1917,30 @@ dialog::backdrop {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.active-star-effect-editor {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.subsection-heading h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.subsection-heading p {
+  margin: 3px 0 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.field-help {
+  color: var(--ink-faint);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
 .visual-form-actions {
   position: sticky;
   z-index: 3;

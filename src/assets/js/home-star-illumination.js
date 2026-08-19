@@ -369,11 +369,38 @@
     };
   }
 
-  function brightnessPresentation(value, kind, selected, maxValue = 100) {
+  function brightnessPresentation(
+    value,
+    kind,
+    selected,
+    maxValue = 100,
+    selectedEffects = {
+      radiusBoost: 1,
+      alphaBoost: 0.16,
+      haloAlphaBoost: 0.18,
+      glowScale: 1.25
+    }
+  ) {
     const { maximum } = normalizedBrightnessRange(0, maxValue);
     const brightness = Math.max(
       0,
       Math.min(maximum, Number(value) || 0)
+    );
+    const radiusBoost = Math.max(
+      0,
+      Math.min(4, Number(selectedEffects.radiusBoost) || 0)
+    );
+    const alphaBoost = Math.max(
+      0,
+      Math.min(0.5, Number(selectedEffects.alphaBoost) || 0)
+    );
+    const haloAlphaBoost = Math.max(
+      0,
+      Math.min(0.5, Number(selectedEffects.haloAlphaBoost) || 0)
+    );
+    const glowScale = Math.max(
+      1,
+      Math.min(3, Number(selectedEffects.glowScale) || 1)
     );
     const normalized = brightness / maximum;
     const luminous = Math.pow(normalized, 1.55);
@@ -381,18 +408,20 @@
       kind === "contributor"
         ? 1.3 + Math.pow(normalized, 0.72) * 4.4
         : 0.7 + Math.pow(normalized, 0.78) * 2.55;
+    const haloRadius = radius * (2.4 + luminous * 2.1);
     return {
       brightness,
       maximum,
       luminous,
-      radius: radius + (selected ? 0.8 : 0),
-      alpha: Math.min(1, 0.3 + luminous * 0.7 + (selected ? 0.1 : 0)),
-      shadowBlur:
-        1.5 + luminous * 17 + (selected ? 9 : 0),
-      haloRadius: radius * (2.4 + luminous * 2.1),
+      radius: radius + (selected ? radiusBoost : 0),
+      alpha: Math.min(
+        1,
+        0.3 + luminous * 0.7 + (selected ? alphaBoost : 0)
+      ),
+      haloRadius: haloRadius * (selected ? glowScale : 1),
       haloAlpha: Math.min(
         0.5,
-        0.05 + luminous * 0.38 + (selected ? 0.14 : 0)
+        0.05 + luminous * 0.38 + (selected ? haloAlphaBoost : 0)
       ),
       coreAlpha: Math.max(0, Math.min(0.95, (luminous - 0.28) * 1.35))
     };

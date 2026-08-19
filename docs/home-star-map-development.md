@@ -366,6 +366,20 @@ The rendered value drives:
 - glow radius and opacity;
 - selected-star boost.
 
+Active illumination does not modify logical brightness. It applies a separate
+configurable presentation layer to every selected star:
+
+| Effect | Default | Purpose |
+| --- | ---: | --- |
+| Radius boost | `1px` | Enlarges the selected core without changing hit testing or logical brightness. |
+| Alpha boost | `0.16` | Improves core readability, clamped to final alpha `1`. |
+| Halo alpha boost | `0.18` | Strengthens the outer glow, clamped to final alpha `0.5`. |
+| Glow scale | `1.25x` | Expands the pre-rendered glow sprite. This replaces the former unused Canvas shadow value. |
+| Contributor line width | `1.4px` | Thickens the cross marker on selected contributor stars. |
+
+Keeping this layer separate means coverage, tiers, formulas, and relation
+counts remain stable when an administrator changes the highlight appearance.
+
 Ascending administrator-defined thresholds assign a star class such as
 `褐矮星`, `红矮星`, `黄矮星`, or `蓝巨星`. Assignment uses only
 `baseBrightness`, so random visual variation never changes the class.
@@ -441,6 +455,11 @@ Main settings:
 | `home_star_active_edge_mode` | `single_path`, `minimal_tree`, `full` |
 | `home_star_selection_duration_ms` | `500..60000` |
 | `home_star_label_duration_ms` | `500..60000` |
+| `home_star_selected_radius_boost` | `0..4` px |
+| `home_star_selected_alpha_boost` | `0..0.5` |
+| `home_star_selected_halo_alpha_boost` | `0..0.5` |
+| `home_star_selected_glow_scale` | `1..3` |
+| `home_star_selected_contributor_line_width` | `0.5..4` px |
 | `home_star_brightness_min` | `0..100`, not above initial or maximum |
 | `home_star_brightness_initial` | `0..100`, inside configured bounds |
 | `home_star_brightness_max` | `1..100` |

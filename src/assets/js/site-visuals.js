@@ -183,6 +183,16 @@
             settings.home_star_selection_duration_ms,
           home_star_label_duration_ms:
             settings.home_star_label_duration_ms,
+          home_star_selected_radius_boost:
+            settings.home_star_selected_radius_boost,
+          home_star_selected_alpha_boost:
+            settings.home_star_selected_alpha_boost,
+          home_star_selected_halo_alpha_boost:
+            settings.home_star_selected_halo_alpha_boost,
+          home_star_selected_glow_scale:
+            settings.home_star_selected_glow_scale,
+          home_star_selected_contributor_line_width:
+            settings.home_star_selected_contributor_line_width,
           home_star_brightness_rules:
             settings.home_star_brightness_rules,
           home_star_brightness_tiers:

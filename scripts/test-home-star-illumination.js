@@ -235,14 +235,45 @@ const high = brightnessPresentation(90, "document", false, 100);
 assert.ok(low.alpha < medium.alpha && medium.alpha < high.alpha);
 assert.ok(low.radius < medium.radius && medium.radius < high.radius);
 assert.ok(
-  low.shadowBlur < medium.shadowBlur &&
-    medium.shadowBlur < high.shadowBlur
+  low.haloRadius < medium.haloRadius &&
+    medium.haloRadius < high.haloRadius
 );
 assert.ok(high.luminous > medium.luminous * 3);
-assert.ok(
-  brightnessPresentation(25, "document", true, 100).haloAlpha >
-    medium.haloAlpha
+const selected = brightnessPresentation(
+  25,
+  "document",
+  true,
+  100,
+  {
+    radiusBoost: 1.4,
+    alphaBoost: 0.2,
+    haloAlphaBoost: 0.24,
+    glowScale: 1.5
+  }
 );
+assert.equal(selected.radius, medium.radius + 1.4);
+assert.equal(selected.alpha, Math.min(1, medium.alpha + 0.2));
+assert.equal(
+  selected.haloAlpha,
+  Math.min(0.5, medium.haloAlpha + 0.24)
+);
+assert.equal(selected.haloRadius, medium.haloRadius * 1.5);
+const disabledSelectionBoost = brightnessPresentation(
+  25,
+  "document",
+  true,
+  100,
+  {
+    radiusBoost: 0,
+    alphaBoost: 0,
+    haloAlphaBoost: 0,
+    glowScale: 1
+  }
+);
+assert.equal(disabledSelectionBoost.radius, medium.radius);
+assert.equal(disabledSelectionBoost.alpha, medium.alpha);
+assert.equal(disabledSelectionBoost.haloAlpha, medium.haloAlpha);
+assert.equal(disabledSelectionBoost.haloRadius, medium.haloRadius);
 assert.ok(
   brightnessPresentation(25, "contributor", false, 100).radius >
     medium.radius

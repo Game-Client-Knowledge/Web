@@ -23,6 +23,11 @@
     home_star_illumination_depth: 3,
     home_star_selection_duration_ms: 3000,
     home_star_label_duration_ms: 3000,
+    home_star_selected_radius_boost: 1,
+    home_star_selected_alpha_boost: 0.16,
+    home_star_selected_halo_alpha_boost: 0.18,
+    home_star_selected_glow_scale: 1.25,
+    home_star_selected_contributor_line_width: 1.4,
     home_star_active_edge_mode: "single_path",
     home_star_brightness_rules: [
       {
@@ -289,7 +294,7 @@
   }
 
   function mixRgb(sourceHex, targetHex, ratio) {
-    if (!targetHex) return sourceHex;
+    if (!targetHex) return hexToRgb(sourceHex);
     const clamped = Math.max(0, Math.min(1, ratio || 0));
     const source = hexToRgb(sourceHex);
     const target = hexToRgb(targetHex);
@@ -616,6 +621,16 @@
 
   function normalizeSettings(value) {
     const merged = { ...defaults, ...(value || {}) };
+    const clampedSetting = (key, minimum, maximum) => {
+      const parsed = Number(merged[key]);
+      return Math.max(
+        minimum,
+        Math.min(
+          maximum,
+          Number.isFinite(parsed) ? parsed : defaults[key]
+        )
+      );
+    };
     const brightnessMax = Math.max(
       1,
       Math.min(
@@ -726,6 +741,31 @@
           60000,
           Number(merged.home_star_label_duration_ms) || 3000
         )
+      ),
+      home_star_selected_radius_boost: clampedSetting(
+        "home_star_selected_radius_boost",
+        0,
+        4
+      ),
+      home_star_selected_alpha_boost: clampedSetting(
+        "home_star_selected_alpha_boost",
+        0,
+        0.5
+      ),
+      home_star_selected_halo_alpha_boost: clampedSetting(
+        "home_star_selected_halo_alpha_boost",
+        0,
+        0.5
+      ),
+      home_star_selected_glow_scale: clampedSetting(
+        "home_star_selected_glow_scale",
+        1,
+        3
+      ),
+      home_star_selected_contributor_line_width: clampedSetting(
+        "home_star_selected_contributor_line_width",
+        0.5,
+        4
       ),
       home_star_active_edge_mode: [
         "full",
@@ -1124,7 +1164,17 @@
         brightness,
         star.kind,
         selected,
-        runtimeSettings.home_star_brightness_max
+        runtimeSettings.home_star_brightness_max,
+        {
+          radiusBoost:
+            runtimeSettings.home_star_selected_radius_boost,
+          alphaBoost:
+            runtimeSettings.home_star_selected_alpha_boost,
+          haloAlphaBoost:
+            runtimeSettings.home_star_selected_halo_alpha_boost,
+          glowScale:
+            runtimeSettings.home_star_selected_glow_scale
+        }
       );
       const profile = tierProfile(star.brightnessTier);
       const tierRadius =
@@ -1222,7 +1272,9 @@
       if (star.kind === "contributor") {
         context.globalAlpha = presentation.alpha * 0.55;
         context.strokeStyle = star.color;
-        context.lineWidth = selected ? 1.2 : 0.7;
+        context.lineWidth = selected
+          ? runtimeSettings.home_star_selected_contributor_line_width
+          : 0.7;
         context.beginPath();
         context.moveTo(
           star.x - tierRadius * 2.4,
@@ -1512,6 +1564,21 @@
     );
     canvas.dataset.brightnessMax = String(
       runtimeSettings.home_star_brightness_max
+    );
+    canvas.dataset.selectedRadiusBoost = String(
+      runtimeSettings.home_star_selected_radius_boost
+    );
+    canvas.dataset.selectedAlphaBoost = String(
+      runtimeSettings.home_star_selected_alpha_boost
+    );
+    canvas.dataset.selectedHaloAlphaBoost = String(
+      runtimeSettings.home_star_selected_halo_alpha_boost
+    );
+    canvas.dataset.selectedGlowScale = String(
+      runtimeSettings.home_star_selected_glow_scale
+    );
+    canvas.dataset.selectedContributorLineWidth = String(
+      runtimeSettings.home_star_selected_contributor_line_width
     );
     canvas.dataset.selectedCount = "0";
     canvas.dataset.selectedBrightness = "0";

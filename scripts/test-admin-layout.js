@@ -66,6 +66,21 @@ assert.equal(
 );
 assert.match(html, /class="visual-form-actions"/);
 assert.match(html, /name="home_star_brightness_min"/);
+for (const field of [
+  "home_star_selected_radius_boost",
+  "home_star_selected_alpha_boost",
+  "home_star_selected_halo_alpha_boost",
+  "home_star_selected_glow_scale",
+  "home_star_selected_contributor_line_width"
+]) {
+  assert.match(html, new RegExp(`name="${field}"`));
+}
+assert.match(html, /主动点亮星体效果/);
+assert.match(html, /不修改逻辑亮度、等级或覆盖统计/);
+assert.ok(
+  (html.match(/class="field-help"/g) || []).length >= 5,
+  "active star effect controls need inline descriptions"
+);
 assert.match(html, /id="starBrightnessRuleList"/);
 assert.match(html, /id="starBrightnessTierList"/);
 assert.match(html, /id="addStarBrightnessRule"/);

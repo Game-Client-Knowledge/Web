@@ -568,6 +568,11 @@ class Database:
                 "home_star_illumination_depth": "3",
                 "home_star_selection_duration_ms": "3000",
                 "home_star_label_duration_ms": "3000",
+                "home_star_selected_radius_boost": "1",
+                "home_star_selected_alpha_boost": "0.16",
+                "home_star_selected_halo_alpha_boost": "0.18",
+                "home_star_selected_glow_scale": "1.25",
+                "home_star_selected_contributor_line_width": "1.4",
                 "home_star_active_edge_mode": "single_path",
                 "home_star_brightness_rules": json.dumps(
                     DEFAULT_STAR_BRIGHTNESS_RULES,

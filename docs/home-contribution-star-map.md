@@ -231,7 +231,11 @@ The configured logical range is converted through a perceptual power curve,
 `luminous = (brightness / maximum)^1.55`. The result controls core opacity,
 core radius, glow blur, and a translucent outer halo. High values are therefore
 materially brighter instead of merely a fraction larger. Selection adds a
-bounded highlight boost without replacing the underlying brightness.
+bounded highlight boost without replacing the underlying brightness. Radius,
+core alpha, halo alpha, halo range, and contributor cross-line width are
+configured independently. The halo range uses the rendered glow sprite rather
+than Canvas `shadowBlur`, so it has a visible effect without adding per-star
+shadow work to every animation frame.
 
 ## Administration Settings
 
@@ -244,6 +248,7 @@ bounded highlight boost without replacing the underlying brightness.
 - illumination rule and N-level depth;
 - active relation rendering (`single_path`, `minimal_tree`, or `full`);
 - relation-highlight and moving-label durations;
+- selected-star radius, alpha, halo, glow-range, and contributor-line boosts;
 - minimum, initial, and maximum logical brightness;
 - brightness variation enablement, magnitude, transition, and interval;
 - random color enablement;
