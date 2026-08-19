@@ -69,6 +69,20 @@ def test_previous_default_formulas_upgrade_without_overwriting_custom_rules(
     assert resolved_star_brightness_rules(customized) == customized
 
 
+def test_contributor_total_upgrades_inside_partially_customized_rules() -> None:
+    rules = [
+        dict(rule)
+        for rule in PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULE_SETS[1]
+    ]
+    rules[1]["formula"] = (
+        "current_brightness + brightness_span * 0.15 * "
+        "min(1, log(1 + modification_30_count / log(501)))"
+    )
+    resolved = resolved_star_brightness_rules(rules)
+    assert "total_relation_count" in resolved[0]["formula"]
+    assert resolved[1]["formula"] == rules[1]["formula"]
+
+
 def test_tiers_are_bounded_and_sorted() -> None:
     tiers = resolved_star_brightness_tiers(
         [

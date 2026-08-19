@@ -218,6 +218,13 @@ DEFAULT_STAR_BRIGHTNESS_RULES = [
         ),
     },
 ]
+DEFAULT_CONTRIBUTOR_TOTAL_FORMULA = (
+    DEFAULT_STAR_BRIGHTNESS_RULES[0]["formula"]
+)
+PREVIOUS_CONTRIBUTOR_TOTAL_FORMULAS = {
+    rules[0]["formula"]
+    for rules in PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULE_SETS
+}
 
 DEFAULT_STAR_BRIGHTNESS_TIERS = [
     {"id": "brown-dwarf", "name": "褐矮星", "min_brightness": 0.0},
@@ -342,6 +349,11 @@ def resolved_star_brightness_rules(value: Any) -> list[dict[str, Any]]:
         name = str(item.get("name", "")).strip()
         target = str(item.get("target", "")).strip()
         formula = str(item.get("formula", "")).strip()
+        if (
+            rule_id == "contributor-total"
+            and formula in PREVIOUS_CONTRIBUTOR_TOTAL_FORMULAS
+        ):
+            formula = DEFAULT_CONTRIBUTOR_TOTAL_FORMULA
         if (
             not STAR_FORMULA_ID_PATTERN.fullmatch(rule_id)
             or rule_id in seen

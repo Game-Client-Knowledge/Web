@@ -170,6 +170,23 @@ assert.deepEqual(
   engine.migrateDefaultBrightnessRules(rebalancedDefaults),
   engine.DEFAULT_BRIGHTNESS_RULES
 );
+const partiallyCustomizedDefaults = previousDefaults.map((rule) => ({
+  ...rule
+}));
+partiallyCustomizedDefaults[1].formula =
+  "current_brightness + brightness_span * 0.15 * " +
+  "min(1, log(1 + modification_30_count / log(501)))";
+const partiallyMigrated = engine.migrateDefaultBrightnessRules(
+  partiallyCustomizedDefaults
+);
+assert.match(
+  partiallyMigrated[0].formula,
+  /total_relation_count/
+);
+assert.equal(
+  partiallyMigrated[1].formula,
+  partiallyCustomizedDefaults[1].formula
+);
 assert.equal(
   engine.migrateDefaultBrightnessRules([
     { ...previousDefaults[0], formula: "current_brightness + 1" }
