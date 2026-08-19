@@ -42,6 +42,17 @@ esbuild.buildSync({
   legalComments: "none"
 });
 
+esbuild.buildSync({
+  entryPoints: [path.join(__dirname, "star-formula-entry.js")],
+  outfile: path.join(outputDirectory, "star-formula-engine.js"),
+  bundle: true,
+  minify: true,
+  format: "iife",
+  platform: "browser",
+  target: ["es2020"],
+  legalComments: "none"
+});
+
 const commonMermaidModulePattern =
   /(?:flowDiagram|classDiagram|sequenceDiagram|stateDiagram|erDiagram|dagre-).*\.mjs$/;
 

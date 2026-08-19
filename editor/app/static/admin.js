@@ -4,37 +4,12 @@ const state = {
   smtp: null,
   smtpTemplates: [],
   starBrightnessRules: [],
+  starBrightnessTiers: [],
   autoCloseDays: 7,
   siteUpdateTimer: 0
 };
 
-const STAR_BRIGHTNESS_RULES = [
-  {
-    id: "contributor_contribution_count",
-    label: "静星贡献数",
-    description: "按可用亮度区间的 65% 对数增长，5 万行饱和。"
-  },
-  {
-    id: "contributor_recent_activity",
-    label: "静星近期活跃度",
-    description: "近期贡献会放大亮度，长期不活跃会衰减。"
-  },
-  {
-    id: "document_reference_degree",
-    label: "动星引用度",
-    description: "按可用亮度区间的 45% 平方根增长，12 条关系饱和。"
-  },
-  {
-    id: "document_contributor_count",
-    label: "动星贡献者数",
-    description: "按可用亮度区间的 35% 对数增长，8 人饱和。"
-  },
-  {
-    id: "document_recent_activity",
-    label: "动星近期活跃度",
-    description: "近期更新文档更亮，长期未更新会衰减。"
-  }
-];
+const starFormulaEngine = window.GCK_STAR_FORMULA_ENGINE;
 
 const byId = (id) => document.getElementById(id);
 const numberFormatter = new Intl.NumberFormat("zh-CN");
@@ -224,67 +199,188 @@ function shortCommit(value) {
   return value ? value.slice(0, 12) : "未知";
 }
 
+function createConfigurationId(prefix) {
+  const random = window.crypto?.randomUUID?.().slice(0, 8) ||
+    Math.random().toString(36).slice(2, 10);
+  return `${prefix}-${random}`;
+}
+
+function moveConfigurationItem(items, index, offset) {
+  const target = index + offset;
+  if (target < 0 || target >= items.length) return;
+  [items[index], items[target]] = [items[target], items[index]];
+}
+
 function renderStarBrightnessRules() {
   const target = byId("starBrightnessRuleList");
-  const catalog = byId("starBrightnessRuleCatalog");
   target.replaceChildren();
-  state.starBrightnessRules
-    .sort((left, right) => right.priority - left.priority)
-    .forEach((rule) => {
-      const definition = STAR_BRIGHTNESS_RULES.find(
-        (item) => item.id === rule.id
-      );
-      if (!definition) return;
+  state.starBrightnessRules.forEach((rule, index) => {
       const row = document.createElement("div");
       row.className = "star-rule-row";
-      const copy = document.createElement("div");
-      const title = document.createElement("strong");
-      const description = document.createElement("span");
-      title.textContent = definition.label;
-      description.textContent = definition.description;
-      copy.append(title, description);
-      const priorityLabel = document.createElement("label");
-      priorityLabel.textContent = "优先级";
-      const priority = document.createElement("input");
-      priority.type = "number";
-      priority.min = "-10000";
-      priority.max = "10000";
-      priority.step = "10";
-      priority.value = String(rule.priority);
-      priority.addEventListener("change", () => {
-        rule.priority = Number(priority.value) || 0;
-        renderStarBrightnessRules();
+      const header = document.createElement("div");
+      header.className = "star-rule-header";
+      const enabledLabel = document.createElement("label");
+      enabledLabel.className = "check-label";
+      const enabled = document.createElement("input");
+      enabled.type = "checkbox";
+      enabled.checked = rule.enabled !== false;
+      enabled.addEventListener("change", () => {
+        rule.enabled = enabled.checked;
       });
-      priorityLabel.append(priority);
+      enabledLabel.append(enabled, "启用");
+
+      const actions = document.createElement("span");
+      actions.className = "star-rule-actions";
+      for (const [offset, icon, title] of [
+        [-1, "arrow-up", "上移规则"],
+        [1, "arrow-down", "下移规则"]
+      ]) {
+        const move = document.createElement("button");
+        move.type = "button";
+        move.className = "icon-button";
+        move.title = title;
+        move.setAttribute("aria-label", title);
+        move.disabled =
+          (offset < 0 && index === 0) ||
+          (offset > 0 && index === state.starBrightnessRules.length - 1);
+        move.innerHTML = `<i data-lucide="${icon}" aria-hidden="true"></i>`;
+        move.addEventListener("click", () => {
+          moveConfigurationItem(state.starBrightnessRules, index, offset);
+          renderStarBrightnessRules();
+        });
+        actions.append(move);
+      }
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "icon-button";
       remove.title = "移除规则";
-      remove.setAttribute("aria-label", `移除${definition.label}`);
+      remove.setAttribute("aria-label", `移除${rule.name || "亮度规则"}`);
       remove.innerHTML = '<i data-lucide="trash-2" aria-hidden="true"></i>';
       remove.addEventListener("click", () => {
         state.starBrightnessRules = state.starBrightnessRules.filter(
-          (item) => item.id !== rule.id
+          (item) => item !== rule
         );
         renderStarBrightnessRules();
       });
-      row.append(copy, priorityLabel, remove);
+      actions.append(remove);
+      header.append(enabledLabel, actions);
+
+      const fields = document.createElement("div");
+      fields.className = "star-rule-fields";
+      const nameLabel = document.createElement("label");
+      nameLabel.textContent = "规则名称";
+      const name = document.createElement("input");
+      name.type = "text";
+      name.maxLength = 80;
+      name.required = true;
+      name.value = rule.name || "";
+      name.addEventListener("input", () => {
+        rule.name = name.value;
+      });
+      nameLabel.append(name);
+
+      const targetLabel = document.createElement("label");
+      targetLabel.textContent = "作用对象";
+      const ruleTarget = document.createElement("select");
+      for (const [value, label] of [
+        ["contributor", "静星"],
+        ["document", "动星"]
+      ]) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        option.selected = rule.target === value;
+        ruleTarget.append(option);
+      }
+      ruleTarget.addEventListener("change", () => {
+        rule.target = ruleTarget.value;
+      });
+      targetLabel.append(ruleTarget);
+      fields.append(nameLabel, targetLabel);
+
+      const formulaLabel = document.createElement("label");
+      formulaLabel.className = "star-formula-field";
+      formulaLabel.textContent = "公式";
+      const formula = document.createElement("textarea");
+      formula.rows = 3;
+      formula.maxLength = 500;
+      formula.required = true;
+      formula.spellcheck = false;
+      formula.value = rule.formula || "";
+      const validation = document.createElement("span");
+      validation.className = "star-formula-validation";
+      const validate = () => {
+        rule.formula = formula.value;
+        const result = starFormulaEngine.validateFormula(formula.value);
+        formula.setCustomValidity(result.valid ? "" : result.message);
+        validation.dataset.valid = result.valid ? "true" : "false";
+        validation.textContent = result.valid
+          ? `有效 · ${result.variables.length} 个变量`
+          : result.message;
+      };
+      formula.addEventListener("input", validate);
+      validate();
+      formulaLabel.append(formula, validation);
+      row.append(header, fields, formulaLabel);
       target.append(row);
     });
+  byId("addStarBrightnessRule").disabled =
+    state.starBrightnessRules.length >= 50;
+  refreshIcons(target);
+}
 
-  const enabled = new Set(
-    state.starBrightnessRules.map((rule) => rule.id)
-  );
-  catalog.replaceChildren();
-  STAR_BRIGHTNESS_RULES.filter((rule) => !enabled.has(rule.id)).forEach(
-    (rule) => {
-      const option = document.createElement("option");
-      option.value = rule.id;
-      option.textContent = rule.label;
-      catalog.append(option);
-    }
-  );
-  byId("addStarBrightnessRule").disabled = !catalog.options.length;
+function renderStarBrightnessTiers() {
+  const target = byId("starBrightnessTierList");
+  target.replaceChildren();
+  state.starBrightnessTiers
+    .sort((left, right) => left.min_brightness - right.min_brightness)
+    .forEach((tier) => {
+      const row = document.createElement("div");
+      row.className = "star-tier-row";
+      const nameLabel = document.createElement("label");
+      nameLabel.textContent = "等级名称";
+      const name = document.createElement("input");
+      name.type = "text";
+      name.maxLength = 80;
+      name.required = true;
+      name.value = tier.name || "";
+      name.addEventListener("input", () => {
+        tier.name = name.value;
+      });
+      nameLabel.append(name);
+      const thresholdLabel = document.createElement("label");
+      thresholdLabel.textContent = "最低计算亮度";
+      const threshold = document.createElement("input");
+      threshold.type = "number";
+      threshold.min = "0";
+      threshold.max =
+        byId("visualSettingsForm").home_star_brightness_max.value || "100";
+      threshold.step = "0.5";
+      threshold.required = true;
+      threshold.value = String(tier.min_brightness);
+      threshold.addEventListener("change", () => {
+        tier.min_brightness = Number(threshold.value);
+        renderStarBrightnessTiers();
+      });
+      thresholdLabel.append(threshold);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "icon-button";
+      remove.title = "移除等级";
+      remove.setAttribute("aria-label", `移除${tier.name || "星体等级"}`);
+      remove.disabled = state.starBrightnessTiers.length <= 1;
+      remove.innerHTML = '<i data-lucide="trash-2" aria-hidden="true"></i>';
+      remove.addEventListener("click", () => {
+        state.starBrightnessTiers = state.starBrightnessTiers.filter(
+          (item) => item !== tier
+        );
+        renderStarBrightnessTiers();
+      });
+      row.append(nameLabel, thresholdLabel, remove);
+      target.append(row);
+    });
+  byId("addStarBrightnessTier").disabled =
+    state.starBrightnessTiers.length >= 20;
   refreshIcons(target);
 }
 
@@ -704,6 +800,8 @@ async function loadOverview() {
     String(data.settings.home_star_label_duration_ms / 1000);
   byId("visualSettingsForm").home_star_brightness_variation_enabled.checked =
     data.settings.home_star_brightness_variation_enabled;
+  byId("visualSettingsForm").home_star_brightness_min.value =
+    String(data.settings.home_star_brightness_min);
   byId("visualSettingsForm").home_star_brightness_initial.value =
     String(data.settings.home_star_brightness_initial);
   byId("visualSettingsForm").home_star_brightness_max.value =
@@ -718,8 +816,12 @@ async function loadOverview() {
     data.settings.home_star_color_random_enabled;
   state.starBrightnessRules = (
     data.settings.home_star_brightness_rules || []
-  ).map((rule) => ({ id: rule.id, priority: Number(rule.priority) || 0 }));
+  ).map((rule) => ({ ...rule }));
+  state.starBrightnessTiers = (
+    data.settings.home_star_brightness_tiers || []
+  ).map((tier) => ({ ...tier }));
   renderStarBrightnessRules();
+  renderStarBrightnessTiers();
   byId("visualSettingsForm").pointer_effect_enabled.checked =
     data.settings.pointer_effect_enabled;
   byId("visualSettingsForm").home_intro_mode.value =
@@ -780,17 +882,38 @@ byId("settingsForm").addEventListener("submit", async (event) => {
 });
 
 byId("addStarBrightnessRule").addEventListener("click", () => {
-  const catalog = byId("starBrightnessRuleCatalog");
-  if (!catalog.value) return;
-  const lowest = state.starBrightnessRules.reduce(
-    (value, rule) => Math.min(value, rule.priority),
-    100
-  );
+  if (state.starBrightnessRules.length >= 50) return;
   state.starBrightnessRules.push({
-    id: catalog.value,
-    priority: lowest - 100
+    id: createConfigurationId("rule"),
+    name: "新亮度规则",
+    enabled: true,
+    target: "document",
+    formula: "current_brightness"
   });
   renderStarBrightnessRules();
+});
+
+byId("addStarBrightnessTier").addEventListener("click", () => {
+  if (state.starBrightnessTiers.length >= 20) return;
+  const maximumBrightness = Number(
+    byId("visualSettingsForm").home_star_brightness_max.value
+  ) || 100;
+  const highestThreshold = state.starBrightnessTiers.reduce(
+    (value, tier) => Math.max(value, Number(tier.min_brightness) || 0),
+    0
+  );
+  const used = new Set(
+    state.starBrightnessTiers.map((tier) => Number(tier.min_brightness))
+  );
+  let threshold = Math.min(maximumBrightness, highestThreshold + 10);
+  while (threshold >= 0 && used.has(threshold)) threshold -= 0.5;
+  if (threshold < 0) return;
+  state.starBrightnessTiers.push({
+    id: createConfigurationId("tier"),
+    name: "新星体等级",
+    min_brightness: threshold
+  });
+  renderStarBrightnessTiers();
 });
 
 byId("visualSettingsForm").addEventListener("submit", async (event) => {
@@ -834,6 +957,9 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         ),
         home_star_brightness_variation_enabled:
           form.home_star_brightness_variation_enabled.checked,
+        home_star_brightness_min: Number(
+          form.home_star_brightness_min.value
+        ),
         home_star_brightness_initial: Number(
           form.home_star_brightness_initial.value
         ),
@@ -851,9 +977,8 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         ),
         home_star_color_random_enabled:
           form.home_star_color_random_enabled.checked,
-        home_star_brightness_rules: state.starBrightnessRules.map(
-          (rule) => ({ id: rule.id, priority: rule.priority })
-        ),
+        home_star_brightness_rules: state.starBrightnessRules,
+        home_star_brightness_tiers: state.starBrightnessTiers,
         pointer_effect_enabled: form.pointer_effect_enabled.checked,
         home_intro_enabled: form.home_intro_mode.value !== "off",
         home_intro_mode: form.home_intro_mode.value,
@@ -905,6 +1030,8 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         saved.home_star_label_duration_ms,
       home_star_brightness_variation_enabled:
         saved.home_star_brightness_variation_enabled,
+      home_star_brightness_min:
+        saved.home_star_brightness_min,
       home_star_brightness_initial:
         saved.home_star_brightness_initial,
       home_star_brightness_max:
@@ -917,7 +1044,8 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         saved.home_star_brightness_interval_ms,
       home_star_color_random_enabled:
         saved.home_star_color_random_enabled,
-      home_star_brightness_rules: saved.home_star_brightness_rules
+      home_star_brightness_rules: saved.home_star_brightness_rules,
+      home_star_brightness_tiers: saved.home_star_brightness_tiers
     };
     try {
       window.localStorage.setItem(

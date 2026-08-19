@@ -53,6 +53,7 @@ async function runScenario(browser, scenario) {
     home_star_reference_relation_style: "dashed",
     home_star_contributor_relation_style: "glow",
     home_star_brightness_variation_enabled: true,
+    home_star_brightness_min: 5,
     home_star_brightness_initial: 25,
     home_star_brightness_max: 100,
     home_star_brightness_variation_amount: 3,
@@ -64,7 +65,28 @@ async function runScenario(browser, scenario) {
     home_star_illumination_depth: 2,
     home_star_active_edge_mode: "single_path",
     home_star_selection_duration_ms: 1000,
-    home_star_label_duration_ms: 1800
+    home_star_label_duration_ms: 1800,
+    home_star_brightness_rules: [
+      {
+        id: "visual-contributor",
+        name: "Visual contributor",
+        enabled: true,
+        target: "contributor",
+        formula: "current_brightness + 40"
+      },
+      {
+        id: "visual-document",
+        name: "Visual document",
+        enabled: true,
+        target: "document",
+        formula: "current_brightness + 20"
+      }
+    ],
+    home_star_brightness_tiers: [
+      { id: "brown", name: "褐矮星", min_brightness: 5 },
+      { id: "yellow", name: "黄矮星", min_brightness: 50 },
+      { id: "blue", name: "蓝巨星", min_brightness: 80 }
+    ]
   };
   await context.addInitScript((settings) => {
     localStorage.setItem(
@@ -82,6 +104,9 @@ async function runScenario(browser, scenario) {
         drafts: []
       })
     });
+  });
+  await context.route("**/editor/api/analytics/visit", (route) => {
+    route.fulfill({ status: 204 });
   });
 
   const page = await context.newPage();
@@ -123,6 +148,7 @@ async function runScenario(browser, scenario) {
       illuminationRule: canvas.dataset.illuminationRule,
       illuminationDepth: Number(canvas.dataset.illuminationDepth),
       graphDirection: canvas.dataset.graphDirection,
+      brightnessMin: Number(canvas.dataset.brightnessMin),
       brightnessInitial: Number(canvas.dataset.brightnessInitial),
       brightnessMax: Number(canvas.dataset.brightnessMax),
       activeEdgeMode: canvas.dataset.activeEdgeMode,
@@ -148,6 +174,7 @@ async function runScenario(browser, scenario) {
   assert.equal(metrics.illuminationRule, "depth_contributor_terminal");
   assert.equal(metrics.illuminationDepth, 2);
   assert.equal(metrics.graphDirection, "directed");
+  assert.equal(metrics.brightnessMin, 5);
   assert.equal(metrics.brightnessInitial, 25);
   assert.equal(metrics.brightnessMax, 100);
   assert.equal(metrics.activeEdgeMode, "single_path");
@@ -201,12 +228,15 @@ async function runScenario(browser, scenario) {
   assert.match(coverage, /静星/);
   assert.match(coverage, /动星/);
   assert.match(coverage, /关系/);
+  assert.match(coverage, /星体等级/);
+  assert.match(coverage, /黄矮星/);
   assert.match(coverage, /起点亮度/);
   const selectionMetrics = await page.evaluate(() => {
     const canvas = document.querySelector("[data-knowledge-field]");
     return {
       selected: Number(canvas.dataset.selectedCount),
       brightness: Number(canvas.dataset.selectedBrightness),
+      tier: canvas.dataset.selectedTier,
       coveredRelations: Number(canvas.dataset.selectedRelationCount),
       relationCoverage: Number(
         canvas.dataset.selectedRelationCoverage
@@ -218,6 +248,8 @@ async function runScenario(browser, scenario) {
   assert.ok(
     selectionMetrics.coveredRelations <= selectionMetrics.totalEdges
   );
+  assert.equal(selectionMetrics.brightness, 65);
+  assert.equal(selectionMetrics.tier, "黄矮星");
   assert.ok(
     selectionMetrics.brightness > 0 &&
       selectionMetrics.brightness <= metrics.brightnessMax
@@ -253,6 +285,10 @@ async function runScenario(browser, scenario) {
   assert.ok(
     await page.locator(".star-map-label:not([hidden])").isVisible(),
     `${scenario.name}: contributor label is missing`
+  );
+  assert.match(
+    await page.locator(".star-map-label:not([hidden])").innerText(),
+    /黄矮星 · 65\.0/
   );
   const selectedScreenshotPath = path.join(
     outputDirectory,

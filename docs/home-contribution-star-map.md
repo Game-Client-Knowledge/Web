@@ -203,27 +203,24 @@ while normal star movement continues.
 
 ## Brightness Rules
 
-Rules execute from the highest numeric priority to the lowest. The initial
-brightness and maximum brightness are administrator-configurable. Defaults are
-`10` and `100`; the initial value cannot exceed the maximum.
+Rules execute in administrator-defined list order. Every rule selects static
+contributors or moving documents/code systems and returns the next current
+brightness. The result is clamped to the configured minimum and maximum after
+each formula.
 
-Let `span = maximum - initial`. Additive rules use fractions of `span`, so
-changing either configured endpoint stretches the complete curve instead of
-leaving legacy fixed increments behind.
+The expression engine supports `+ - * / % ^`, parentheses, `pi`, `e`, and
+common functions including `sin`, `cos`, `exp`, `log`, `sqrt`, `pow`, `min`,
+and `max`. Variables expose the current/range values, stable outgoing,
+incoming, and strong relation counts, 7/30-day commit and changed-line
+activity, lifetime contribution totals, contributors, and commits.
 
-| Rule | Formula |
-| --- | --- |
-| Contributor contribution count | Add `span * 0.65 * min(1, ln(1 + changedLines) / ln(50001))` |
-| Contributor recent activity | Multiply by `0.72 + exp(-days / 120) * 0.5` |
-| Document reference degree | Add `span * 0.45 * min(1, sqrt(referenceDegree / 12))` |
-| Document contributor count | Add `span * 0.35 * min(1, ln(1 + contributors) / ln(9))` |
-| Document recent activity | Multiply by `0.76 + exp(-days / 180) * 0.44` |
+Relation metrics always come from the complete graph. Illumination direction,
+depth, and minimal-tree display only change the selected set and highlighted
+lines; they do not change computed brightness.
 
-Administrators can enable, remove, and prioritize these rules. Because
-addition and multiplication are both used, priority can intentionally change
-the result. Contribution lines saturate at `50,000`, reference degree at `12`,
-and contributor count at `8`; values continue to be counted but do not exceed
-the corresponding fraction of the configured span.
+Configurable tier thresholds classify the formula result. Classification uses
+base brightness only, so optional random variation cannot move a star between
+tiers.
 
 Optional random variation interpolates between bounded offsets. The
 administrator controls the offset magnitude, interpolation duration, and
@@ -247,10 +244,11 @@ bounded highlight boost without replacing the underlying brightness.
 - illumination rule and N-level depth;
 - active relation rendering (`single_path`, `minimal_tree`, or `full`);
 - relation-highlight and moving-label durations;
-- initial and maximum logical brightness;
+- minimum, initial, and maximum logical brightness;
 - brightness variation enablement, magnitude, transition, and interval;
 - random color enablement;
-- enabled brightness rules and priorities.
+- ordered formula rules with static/moving targets;
+- base-brightness tier names and thresholds.
 
 The existing public bootstrap carries these values. The same values are saved
 in the homepage visual-settings cache so a reload uses the selected background
@@ -262,8 +260,8 @@ from its first rendered frame.
   code-system folding, Markdown references, and contributor edges.
 - `npm run test:home-star-illumination` validates all propagation boundaries
   and the perceptual brightness mapping.
-- `editor/tests/test_app.py` validates persistence, public propagation,
-  versioned contribution links, and administrator input validation.
+- `editor/tests` validates formula allowlists, legacy migration, persistence,
+  public propagation, contribution links, and administrator validation.
 - `scripts/test-home-star-map-visual.js` checks hero/full desktop and full
   mobile rendering, nonblank Canvas pixels, star/edge counts, horizontal
   overflow, rule selection, independent expiration timers, labels, and

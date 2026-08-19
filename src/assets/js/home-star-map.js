@@ -11,6 +11,7 @@
     home_star_reference_relation_style: "dashed",
     home_star_contributor_relation_style: "solid",
     home_star_brightness_variation_enabled: false,
+    home_star_brightness_min: 0,
     home_star_brightness_initial: 10,
     home_star_brightness_max: 100,
     home_star_brightness_variation_amount: 2,
@@ -24,11 +25,66 @@
     home_star_label_duration_ms: 3000,
     home_star_active_edge_mode: "single_path",
     home_star_brightness_rules: [
-      { id: "contributor_contribution_count", priority: 500 },
-      { id: "contributor_recent_activity", priority: 400 },
-      { id: "document_reference_degree", priority: 300 },
-      { id: "document_contributor_count", priority: 200 },
-      { id: "document_recent_activity", priority: 100 }
+      {
+        id: "contributor-total",
+        name: "静星累计贡献",
+        enabled: true,
+        target: "contributor",
+        formula:
+          "current_brightness + brightness_span * 0.55 * " +
+          "min(1, log(1 + contribution_count) / log(50001))"
+      },
+      {
+        id: "contributor-recent",
+        name: "静星近期修改",
+        enabled: true,
+        target: "contributor",
+        formula:
+          "current_brightness + brightness_span * 0.10 * " +
+          "min(1, log(1 + modification_30_count) / log(501))"
+      },
+      {
+        id: "document-reference",
+        name: "动星引用关系",
+        enabled: true,
+        target: "document",
+        formula:
+          "current_brightness + brightness_span * 0.25 * " +
+          "min(1, sqrt((reference_count + referenced_by_count) / 12))"
+      },
+      {
+        id: "document-strong",
+        name: "动星强联系",
+        enabled: true,
+        target: "document",
+        formula:
+          "current_brightness + brightness_span * 0.10 * " +
+          "min(1, sqrt(strong_relation_count / 8))"
+      },
+      {
+        id: "document-contributors",
+        name: "动星贡献者",
+        enabled: true,
+        target: "document",
+        formula:
+          "current_brightness + brightness_span * 0.10 * " +
+          "min(1, log(1 + contributor_count) / log(9))"
+      },
+      {
+        id: "document-recent",
+        name: "动星近期修改",
+        enabled: true,
+        target: "document",
+        formula:
+          "current_brightness + brightness_span * 0.10 * " +
+          "min(1, log(1 + modification_30_count) / log(501))"
+      }
+    ],
+    home_star_brightness_tiers: [
+      { id: "brown-dwarf", name: "褐矮星", min_brightness: 0 },
+      { id: "red-dwarf", name: "红矮星", min_brightness: 25 },
+      { id: "yellow-dwarf", name: "黄矮星", min_brightness: 50 },
+      { id: "blue-giant", name: "蓝巨星", min_brightness: 80 }
     ]
   };
   const graph = window.GCK_HOME_STAR_GRAPH;
@@ -38,7 +94,8 @@
 
   const context = canvas.getContext("2d");
   const illumination = window.GCK_HOME_STAR_ILLUMINATION;
-  if (!context || !illumination) return;
+  const formulaEngine = window.GCK_STAR_FORMULA_ENGINE;
+  if (!context || !illumination || !formulaEngine) return;
 
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)"
@@ -56,6 +113,13 @@
   let settings = { ...defaults };
   let cleanup = function () {};
   let ready = false;
+  const legacyRuleIds = new Map([
+    ["contributor_contribution_count", "contributor-total"],
+    ["contributor_recent_activity", "contributor-recent"],
+    ["document_reference_degree", "document-reference"],
+    ["document_contributor_count", "document-contributors"],
+    ["document_recent_activity", "document-recent"]
+  ]);
 
   function hashSeed(value) {
     let hash = 2166136261;
@@ -234,8 +298,10 @@
       );
       let contributorStar = contributors.get(contributorId);
       if (!contributorStar) {
-        const sourceMetrics =
-          sourceContributorMetrics.get(normalizeName(name)) || {};
+        const staticMetrics = sourceContributorMetrics.get(
+          normalizeName(name)
+        );
+        const sourceMetrics = staticMetrics || {};
         contributorStar = {
           id: `contributor:server:${contributorId}`,
           kind: "contributor",
@@ -249,7 +315,8 @@
             ),
             commitCount: 0,
             lastActiveAt: ""
-          }
+          },
+          hasStaticContributionCount: Boolean(staticMetrics)
         };
         result.stars.push(contributorStar);
         contributors.set(contributorId, contributorStar);
@@ -257,9 +324,11 @@
       contributorStar.metrics.commitCount += Number(
         link.commit_count || 0
       );
-      contributorStar.metrics.contributionCount += Number(
-        link.commit_count || 0
-      );
+      if (!contributorStar.hasStaticContributionCount) {
+        contributorStar.metrics.contributionCount += Number(
+          link.commit_count || 0
+        );
+      }
       if (
         link.last_contributed_at &&
         link.last_contributed_at >
@@ -300,6 +369,9 @@
       }
     }
     result.edges.push(...contributionEdges.values());
+    result.stars.forEach((star) => {
+      delete star.hasStaticContributionCount;
+    });
     for (const documentStar of documents.values()) {
       documentStar.metrics.contributorCount =
         contributorSets.get(documentStar.id)?.size || 0;
@@ -319,8 +391,20 @@
     const rawBrightnessInitial = Number(
       merged.home_star_brightness_initial
     );
-    const brightnessInitial = Math.max(
+    const rawBrightnessMinimum = Number(
+      merged.home_star_brightness_min
+    );
+    const brightnessMinimum = Math.max(
       0,
+      Math.min(
+        brightnessMax,
+        Number.isFinite(rawBrightnessMinimum)
+          ? rawBrightnessMinimum
+          : defaults.home_star_brightness_min
+      )
+    );
+    const brightnessInitial = Math.max(
+      brightnessMinimum,
       Math.min(
         brightnessMax,
         Number.isFinite(rawBrightnessInitial)
@@ -331,6 +415,27 @@
     const validRules = Array.isArray(merged.home_star_brightness_rules)
       ? merged.home_star_brightness_rules
       : defaults.home_star_brightness_rules;
+    const defaultRulesById = new Map(
+      defaults.home_star_brightness_rules.map((rule) => [rule.id, rule])
+    );
+    const migratedRules =
+      validRules.length &&
+      validRules.every((rule) => legacyRuleIds.has(rule?.id))
+        ? validRules
+            .slice()
+            .sort(
+              (left, right) =>
+                Number(right.priority || 0) - Number(left.priority || 0)
+            )
+            .map((rule) => {
+              return defaultRulesById.get(legacyRuleIds.get(rule.id));
+            })
+        : validRules;
+    const validTiers = formulaEngine.normalizeTiers(
+      merged.home_star_brightness_tiers,
+      brightnessMinimum,
+      brightnessMax
+    );
     return {
       ...merged,
       home_background_style: [
@@ -347,6 +452,7 @@
       )
         ? merged.home_star_relation_visibility
         : defaults.home_star_relation_visibility,
+      home_star_brightness_min: brightnessMinimum,
       home_star_brightness_initial: brightnessInitial,
       home_star_brightness_max: brightnessMax,
       home_star_brightness_variation_amount: Math.max(
@@ -393,13 +499,20 @@
       ].includes(merged.home_star_active_edge_mode)
         ? merged.home_star_active_edge_mode
         : defaults.home_star_active_edge_mode,
-      home_star_brightness_rules: validRules
-        .filter((rule) => rule && rule.id)
-        .map((rule) => ({
-          id: rule.id,
-          priority: Number(rule.priority) || 0
-        }))
-        .sort((left, right) => right.priority - left.priority)
+      home_star_brightness_rules: migratedRules.filter((rule) => {
+        return (
+          rule &&
+          formulaEngine.TARGETS.has(rule.target) &&
+          formulaEngine.validateFormula(rule.formula).valid
+        );
+      }),
+      home_star_brightness_tiers: validTiers.length
+        ? validTiers
+        : formulaEngine.normalizeTiers(
+            defaults.home_star_brightness_tiers,
+            brightnessMinimum,
+            brightnessMax
+          )
     };
   }
 
@@ -523,6 +636,7 @@
       "<span>Connection coverage</span>" +
       "<strong data-star-coverage-total></strong>" +
       "<dl>" +
+      "<div><dt>星体等级</dt><dd data-star-coverage-tier></dd></div>" +
       "<div><dt>起点亮度</dt><dd data-star-coverage-brightness></dd></div>" +
       "<div><dt>静星</dt><dd data-star-coverage-contributors></dd></div>" +
       "<div><dt>动星</dt><dd data-star-coverage-documents></dd></div>" +
@@ -569,9 +683,10 @@
       y: 0,
       vx: source.kind === "document" ? (random() - 0.5) * 0.18 : 0,
       vy: source.kind === "document" ? (random() - 0.5) * 0.18 : 0,
-      baseBrightness: illumination.calculateBrightness(
+      baseBrightness: formulaEngine.calculateBrightness(
         source,
         runtimeSettings.home_star_brightness_rules,
+        runtimeSettings.home_star_brightness_min,
         runtimeSettings.home_star_brightness_initial,
         runtimeSettings.home_star_brightness_max
       ),
@@ -584,6 +699,14 @@
         : "#ffffff",
       index
     }));
+    for (const star of stars) {
+      star.brightnessTier = formulaEngine.brightnessTier(
+        star.baseBrightness,
+        runtimeSettings.home_star_brightness_tiers,
+        runtimeSettings.home_star_brightness_min,
+        runtimeSettings.home_star_brightness_max
+      );
+    }
     const starById = new Map(stars.map((star) => [star.id, star]));
     const edges = sourceGraph.edges.filter((edge) => {
       return starById.has(edge.source) && starById.has(edge.target);
@@ -599,6 +722,7 @@
     let selectedRoot = "";
     let selectedIds = new Set();
     let selectedBrightness = 0;
+    let selectedTier = null;
     let activeRelationPlan = null;
     let activeVisualEdgeIds = new Set();
     let labelStar = null;
@@ -750,7 +874,7 @@
 
     function currentBrightness(star, time) {
       return Math.max(
-        0,
+        runtimeSettings.home_star_brightness_min,
         Math.min(
           runtimeSettings.home_star_brightness_max,
           star.baseBrightness + variation(star, time)
@@ -921,6 +1045,8 @@
         selectedIds.has(star.id)
       ).length;
       panel.hidden = false;
+      panel.querySelector("[data-star-coverage-tier]").textContent =
+        selectedTier?.name || "未分级";
       panel.querySelector("[data-star-coverage-brightness]").textContent =
         `${selectedBrightness.toFixed(1)} / ` +
         `${runtimeSettings.home_star_brightness_max}`;
@@ -949,7 +1075,10 @@
         return;
       }
       labelStar = star;
-      label.textContent = star.kind === "document" ? star.title : star.name;
+      const title = star.kind === "document" ? star.title : star.name;
+      const tier = star.brightnessTier?.name || "未分级";
+      label.textContent =
+        `${title} · ${tier} · ${star.baseBrightness.toFixed(1)}`;
       label.dataset.starKind = star.kind;
       labelExpiresAt =
         now + runtimeSettings.home_star_label_duration_ms;
@@ -965,11 +1094,13 @@
       selectedRoot = "";
       selectedIds = new Set();
       selectedBrightness = 0;
+      selectedTier = null;
       activeRelationPlan = null;
       activeVisualEdgeIds = new Set();
       panel.hidden = true;
       canvas.dataset.selectedCount = "0";
       canvas.dataset.selectedBrightness = "0";
+      canvas.dataset.selectedTier = "";
       canvas.dataset.selectedRelationCount = "0";
       canvas.dataset.selectedRelationCoverage = "0";
       canvas.dataset.activeVisualEdgeCount = "0";
@@ -984,7 +1115,8 @@
         return;
       }
       selectedRoot = star.id;
-      selectedBrightness = currentBrightness(star, now);
+      selectedBrightness = star.baseBrightness;
+      selectedTier = star.brightnessTier;
       selectedIds = illumination.illuminate(
         stars,
         edges,
@@ -1004,6 +1136,7 @@
       );
       canvas.dataset.selectedCount = String(selectedIds.size);
       canvas.dataset.selectedBrightness = String(selectedBrightness);
+      canvas.dataset.selectedTier = selectedTier?.name || "";
       canvas.dataset.selectedRelationCount = String(
         activeRelationPlan.coverageCount
       );
@@ -1088,11 +1221,15 @@
     canvas.dataset.brightnessInitial = String(
       runtimeSettings.home_star_brightness_initial
     );
+    canvas.dataset.brightnessMin = String(
+      runtimeSettings.home_star_brightness_min
+    );
     canvas.dataset.brightnessMax = String(
       runtimeSettings.home_star_brightness_max
     );
     canvas.dataset.selectedCount = "0";
     canvas.dataset.selectedBrightness = "0";
+    canvas.dataset.selectedTier = "";
     canvas.dataset.selectedRelationCount = "0";
     canvas.dataset.selectedRelationCoverage = "0";
     canvas.dataset.activeVisualEdgeCount = "0";

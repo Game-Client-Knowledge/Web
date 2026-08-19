@@ -159,6 +159,8 @@
             settings.home_star_graph_direction,
           home_star_brightness_variation_enabled:
             settings.home_star_brightness_variation_enabled,
+          home_star_brightness_min:
+            settings.home_star_brightness_min,
           home_star_brightness_initial:
             settings.home_star_brightness_initial,
           home_star_brightness_max:
@@ -182,7 +184,9 @@
           home_star_label_duration_ms:
             settings.home_star_label_duration_ms,
           home_star_brightness_rules:
-            settings.home_star_brightness_rules
+            settings.home_star_brightness_rules,
+          home_star_brightness_tiers:
+            settings.home_star_brightness_tiers
         })
       );
       window.localStorage.setItem(

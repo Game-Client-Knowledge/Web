@@ -53,6 +53,12 @@ assert.equal(
   4
 );
 assert.match(html, /class="visual-form-actions"/);
+assert.match(html, /name="home_star_brightness_min"/);
+assert.match(html, /id="starBrightnessRuleList"/);
+assert.match(html, /id="starBrightnessTierList"/);
+assert.match(html, /id="addStarBrightnessRule"/);
+assert.match(html, /id="addStarBrightnessTier"/);
+assert.match(html, /star-formula-engine\.js/);
 
 assert.match(css, /\.admin-layout\s*\{[\s\S]*grid-template-columns:/);
 assert.match(css, /\.admin-sidebar\s*\{[\s\S]*position:\s*sticky/);
@@ -67,6 +73,8 @@ assert.match(
   /@media \(max-width: 760px\)[\s\S]*\.visual-group-grid\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\)/
 );
 assert.match(javascript, /function setupAdminNavigation\(\)/);
+assert.match(javascript, /starFormulaEngine\.validateFormula/);
+assert.match(javascript, /home_star_brightness_tiers/);
 assert.match(javascript, /aria-current/);
 
 console.log("Admin layout checks passed");

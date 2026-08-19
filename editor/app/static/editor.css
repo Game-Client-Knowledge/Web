@@ -1909,43 +1909,106 @@ dialog::backdrop {
 
 .star-rule-list {
   display: grid;
+  gap: 12px;
 }
 
 .star-rule-row {
   display: grid;
   min-width: 0;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line);
-  align-items: center;
-  grid-template-columns: minmax(0, 1fr) 130px 36px;
-  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  gap: 10px;
 }
 
-.star-rule-row > div {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.star-rule-row strong {
-  font-size: 12px;
-}
-
-.star-rule-row span {
+.star-rule-note {
+  margin: 0 0 12px;
   color: var(--ink-soft);
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.55;
 }
 
-.star-rule-row label {
+.star-rule-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.star-rule-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.star-rule-actions .icon-button {
+  width: 30px;
+  height: 30px;
+}
+
+.star-rule-fields,
+.star-tier-row {
   display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 0.35fr);
+  gap: 10px;
+}
+
+.star-rule-row label,
+.star-tier-row label {
+  display: grid;
+  min-width: 0;
   color: var(--ink-soft);
   font-size: 10px;
-  gap: 3px;
+  gap: 4px;
 }
 
-.star-rule-row input {
-  min-width: 0;
+.star-formula-field textarea {
+  width: 100%;
+  min-height: 74px;
+  resize: vertical;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.star-formula-validation {
+  color: var(--danger);
+  font-size: 10px;
+}
+
+.star-formula-validation[data-valid="true"] {
+  color: var(--teal-strong);
+}
+
+.star-tier-list {
+  display: grid;
+  gap: 8px;
+}
+
+.star-tier-row {
+  align-items: end;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 0.5fr) 36px;
+}
+
+.star-formula-reference {
+  margin-top: 12px;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.star-formula-reference summary {
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.star-formula-reference p {
+  margin: 8px 0 0;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .star-rule-add {
@@ -1953,10 +2016,6 @@ dialog::backdrop {
   margin-top: 12px;
   align-items: center;
   gap: 10px;
-}
-
-.star-rule-add select {
-  width: min(100%, 340px);
 }
 
 .section-actions {
@@ -2368,21 +2427,21 @@ dialog::backdrop {
   }
 
   .star-rule-row {
-    align-items: end;
-    grid-template-columns: minmax(0, 1fr) 110px 36px;
+    padding: 10px;
   }
 
-  .star-rule-row > div {
-    grid-column: 1 / -1;
+  .star-rule-fields,
+  .star-tier-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .star-tier-row .icon-button {
+    justify-self: end;
   }
 
   .star-rule-add {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .star-rule-add select {
-    width: 100%;
   }
 
   .smtp-grid {

@@ -86,7 +86,8 @@ try {
 
   let statistics = getContentStatistics(root, {
     cachePath,
-    fallbackUpdatedAt: "2026-08-14T10:00:00+08:00"
+    fallbackUpdatedAt: "2026-08-14T10:00:00+08:00",
+    referenceDate: "2026-08-19T10:00:00+08:00"
   });
   assert.equal(statistics.cacheMode, "rebuild");
   assert.equal(statistics.scopes.length, 3);
@@ -107,8 +108,23 @@ try {
   const alice = overall.contributors.find((item) => item.name === "Alice");
   assert(alice, "normal and GitHub noreply identities must be merged");
   assert(alice.added > 0);
+  assert.equal(alice.activity7Count, 2);
+  assert.equal(alice.activity30Count, 2);
+  assert(alice.modification7Count > 0);
   const bob = program.contributors.find((item) => item.name === "Bob");
   assert.equal(bob.modified, 1);
+  assert.equal(bob.activity7Count, 1);
+  const topicMetrics = statistics.documentMetrics.find(
+    (item) => item.path === "program/knowledge/topic.md"
+  );
+  assert.equal(topicMetrics.activity7Count, 2);
+  assert.equal(topicMetrics.activity30Count, 2);
+  assert(topicMetrics.modification7Count > 0);
+  assert.equal(
+    topicMetrics._commitWindows.seven.size,
+    2,
+    "internal commit windows must preserve exact code-system deduplication"
+  );
   assert(
     statistics.documentContributions.some(
       (item) =>

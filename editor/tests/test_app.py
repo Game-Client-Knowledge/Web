@@ -1112,6 +1112,7 @@ def test_admin_can_configure_client_visual_effects(
             "home_star_selection_duration_ms": 4500,
             "home_star_label_duration_ms": 6500,
             "home_star_brightness_variation_enabled": True,
+            "home_star_brightness_min": 5,
             "home_star_brightness_initial": 25,
             "home_star_brightness_max": 80,
             "home_star_brightness_variation_amount": 4.5,
@@ -1120,12 +1121,36 @@ def test_admin_can_configure_client_visual_effects(
             "home_star_color_random_enabled": True,
             "home_star_brightness_rules": [
                 {
-                    "id": "contributor_contribution_count",
-                    "priority": 900,
+                    "id": "contributor-formula",
+                    "name": "静星公式",
+                    "enabled": True,
+                    "target": "contributor",
+                    "formula": (
+                        "current_brightness + "
+                        "sin(pi / 2) * activity_7_count"
+                    ),
                 },
                 {
-                    "id": "document_reference_degree",
-                    "priority": 300,
+                    "id": "document-formula",
+                    "name": "动星公式",
+                    "enabled": False,
+                    "target": "document",
+                    "formula": (
+                        "min(max_brightness, current_brightness + "
+                        "(reference_count ^ 2) % 7)"
+                    ),
+                },
+            ],
+            "home_star_brightness_tiers": [
+                {
+                    "id": "red",
+                    "name": "红矮星",
+                    "min_brightness": 25,
+                },
+                {
+                    "id": "brown",
+                    "name": "褐矮星",
+                    "min_brightness": 0,
                 },
             ],
         },
@@ -1157,6 +1182,7 @@ def test_admin_can_configure_client_visual_effects(
         "home_star_selection_duration_ms": 4500,
         "home_star_label_duration_ms": 6500,
         "home_star_brightness_variation_enabled": True,
+        "home_star_brightness_min": 5,
         "home_star_brightness_initial": 25,
         "home_star_brightness_max": 80,
         "home_star_brightness_variation_amount": 4.5,
@@ -1165,12 +1191,36 @@ def test_admin_can_configure_client_visual_effects(
         "home_star_color_random_enabled": True,
         "home_star_brightness_rules": [
             {
-                "id": "contributor_contribution_count",
-                "priority": 900,
+                "id": "contributor-formula",
+                "name": "静星公式",
+                "enabled": True,
+                "target": "contributor",
+                "formula": (
+                    "current_brightness + "
+                    "sin(pi / 2) * activity_7_count"
+                ),
             },
             {
-                "id": "document_reference_degree",
-                "priority": 300,
+                "id": "document-formula",
+                "name": "动星公式",
+                "enabled": False,
+                "target": "document",
+                "formula": (
+                    "min(max_brightness, current_brightness + "
+                    "(reference_count ^ 2) % 7)"
+                ),
+            },
+        ],
+        "home_star_brightness_tiers": [
+            {
+                "id": "red",
+                "name": "红矮星",
+                "min_brightness": 25,
+            },
+            {
+                "id": "brown",
+                "name": "褐矮星",
+                "min_brightness": 0,
             },
         ],
     }
@@ -1201,13 +1251,23 @@ def test_admin_can_configure_client_visual_effects(
     assert config["home_star_selection_duration_ms"] == 4500
     assert config["home_star_label_duration_ms"] == 6500
     assert config["home_star_brightness_variation_enabled"] is True
+    assert config["home_star_brightness_min"] == 5
     assert config["home_star_brightness_initial"] == 25
     assert config["home_star_brightness_max"] == 80
     assert config["home_star_brightness_variation_amount"] == 4.5
     assert config["home_star_brightness_rules"][0] == {
-        "id": "contributor_contribution_count",
-        "priority": 900,
+        "id": "contributor-formula",
+        "name": "静星公式",
+        "enabled": True,
+        "target": "contributor",
+        "formula": (
+            "current_brightness + sin(pi / 2) * activity_7_count"
+        ),
     }
+    assert config["home_star_brightness_tiers"] == [
+        {"id": "brown", "name": "褐矮星", "min_brightness": 0},
+        {"id": "red", "name": "红矮星", "min_brightness": 25},
+    ]
 
     legacy_timing = client.put(
         "/api/admin/visual-settings",
@@ -1335,6 +1395,51 @@ def test_admin_can_configure_client_visual_effects(
         },
     )
     assert invalid_brightness_range.status_code == 422
+
+    invalid_formula = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "catalog_background_style": "circuit",
+            "reader_background_style": "blueprint",
+            "pointer_effect_enabled": True,
+            "home_intro_enabled": True,
+            "home_star_brightness_rules": [
+                {
+                    "id": "unsafe",
+                    "name": "非法公式",
+                    "target": "document",
+                    "formula": "star.value + unknown",
+                }
+            ],
+        },
+    )
+    assert invalid_formula.status_code == 422
+    assert "亮度规则" in invalid_formula.json()["detail"]
+
+    duplicate_tiers = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "catalog_background_style": "circuit",
+            "reader_background_style": "blueprint",
+            "pointer_effect_enabled": True,
+            "home_intro_enabled": True,
+            "home_star_brightness_tiers": [
+                {
+                    "id": "one",
+                    "name": "等级一",
+                    "min_brightness": 10,
+                },
+                {
+                    "id": "two",
+                    "name": "等级二",
+                    "min_brightness": 10,
+                },
+            ],
+        },
+    )
+    assert duplicate_tiers.status_code == 422
 
     invalid_active_edges = client.put(
         "/api/admin/visual-settings",

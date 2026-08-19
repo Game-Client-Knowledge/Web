@@ -327,6 +327,10 @@ module.exports = function configureEleventy(eleventyConfig) {
       "assets/vendor/code-reader-vendor.js"
   });
   eleventyConfig.addPassthroughCopy({
+    ".cache/vendor/star-formula-engine.js":
+      "assets/vendor/star-formula-engine.js"
+  });
+  eleventyConfig.addPassthroughCopy({
     "node_modules/web-tree-sitter/tree-sitter.js":
       "assets/vendor/tree-sitter.js"
   });

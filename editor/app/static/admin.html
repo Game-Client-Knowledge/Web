@@ -380,6 +380,17 @@
           随机星星颜色
         </label>
         <label>
+          星体最小亮度
+          <input
+            name="home_star_brightness_min"
+            type="number"
+            min="0"
+            max="100"
+            step="0.5"
+            required
+          >
+        </label>
+        <label>
           星体初始亮度
           <input
             name="home_star_brightness_initial"
@@ -436,13 +447,43 @@
         </label>
           </div>
         <fieldset class="star-rule-editor">
-          <legend>星星亮度规则</legend>
+          <legend>公式规则引擎</legend>
+          <p class="star-rule-note">
+            规则按列表顺序执行，每条公式的结果成为下一条规则的当前亮度。
+          </p>
           <div id="starBrightnessRuleList" class="star-rule-list"></div>
           <div class="star-rule-add">
-            <select id="starBrightnessRuleCatalog" aria-label="可添加亮度规则"></select>
             <button id="addStarBrightnessRule" class="secondary-button" type="button">
               <i data-lucide="plus" aria-hidden="true"></i>
               添加规则
+            </button>
+          </div>
+          <details class="star-formula-reference">
+            <summary>公式变量与函数</summary>
+            <p>
+              current_brightness, initial_brightness, min_brightness,
+              max_brightness, brightness_span, reference_count,
+              referenced_by_count, strong_relation_count, activity_7_count,
+              activity_30_count, modification_7_count,
+              modification_30_count, contribution_count, contributor_count,
+              commit_count, pi, e
+            </p>
+            <p>
+              sin, cos, tan, exp, log, log10, sqrt, pow, abs, min, max,
+              round, floor, ceil；支持 + - * / % ^ 和括号。
+            </p>
+          </details>
+        </fieldset>
+        <fieldset class="star-rule-editor">
+          <legend>星体等级</legend>
+          <p class="star-rule-note">
+            等级仅按公式计算后的基础亮度判定，不包含随机浮动亮度。
+          </p>
+          <div id="starBrightnessTierList" class="star-tier-list"></div>
+          <div class="star-rule-add">
+            <button id="addStarBrightnessTier" class="secondary-button" type="button">
+              <i data-lucide="plus" aria-hidden="true"></i>
+              添加等级
             </button>
           </div>
         </fieldset>
@@ -630,6 +671,7 @@
   </main>
 
   <script src="../assets/vendor/lucide.js"></script>
+  <script src="../assets/vendor/star-formula-engine.js"></script>
   <script src="assets/admin.js"></script>
 </body>
 </html>

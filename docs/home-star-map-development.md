@@ -53,14 +53,16 @@ revision matches the embedded static revision.
 | File | Responsibility |
 | --- | --- |
 | `lib/content-loader.js` | Scans tracks, modules, topics, Markdown, and readable code routes. |
-| `lib/content-statistics.js` | Aggregates Git identities, activity, and file-level contribution history. |
+| `lib/content-statistics.js` | Caches Git history and derives contributor/file 7-day and 30-day metrics. |
 | `lib/home-star-graph.js` | Converts catalog data into stable stars and typed relations. |
+| `lib/star-formula-engine.js` | Parses and evaluates the browser formula AST and assigns brightness tiers. |
 | `src/index.njk` | Embeds `catalog.homeStarGraph` into `window.GCK_HOME_STAR_GRAPH`. |
 | `src/assets/js/home-star-illumination.js` | Pure adjacency, traversal, coverage, tree, path, and brightness presentation algorithms. |
 | `src/assets/js/home-star-map.js` | Revision cache merge, simulation state, Canvas drawing, clicks, labels, and coverage panel. |
 | `src/assets/js/site-visuals.js` | Caches first-frame visual settings to prevent reload flicker. |
 | `editor/app/comments.py` | Persists and serves the revisioned contributor-document graph. |
 | `editor/app/main.py` | Validates and exposes star-map settings. |
+| `editor/app/star_formulas.py` | Defines formula allowlists, defaults, and legacy-rule migration. |
 | `editor/app/database.py` | Installs default settings without overwriting existing administrator choices. |
 | `editor/app/static/admin.html` | Declares administration controls. |
 | `editor/app/static/admin.js` | Loads, saves, and locally caches administration values. |
@@ -73,7 +75,7 @@ revision matches the embedded static revision.
 
 ```js
 {
-  version: 3,
+  version: 4,
   revision: "full-content-commit",
   generatedAt: "ISO-8601 timestamp",
   stars: [],
@@ -99,7 +101,11 @@ Contributor star:
   metrics: {
     contributionCount: 0,
     commitCount: 0,
-    lastActiveAt: ""
+    lastActiveAt: "",
+    activity7Count: 0,
+    activity30Count: 0,
+    modification7Count: 0,
+    modification30Count: 0
   }
 }
 ```
@@ -122,7 +128,13 @@ Document or code-system star:
   brightness: 10,
   metrics: {
     contributorCount: 0,
-    referenceDegree: 0,
+    referenceCount: 0,
+    referencedByCount: 0,
+    strongRelationCount: 0,
+    activity7Count: 0,
+    activity30Count: 0,
+    modification7Count: 0,
+    modification30Count: 0,
     lastContributedAt: ""
   }
 }
@@ -303,22 +315,42 @@ array. Active pruning only changes selected-edge emphasis.
 ## 9. Brightness Pipeline
 
 Logical brightness starts at `home_star_brightness_initial`, executes enabled
-rules in descending priority, and is clamped to
-`[0, home_star_brightness_max]`. Defaults are `10` and `100`. The backend
-rejects an initial value greater than the maximum.
+formula rules in list order, and clamps each result to
+`[home_star_brightness_min, home_star_brightness_max]`. Defaults are `0`, `10`,
+and `100`. A rule targets either `contributor` (static star) or `document`
+(moving document/code-system star).
 
-The curve derives all additive values from:
+The safe expression language supports numeric literals, parentheses,
+`+ - * / % ^`, and:
 
 ```text
-span = home_star_brightness_max - home_star_brightness_initial
+abs ceil cos exp floor log log10 max min pow round sin sqrt tan
 ```
 
-Contribution count can consume `65%` of the span, reference degree `45%`, and
-document contributor count `35%`. Logarithmic or square-root saturation keeps
-small values distinguishable while bounding outliers. Activity rules remain
-multipliers so rule priority still has observable semantics. The shared pure
-function `calculateBrightness()` in `home-star-illumination.js` owns these
-calculations; the Canvas layer must not duplicate them.
+`^` is right-associative exponentiation. Constants `pi` and `e` are available.
+Member access, arrays, assignment, unknown identifiers, and arbitrary calls
+are rejected. FastAPI validates a Python AST allowlist before persistence.
+The browser evaluates a separate JSEP AST allowlist and never uses `eval`.
+
+| Variable | Meaning |
+| --- | --- |
+| `current_brightness` | Previous rule result |
+| `initial_brightness` | Configured starting value |
+| `min_brightness`, `max_brightness` | Configured bounds |
+| `brightness_span` | Maximum minus minimum |
+| `reference_count` | Stable outgoing reference-edge count |
+| `referenced_by_count` | Stable incoming reference-edge count |
+| `strong_relation_count` | Stable strong-edge neighbor count |
+| `activity_7_count`, `activity_30_count` | Distinct touching commits in the window |
+| `modification_7_count`, `modification_30_count` | Added + modified + deleted lines in the window |
+| `contribution_count` | Contributor lifetime changed-line total |
+| `contributor_count` | Document/code-system contributor count |
+| `commit_count` | Contributor lifetime commit count |
+
+Relation variables come from the complete embedded graph. Traversal direction,
+depth, BFS, and active-edge pruning do not change them. Code-system recent
+metrics aggregate all member files and deduplicate commits. The 7/30-day
+windows end at build time, not at the newest commit timestamp.
 
 The runtime stores:
 
@@ -334,15 +366,18 @@ The rendered value drives:
 - glow radius and opacity;
 - selected-star boost.
 
-When a star is activated, the coverage panel records its current rendered
-logical brightness, including the interpolated variation at that instant:
+Ascending administrator-defined thresholds assign a star class such as
+`褐矮星`, `红矮星`, `黄矮星`, or `蓝巨星`. Assignment uses only
+`baseBrightness`, so random visual variation never changes the class.
+
+When a star is activated, its label and coverage panel record the class and
+base brightness:
 
 ```text
-Root brightness 26.8 / 100
+黄矮星 · 56.8 / 100
 ```
 
-It is a snapshot for the activation record. It does not keep changing while
-the panel remains visible.
+The displayed classification stays stable while rendering variation animates.
 
 ## 10. Rendering Lifecycle
 
@@ -406,8 +441,11 @@ Main settings:
 | `home_star_active_edge_mode` | `single_path`, `minimal_tree`, `full` |
 | `home_star_selection_duration_ms` | `500..60000` |
 | `home_star_label_duration_ms` | `500..60000` |
-| `home_star_brightness_initial` | `0..100`, not above maximum |
+| `home_star_brightness_min` | `0..100`, not above initial or maximum |
+| `home_star_brightness_initial` | `0..100`, inside configured bounds |
 | `home_star_brightness_max` | `1..100` |
+| `home_star_brightness_rules` | Ordered formula rules, at most 50 |
+| `home_star_brightness_tiers` | Unique thresholds, 1 to 20 |
 | `home_star_brightness_variation_amount` | `0..20` |
 | `home_star_brightness_transition_ms` | `100..10000` |
 | `home_star_brightness_interval_ms` | `200..30000` |
@@ -478,7 +516,8 @@ Focused checks:
 ```bash
 npm run test:home-star-graph
 npm run test:home-star-illumination
-PYTHONPATH=editor python -m pytest editor/tests/test_app.py
+npm run test:star-formula
+PYTHONPATH=editor python -m pytest editor/tests
 ```
 
 Complete gate:
@@ -505,6 +544,7 @@ The visual test covers:
 - code-system folding;
 - contribution-edge folding;
 - relation and brightness records;
+- base-brightness tiers independent from random variation;
 - active visual pruning;
 - independent relation and label timers;
 - browser errors and horizontal overflow.

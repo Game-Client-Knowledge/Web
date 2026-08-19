@@ -215,9 +215,50 @@ function fixtureCatalog() {
               modified: 4,
               deleted: 1,
               commitCount: 2,
-              lastContributedAt: "2026-08-18T00:00:00Z"
+              lastContributedAt: "2026-08-18T00:00:00Z",
+              activity7Count: 2,
+              activity30Count: 4,
+              modification7Count: 11,
+              modification30Count: 27
             }
           ]
+        }
+      ],
+      documentMetrics: [
+        {
+          path: "program/knowledge/root/01-a.md",
+          activity7Count: 2,
+          activity30Count: 3,
+          modification7Count: 7,
+          modification30Count: 12
+        },
+        {
+          path: "program/code/ecs/combat/Main.cs",
+          activity7Count: 2,
+          activity30Count: 4,
+          modification7Count: 6,
+          modification30Count: 14
+        },
+        {
+          path: "program/code/ecs/combat/project.csproj",
+          activity7Count: 3,
+          activity30Count: 5,
+          modification7Count: 9,
+          modification30Count: 18
+        },
+        {
+          path: "program/code/ecs/combat/obj/generated.cs",
+          activity7Count: 20,
+          activity30Count: 20,
+          modification7Count: 100,
+          modification30Count: 100
+        },
+        {
+          path: "program/code/rendering/Renderer.cpp",
+          activity7Count: 1,
+          activity30Count: 2,
+          modification7Count: 2,
+          modification30Count: 5
         }
       ],
       documentContributions: [
@@ -291,7 +332,7 @@ const contributionEdges = graph.edges.filter(
   (edge) => edge.type === "contribution"
 );
 
-assert.equal(graph.version, 3);
+assert.equal(graph.version, 4);
 assert.equal(graph.revision, "abc1234");
 assert.equal(
   graph.stars.filter((star) => star.kind === "contributor").length,
@@ -420,5 +461,21 @@ assert.equal(
   ecsStar.metrics.lastContributedAt,
   "2026-08-18T01:00:00Z"
 );
+assert.equal(ecsStar.metrics.activity7Count, 5);
+assert.equal(ecsStar.metrics.activity30Count, 9);
+assert.equal(ecsStar.metrics.modification7Count, 15);
+assert.equal(ecsStar.metrics.modification30Count, 32);
+const aliceStar = graph.stars.find(
+  (star) => star.id === "contributor:alice"
+);
+assert.equal(aliceStar.metrics.activity7Count, 2);
+assert.equal(aliceStar.metrics.modification30Count, 27);
+const aStar = graph.stars.find(
+  (star) =>
+    star.id === "document:program/knowledge/root/01-a.md"
+);
+assert.equal(aStar.metrics.referenceCount, 2);
+assert.equal(aStar.metrics.referencedByCount, 2);
+assert(aStar.metrics.strongRelationCount > 0);
 
 console.log("Homepage star graph checks passed");

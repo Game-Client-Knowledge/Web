@@ -85,6 +85,14 @@ from .site_updates import (
     queue_update,
     update_status,
 )
+from .star_formulas import (
+    DEFAULT_STAR_BRIGHTNESS_RULES,
+    DEFAULT_STAR_BRIGHTNESS_TIERS,
+    STAR_FORMULA_TARGETS,
+    resolved_star_brightness_rules as normalize_star_brightness_rules,
+    resolved_star_brightness_tiers as normalize_star_brightness_tiers,
+    validate_star_formula,
+)
 
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
@@ -93,20 +101,6 @@ OAUTH_STATE_COOKIE = "gck_editor_oauth_state"
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MAX_DRAFT_BYTES = 512 * 1024
 MAX_DRAFTS = 1000
-STAR_BRIGHTNESS_RULE_IDS = {
-    "contributor_contribution_count",
-    "contributor_recent_activity",
-    "document_reference_degree",
-    "document_contributor_count",
-    "document_recent_activity",
-}
-DEFAULT_STAR_BRIGHTNESS_RULES = [
-    {"id": "contributor_contribution_count", "priority": 500},
-    {"id": "contributor_recent_activity", "priority": 400},
-    {"id": "document_reference_degree", "priority": 300},
-    {"id": "document_contributor_count", "priority": 200},
-    {"id": "document_recent_activity", "priority": 100},
-]
 STAR_ILLUMINATION_RULE_IDS = {
     "bfs",
     "depth",
@@ -234,8 +228,17 @@ class SiteUpdateRequest(BaseModel):
 
 
 class StarBrightnessRuleRequest(BaseModel):
-    id: str = Field(min_length=1, max_length=64)
-    priority: int = Field(default=100, ge=-10000, le=10000)
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    name: str = Field(min_length=1, max_length=80)
+    enabled: bool = True
+    target: str
+    formula: str = Field(min_length=1, max_length=500)
+
+
+class StarBrightnessTierRequest(BaseModel):
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    name: str = Field(min_length=1, max_length=80)
+    min_brightness: float = Field(ge=0, le=100)
 
 
 class VisualSettingsRequest(BaseModel):
@@ -270,6 +273,11 @@ class VisualSettingsRequest(BaseModel):
     home_star_reference_relation_style: str = "dashed"
     home_star_contributor_relation_style: str = "solid"
     home_star_brightness_variation_enabled: bool = False
+    home_star_brightness_min: float = Field(
+        default=0.0,
+        ge=0,
+        le=100,
+    )
     home_star_brightness_initial: float = Field(
         default=10.0,
         ge=0,
@@ -315,6 +323,14 @@ class VisualSettingsRequest(BaseModel):
             StarBrightnessRuleRequest(**item)
             for item in DEFAULT_STAR_BRIGHTNESS_RULES
         ],
+        max_length=50,
+    )
+    home_star_brightness_tiers: list[StarBrightnessTierRequest] = Field(
+        default_factory=lambda: [
+            StarBrightnessTierRequest(**item)
+            for item in DEFAULT_STAR_BRIGHTNESS_TIERS
+        ],
+        min_length=1,
         max_length=20,
     )
 
@@ -858,22 +874,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except (TypeError, json.JSONDecodeError):
             parsed = DEFAULT_STAR_BRIGHTNESS_RULES
-        rules: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        for item in parsed if isinstance(parsed, list) else []:
-            rule_id = str(item.get("id", "")) if isinstance(item, dict) else ""
-            if rule_id not in STAR_BRIGHTNESS_RULE_IDS or rule_id in seen:
-                continue
-            try:
-                priority = max(
-                    -10000,
-                    min(10000, int(item.get("priority", 100))),
+        return normalize_star_brightness_rules(parsed)
+
+    def resolved_star_brightness_tiers(
+        minimum: float,
+        maximum: float,
+    ) -> list[dict[str, Any]]:
+        try:
+            parsed = json.loads(
+                db.setting(
+                    "home_star_brightness_tiers",
+                    json.dumps(DEFAULT_STAR_BRIGHTNESS_TIERS),
                 )
-            except (TypeError, ValueError):
-                priority = 100
-            seen.add(rule_id)
-            rules.append({"id": rule_id, "priority": priority})
-        return rules
+            )
+        except (TypeError, json.JSONDecodeError):
+            parsed = DEFAULT_STAR_BRIGHTNESS_TIERS
+        return normalize_star_brightness_tiers(
+            parsed,
+            minimum,
+            maximum,
+        )
 
     def star_visual_payload() -> dict[str, Any]:
         def setting_int(key: str, default: int) -> int:
@@ -905,8 +925,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 setting_float("home_star_brightness_max", 100),
             ),
         )
-        brightness_initial = max(
+        brightness_min = max(
             0,
+            min(
+                brightness_max,
+                setting_float("home_star_brightness_min", 0),
+            ),
+        )
+        brightness_initial = max(
+            brightness_min,
             min(
                 brightness_max,
                 setting_float("home_star_brightness_initial", 10),
@@ -957,6 +984,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 == "1"
             ),
             "home_star_brightness_initial": brightness_initial,
+            "home_star_brightness_min": brightness_min,
             "home_star_brightness_max": brightness_max,
             "home_star_brightness_variation_amount": max(
                 0,
@@ -1013,6 +1041,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_star_active_edge_mode": active_edge_mode,
             "home_star_brightness_rules": resolved_star_brightness_rules(),
+            "home_star_brightness_tiers": resolved_star_brightness_tiers(
+                brightness_min,
+                brightness_max,
+            ),
         }
 
     def config_payload() -> dict[str, Any]:
@@ -3150,12 +3182,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }:
             raise HTTPException(status_code=422, detail="星图方向模式无效")
         if (
-            payload.home_star_brightness_initial
+            payload.home_star_brightness_min
+            > payload.home_star_brightness_initial
+            or payload.home_star_brightness_min
+            > payload.home_star_brightness_max
+            or payload.home_star_brightness_initial
             > payload.home_star_brightness_max
         ):
             raise HTTPException(
                 status_code=422,
-                detail="星图初始亮度不能超过最大亮度",
+                detail="星图亮度必须满足最小值不大于初始值和最大值",
             )
         if payload.home_star_active_edge_mode not in {
             "full",
@@ -3166,14 +3202,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=422,
                 detail="主动点亮关系视觉无效",
             )
-        rule_ids = [
-            rule.id for rule in payload.home_star_brightness_rules
-        ]
-        if (
-            len(rule_ids) != len(set(rule_ids))
-            or not set(rule_ids).issubset(STAR_BRIGHTNESS_RULE_IDS)
-        ):
-            raise HTTPException(status_code=422, detail="星图亮度规则无效")
+        rule_ids: set[str] = set()
+        for index, rule in enumerate(payload.home_star_brightness_rules, 1):
+            if rule.id in rule_ids or rule.target not in STAR_FORMULA_TARGETS:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"第 {index} 条星图亮度规则无效",
+                )
+            try:
+                validate_star_formula(rule.formula)
+            except ValueError as error:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"第 {index} 条亮度规则：{error}",
+                ) from error
+            rule_ids.add(rule.id)
+        tier_ids: set[str] = set()
+        tier_thresholds: set[float] = set()
+        for tier in payload.home_star_brightness_tiers:
+            if (
+                tier.id in tier_ids
+                or tier.min_brightness in tier_thresholds
+                or tier.min_brightness > payload.home_star_brightness_max
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="星星等级 ID 或亮度阈值无效",
+                )
+            tier_ids.add(tier.id)
+            tier_thresholds.add(tier.min_brightness)
         current_timing = resolved_home_intro_timing()
         split_timing = (
             payload.home_intro_assembly_duration_ms is not None
@@ -3241,6 +3298,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "home_star_brightness_initial": str(
                 payload.home_star_brightness_initial
             ),
+            "home_star_brightness_min": str(
+                payload.home_star_brightness_min
+            ),
             "home_star_brightness_max": str(
                 payload.home_star_brightness_max
             ),
@@ -3278,6 +3338,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 [
                     rule.model_dump()
                     for rule in payload.home_star_brightness_rules
+                ],
+                ensure_ascii=False,
+            ),
+            "home_star_brightness_tiers": json.dumps(
+                [
+                    tier.model_dump()
+                    for tier in sorted(
+                        payload.home_star_brightness_tiers,
+                        key=lambda item: item.min_brightness,
+                    )
                 ],
                 ensure_ascii=False,
             ),

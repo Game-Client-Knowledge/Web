@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -8,6 +9,10 @@ from typing import Iterator
 
 from .config import Settings
 from .security import hash_password, normalize_email, normalize_username
+from .star_formulas import (
+    DEFAULT_STAR_BRIGHTNESS_RULES,
+    DEFAULT_STAR_BRIGHTNESS_TIERS,
+)
 
 
 SCHEMA = """
@@ -551,6 +556,7 @@ class Database:
                 "home_star_reference_relation_style": "dashed",
                 "home_star_contributor_relation_style": "solid",
                 "home_star_brightness_variation_enabled": "0",
+                "home_star_brightness_min": "0",
                 "home_star_brightness_initial": "10",
                 "home_star_brightness_max": "100",
                 "home_star_brightness_variation_amount": "2",
@@ -563,13 +569,13 @@ class Database:
                 "home_star_selection_duration_ms": "3000",
                 "home_star_label_duration_ms": "3000",
                 "home_star_active_edge_mode": "single_path",
-                "home_star_brightness_rules": (
-                    '[{"id":"contributor_contribution_count",'
-                    '"priority":500},'
-                    '{"id":"contributor_recent_activity","priority":400},'
-                    '{"id":"document_reference_degree","priority":300},'
-                    '{"id":"document_contributor_count","priority":200},'
-                    '{"id":"document_recent_activity","priority":100}]'
+                "home_star_brightness_rules": json.dumps(
+                    DEFAULT_STAR_BRIGHTNESS_RULES,
+                    ensure_ascii=False,
+                ),
+                "home_star_brightness_tiers": json.dumps(
+                    DEFAULT_STAR_BRIGHTNESS_TIERS,
+                    ensure_ascii=False,
                 ),
             }.items():
                 connection.execute(
