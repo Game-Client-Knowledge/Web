@@ -10,6 +10,7 @@
     "3d",
     "2d-webgl",
     "3d-drift",
+    "3d-drift-anchored",
     "3d-galaxy",
     "3d-orbit"
   ];

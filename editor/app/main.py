@@ -3394,6 +3394,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "2d-webgl",
             "3d",
             "3d-drift",
+            "3d-drift-anchored",
             "3d-galaxy",
             "3d-orbit",
         }:
