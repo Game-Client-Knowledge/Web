@@ -648,10 +648,6 @@
     let assembleDuration = 1680;
     let holdDuration = 630;
     let particleSprites = null;
-    let starLayout = null;
-    let scatterMode = "random";
-    const arenaBackground = [16, 37, 42];
-    const mainBackground = readMainBackground();
 
     document.body.classList.add("has-entry-sequence");
     document.body.dataset.homeIntro = "playing";
@@ -664,9 +660,6 @@
     stage.dataset.hudSweep = "0.0000";
     stage.dataset.exitMotion = "scatter";
     particleSprites = createParticleSprites();
-    requestStarLayout().then((layout) => {
-      starLayout = layout;
-    });
 
     function clamp(value, minimum = 0, maximum = 1) {
       return Math.max(minimum, Math.min(maximum, value));
@@ -689,58 +682,6 @@
         [values[index], values[swap]] = [values[swap], values[index]];
       }
       return values;
-    }
-
-    function readMainBackground() {
-      let parsed = null;
-      try {
-        parsed = /rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(
-          window.getComputedStyle(document.body).backgroundColor || ""
-        );
-      } catch {
-        parsed = null;
-      }
-      return parsed
-        ? [Number(parsed[1]), Number(parsed[2]), Number(parsed[3])]
-        : [7, 17, 15];
-    }
-
-    function mixedBackground(mix) {
-      const channel = (index) =>
-        Math.round(
-          arenaBackground[index] +
-            (mainBackground[index] - arenaBackground[index]) * mix
-        );
-      return `rgb(${channel(0)}, ${channel(1)}, ${channel(2)})`;
-    }
-
-    // The star map (home-star-map.js) publishes its future 2D layout as
-    // window.GCK_HOME_STAR_LAYOUT. That script loads after this one, so
-    // poll briefly for the global, then race the promise against a hard
-    // timeout — the scatter must always be able to fall back to the
-    // random burst when the layout is unavailable.
-    function requestStarLayout(attempt = 0) {
-      const layoutPromise = window.GCK_HOME_STAR_LAYOUT;
-      if (layoutPromise && typeof layoutPromise.then === "function") {
-        return Promise.race([
-          layoutPromise,
-          new Promise((resolve) => {
-            window.setTimeout(() => resolve(null), 800);
-          })
-        ])
-          .then((layout) => {
-            return layout &&
-              Array.isArray(layout.stars) &&
-              layout.stars.length
-              ? layout
-              : null;
-          })
-          .catch(() => null);
-      }
-      if (attempt >= 20) return Promise.resolve(null);
-      return new Promise((resolve) => {
-        window.setTimeout(() => resolve(), 50);
-      }).then(() => requestStarLayout(attempt + 1));
     }
 
     function fitFont(target, text, maximum, preferred, minimum, weight) {
@@ -1221,7 +1162,7 @@
         };
       });
       if (scatterStarted) {
-        seedScatter(performance.now() - started);
+        seedScatterMotion(performance.now() - started);
       }
       stage.dataset.particleCount = String(particles.length);
       stage.dataset.contributorParticleCount = String(contributorParticles);
@@ -1686,115 +1627,17 @@
       });
     }
 
-    // Star-map handoff: instead of bursting outward, every particle is
-    // assigned to one of the real stars (brighter stars attract more) and
-    // glides to that star's future viewport position, evolving towards the
-    // star's own size and brightness so the live map can take over
-    // seamlessly once it fades in underneath.
-    function seedStarTransition(elapsed) {
-      const stars = starLayout.stars;
-      const weights = stars.map((star) => {
-        const luminous = Math.pow(clamp(star.brightness / 100, 0, 1), 1.35);
-        return 0.3 + luminous * 2.4;
-      });
-      const totalWeight =
-        weights.reduce((sum, weight) => sum + weight, 0) || 1;
-      const assignments = [];
-      stars.forEach((star, starIndex) => {
-        const count = Math.max(
-          1,
-          Math.round((weights[starIndex] / totalWeight) * particles.length)
-        );
-        for (let index = 0; index < count; index += 1) {
-          assignments.push(starIndex);
-        }
-      });
-      shuffle(assignments);
-      const leadTaken = new Set();
-      particles.forEach((particle, index) => {
-        const starIndex = assignments[index % assignments.length];
-        const star = stars[starIndex];
-        const target = particleTarget(particle, elapsed);
-        const originX = particle.renderX ?? target.x;
-        const originY = particle.renderY ?? target.y;
-        const jitterAngle = random() * Math.PI * 2;
-        const jitterRadius = 1 + random() * 2;
-        const targetX = star.x + Math.cos(jitterAngle) * jitterRadius;
-        const targetY = star.y + Math.sin(jitterAngle) * jitterRadius;
-        const dx = targetX - originX;
-        const dy = targetY - originY;
-        const distance = Math.max(1, Math.hypot(dx, dy));
-        const arc = (random() - 0.5) * Math.min(140, distance * 0.24);
-        const lead = !leadTaken.has(starIndex);
-        leadTaken.add(starIndex);
-        const targetSize = lead
-          ? clamp(star.haloRadius * 0.3, 1.5, 4.2)
-          : clamp(star.radius * (0.55 + random() * 0.5), 0.7, 2.6);
-        particle.scatterX = originX;
-        particle.scatterY = originY;
-        particle.scatterTX = targetX;
-        particle.scatterTY = targetY;
-        particle.scatterCX = (originX + targetX) / 2 - (dy / distance) * arc;
-        particle.scatterCY = (originY + targetY) / 2 + (dx / distance) * arc;
-        particle.scatterDelay = random() * scatterDuration * 0.14;
-        particle.scatterTravel = Math.max(
-          120,
-          scatterDuration * (0.78 + random() * 0.2) - particle.scatterDelay
-        );
-        particle.scatterTargetSize = targetSize;
-        particle.scatterTargetAlpha = clamp(
-          star.alpha * (0.72 + random() * 0.38),
-          0.22,
-          1
-        );
-        // A small share of particles dissolves mid-flight so the field
-        // thins organically instead of landing as one solid cluster.
-        if (random() < 0.16) {
-          particle.scatterFadeStart = 0.32 + random() * 0.3;
-          particle.scatterFadeEnd = Math.min(
-            0.99,
-            particle.scatterFadeStart + 0.18 + random() * 0.2
-          );
-        } else {
-          particle.scatterFadeStart = 2;
-          particle.scatterFadeEnd = 2;
-        }
-        particle.sprite = particleSpriteFor(
-          star.color,
-          targetSize,
-          index
-        ).sprite;
-      });
-    }
-
-    function seedScatter(elapsed) {
-      if (scatterMode === "stars" && starLayout && starLayout.stars.length) {
-        seedStarTransition(elapsed);
-      } else {
-        seedScatterMotion(elapsed);
-      }
-    }
-
     function beginScatter(now, accelerated) {
       if (scatterStarted || finished) return;
       scatterStarted = now;
-      scatterMode =
-        starLayout && starLayout.stars.length ? "stars" : "random";
       scatterDuration = accelerated
         ? Math.min(420, naturalScatterDuration)
         : naturalScatterDuration;
-      if (scatterMode === "stars" && !accelerated) {
-        // Give the star-to-star handoff room to read as a gather.
-        scatterDuration = Math.max(scatterDuration, 1000);
-      }
       scatterReleased = false;
       previousScrollBehavior = document.documentElement.style.scrollBehavior;
       document.documentElement.style.scrollBehavior = "auto";
-      seedScatter(now - started);
-      stage.style.backgroundColor = mixedBackground(1);
+      seedScatterMotion(now - started);
       stage.dataset.entryPhase = "scattering";
-      stage.dataset.scatterTarget =
-        scatterMode === "stars" ? "star-map" : "random";
       stage.classList.remove("is-holding");
     }
 
@@ -1804,12 +1647,6 @@
       const progressValue = clamp(scatterElapsed / scatterDuration);
       const backdropFade =
         1 - easeInOutCubic(clamp(progressValue / 0.55));
-      // Converge the stage background to the main page background so the
-      // container disappears without a color jump.
-      context.fillStyle = mixedBackground(
-        easeInOutCubic(clamp(progressValue / 0.6))
-      );
-      context.fillRect(0, 0, width, height);
       if (backdropFade > 0.001) {
         context.save();
         context.globalAlpha = backdropFade;
@@ -1821,15 +1658,6 @@
         drawGameHud(elapsed, backdropFade);
         drawContributorLabels(elapsed, backdropFade);
       }
-      if (scatterMode === "stars") {
-        drawStarScatterFrame(now, scatterElapsed, progressValue);
-      } else {
-        drawRandomScatterFrame(scatterElapsed, progressValue);
-      }
-      context.globalAlpha = 1;
-    }
-
-    function drawRandomScatterFrame(scatterElapsed, progressValue) {
       particles.forEach((particle) => {
         const local = clamp(
           (scatterElapsed - particle.scatterDelay) /
@@ -1869,57 +1697,7 @@
         particle.renderX = x;
         particle.renderY = y;
       });
-    }
-
-    function drawStarScatterFrame(now, scatterElapsed, progressValue) {
-      particles.forEach((particle) => {
-        const local = clamp(
-          (scatterElapsed - particle.scatterDelay) /
-            Math.max(1, particle.scatterTravel)
-        );
-        const eased = easeInOutCubic(local);
-        const inverse = 1 - eased;
-        const x =
-          inverse * inverse * particle.scatterX +
-          2 * inverse * eased * particle.scatterCX +
-          eased * eased * particle.scatterTX;
-        const y =
-          inverse * inverse * particle.scatterY +
-          2 * inverse * eased * particle.scatterCY +
-          eased * eased * particle.scatterTY;
-        const size =
-          particle.size +
-          (particle.scatterTargetSize - particle.size) * eased;
-        let alpha =
-          particle.alpha +
-          (particle.scatterTargetAlpha - particle.alpha) * eased;
-        if (local >= 1) {
-          // Parked on its star: gentle twinkle while the real map boots.
-          alpha *= 0.8 + Math.sin(now * 0.011 + particle.phase * 7) * 0.2;
-        }
-        if (particle.scatterFadeStart < 1) {
-          const fade = clamp(
-            (progressValue - particle.scatterFadeStart) /
-              Math.max(
-                0.01,
-                particle.scatterFadeEnd - particle.scatterFadeStart
-              )
-          );
-          alpha *= 1 - fade;
-        }
-        if (alpha <= 0.01) return;
-        const drawSize = size * 3.2;
-        context.globalAlpha = clamp(alpha);
-        context.drawImage(
-          particle.sprite,
-          x - drawSize / 2,
-          y - drawSize / 2,
-          drawSize,
-          drawSize
-        );
-        particle.renderX = x;
-        particle.renderY = y;
-      });
+      context.globalAlpha = 1;
     }
 
     function releaseListeners() {
@@ -1944,25 +1722,8 @@
       document.body.dataset.homeIntroLocked =
         runtimeSettings.home_intro_lock_scroll ? "true" : "false";
       if (runtimeSettings.home_intro_lock_scroll) {
-        // Move the canvas out as a fixed overlay so the finished frame
-        // (particles parked on their stars, background already matching
-        // the page) cross-fades into the live star map while the stage
-        // element itself is removed right away.
-        const overlay = canvas;
         stage.remove();
-        overlay.style.position = "fixed";
-        overlay.style.inset = "0";
-        overlay.style.zIndex = "140";
-        overlay.style.pointerEvents = "none";
-        overlay.style.opacity = "1";
-        document.body.append(overlay);
         window.scrollTo(0, 0);
-        overlay.getBoundingClientRect();
-        overlay.style.transition = "opacity 420ms ease";
-        overlay.style.opacity = "0";
-        window.setTimeout(() => {
-          overlay.remove();
-        }, 460);
       } else {
         window.scrollTo(0, stage.offsetTop + stage.offsetHeight);
       }
@@ -2036,8 +1797,7 @@
           `scaleX(${scatterStartProgress + scatterProgress * (
             1 - scatterStartProgress
           )})`;
-        const releaseAt = scatterMode === "stars" ? 0.87 : 0.6;
-        if (!scatterReleased && scatterProgress >= releaseAt) {
+        if (!scatterReleased && scatterProgress >= 0.6) {
           scatterReleased = true;
           signalHomeIntroReady("complete");
         }
