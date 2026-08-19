@@ -1567,8 +1567,13 @@ dialog::backdrop {
   min-width: 0;
 }
 
-.admin-content > :first-child {
+.admin-content > .admin-panel {
   margin-top: 0;
+}
+
+.admin-panel[hidden],
+.visual-group[hidden] {
+  display: none;
 }
 
 .admin-content [id] {
@@ -1846,17 +1851,54 @@ dialog::backdrop {
   display: block;
 }
 
+.visual-settings-tabs {
+  display: flex;
+  margin: -4px 0 18px;
+  border-bottom: 1px solid var(--line);
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.visual-settings-tabs button {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 8px 13px;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.visual-settings-tabs button::after {
+  position: absolute;
+  right: 10px;
+  bottom: -1px;
+  left: 10px;
+  height: 2px;
+  content: "";
+  background: transparent;
+}
+
+.visual-settings-tabs button:hover,
+.visual-settings-tabs button:focus-visible,
+.visual-settings-tabs button[aria-selected="true"] {
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+}
+
+.visual-settings-tabs button[aria-selected="true"]::after {
+  background: var(--teal);
+}
+
 .visual-group {
   min-width: 0;
   margin: 0;
-  padding: 22px 0;
+  padding: 0;
   border: 0;
-  border-top: 1px solid var(--line);
-}
-
-.visual-group:first-child {
-  padding-top: 0;
-  border-top: 0;
 }
 
 .visual-group > legend {
@@ -2002,6 +2044,55 @@ dialog::backdrop {
   color: var(--ink);
   cursor: pointer;
   font-weight: 700;
+}
+
+.star-variable-reference {
+  display: grid;
+  margin: 10px 0 0;
+  border-bottom: 1px solid var(--line);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 18px;
+}
+
+.star-variable-reference > div {
+  display: grid;
+  min-width: 0;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+  grid-template-columns: minmax(150px, 0.72fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.star-variable-reference dt,
+.star-variable-reference dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.star-variable-reference dt {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+}
+
+.star-variable-reference code {
+  color: var(--teal-dark);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.star-variable-reference dt span {
+  color: var(--ink);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.star-variable-reference dd {
+  color: var(--ink-soft);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .star-formula-reference p {
@@ -2221,10 +2312,14 @@ dialog::backdrop {
   }
 
   .admin-nav {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    display: flex;
+    padding-bottom: 2px;
+    overflow-x: auto;
+    scrollbar-width: thin;
   }
 
   .admin-nav a {
+    flex: 0 0 auto;
     min-height: 36px;
   }
 
@@ -2348,7 +2443,7 @@ dialog::backdrop {
   }
 
   .admin-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
   }
 
   .workspace-status {
@@ -2409,6 +2504,15 @@ dialog::backdrop {
   }
 
   .visual-group-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .visual-settings-tabs {
+    margin-right: -8px;
+    margin-left: -8px;
+  }
+
+  .star-variable-reference {
     grid-template-columns: minmax(0, 1fr);
   }
 

@@ -1,6 +1,19 @@
 const assert = require("node:assert/strict");
 const engine = require("../lib/star-formula-engine");
 
+assert.equal(engine.VARIABLE_DEFINITIONS.length, 17);
+assert.ok(
+  engine.VARIABLE_DEFINITIONS.every((definition) => {
+    return (
+      definition.id &&
+      definition.label &&
+      definition.description &&
+      definition.description.length >= 8
+    );
+  }),
+  "every formula variable must explain its meaning"
+);
+
 assert.equal(
   engine.evaluateFormula("sin(pi / 2) + cos(0)", { pi: Math.PI }),
   2

@@ -53,7 +53,7 @@
     <div class="admin-layout">
       <aside class="admin-sidebar">
         <p class="admin-sidebar-label">Workspace</p>
-        <nav class="admin-nav" aria-label="后台模块">
+        <nav class="admin-nav" aria-label="后台模块" role="tablist">
           <a href="#overview">
             <i data-lucide="chart-no-axes-combined" aria-hidden="true"></i>
             <span>访问概览</span>
@@ -90,7 +90,7 @@
       </aside>
 
       <div class="admin-content">
-    <section id="overview" class="admin-section" aria-labelledby="analyticsTitle">
+    <section id="overview" class="admin-section admin-panel" aria-labelledby="analyticsTitle">
       <div class="section-title">
         <div>
           <h2 id="analyticsTitle">访问统计</h2>
@@ -113,8 +113,7 @@
       </details>
     </section>
 
-    <div class="admin-section-grid admin-section-grid--operations">
-    <section id="editing" class="admin-section">
+    <section id="editing" class="admin-section admin-panel" hidden>
       <div class="section-title">
         <div><h2>编辑策略</h2><p>控制编辑准入、阅读器模式和客户端 Diff。</p></div>
       </div>
@@ -181,7 +180,7 @@
       <div id="integrationStatus" class="integration-status"></div>
     </section>
 
-    <section id="publishing" class="admin-section">
+    <section id="publishing" class="admin-section admin-panel" hidden>
       <div class="section-title">
         <div>
           <h2>站点更新</h2>
@@ -205,14 +204,62 @@
       </div>
       <div id="siteUpdateFeedback" class="feedback" role="status" aria-live="polite"></div>
     </section>
-    </div>
 
-    <section id="visuals" class="admin-section admin-section--visuals">
+    <section id="visuals" class="admin-section admin-section--visuals admin-panel" hidden>
       <div class="section-title">
         <div><h2>网站视觉</h2><p>目录、阅读与主页动态效果。</p></div>
       </div>
       <form id="visualSettingsForm" class="visual-settings-form">
-        <fieldset class="visual-group">
+        <div class="visual-settings-tabs" role="tablist" aria-label="视觉设置分组">
+          <button
+            id="visualTabAppearance"
+            type="button"
+            role="tab"
+            aria-controls="visualPanelAppearance"
+            aria-selected="true"
+            data-visual-panel-target="appearance"
+          >
+            基础外观
+          </button>
+          <button
+            id="visualTabRelations"
+            type="button"
+            role="tab"
+            aria-controls="visualPanelRelations"
+            aria-selected="false"
+            data-visual-panel-target="relations"
+          >
+            关系与点亮
+          </button>
+          <button
+            id="visualTabBrightness"
+            type="button"
+            role="tab"
+            aria-controls="visualPanelBrightness"
+            aria-selected="false"
+            data-visual-panel-target="brightness"
+          >
+            亮度与等级
+          </button>
+          <button
+            id="visualTabIntro"
+            type="button"
+            role="tab"
+            aria-controls="visualPanelIntro"
+            aria-selected="false"
+            data-visual-panel-target="intro"
+          >
+            入场动画
+          </button>
+        </div>
+
+        <fieldset
+          id="visualPanelAppearance"
+          class="visual-group"
+          role="tabpanel"
+          aria-labelledby="visualTabAppearance"
+          data-visual-panel="appearance"
+        >
           <legend>基础外观</legend>
           <div class="visual-group-grid">
         <label>
@@ -267,7 +314,14 @@
           </div>
         </fieldset>
 
-        <fieldset class="visual-group">
+        <fieldset
+          id="visualPanelRelations"
+          class="visual-group"
+          role="tabpanel"
+          aria-labelledby="visualTabRelations"
+          data-visual-panel="relations"
+          hidden
+        >
           <legend>关系与点亮</legend>
           <div class="visual-group-grid">
         <label>
@@ -368,7 +422,14 @@
           </div>
         </fieldset>
 
-        <fieldset class="visual-group">
+        <fieldset
+          id="visualPanelBrightness"
+          class="visual-group"
+          role="tabpanel"
+          aria-labelledby="visualTabBrightness"
+          data-visual-panel="brightness"
+          hidden
+        >
           <legend>星体亮度</legend>
           <div class="visual-group-grid">
         <label class="check-label">
@@ -460,18 +521,11 @@
           </div>
           <details class="star-formula-reference">
             <summary>公式变量与函数</summary>
-            <p>
-              current_brightness, initial_brightness, min_brightness,
-              max_brightness, brightness_span, reference_count,
-              referenced_by_count, strong_relation_count, activity_7_count,
-              activity_30_count, modification_7_count,
-              modification_30_count, contribution_count, contributor_count,
-              commit_count, pi, e
-            </p>
-            <p>
-              sin, cos, tan, exp, log, log10, sqrt, pow, abs, min, max,
-              round, floor, ceil；支持 + - * / % ^ 和括号。
-            </p>
+            <dl
+              id="starFormulaVariableReference"
+              class="star-variable-reference"
+            ></dl>
+            <p id="starFormulaFunctionReference"></p>
           </details>
         </fieldset>
         <fieldset class="star-rule-editor">
@@ -489,7 +543,14 @@
         </fieldset>
         </fieldset>
 
-        <fieldset class="visual-group">
+        <fieldset
+          id="visualPanelIntro"
+          class="visual-group"
+          role="tabpanel"
+          aria-labelledby="visualTabIntro"
+          data-visual-panel="intro"
+          hidden
+        >
           <legend>入场动画</legend>
           <div class="visual-group-grid">
         <label>
@@ -549,7 +610,7 @@
       </form>
     </section>
 
-    <div id="contributions" class="admin-section-grid">
+    <div id="contributions" class="admin-section-grid admin-panel" hidden>
     <section class="admin-section">
       <div class="section-title">
         <div><h2>待处理 PR</h2><p>网页提交与 GitHub 仓库外部贡献。</p></div>
@@ -570,7 +631,7 @@
     </section>
     </div>
 
-    <section id="email" class="admin-section">
+    <section id="email" class="admin-section admin-panel" hidden>
       <div class="section-title">
         <div><h2>SMTP 邮件</h2><p>管理员通知发件设置。</p></div>
         <span id="smtpConfigStatus" class="count-badge">未配置</span>
@@ -633,7 +694,7 @@
       </form>
     </section>
 
-    <div id="access" class="admin-section-grid">
+    <div id="access" class="admin-section-grid admin-panel" hidden>
     <section class="admin-section">
       <div class="section-title">
         <div><h2>管理员申请</h2><p>审批后用户立即获得管理后台权限。</p></div>
@@ -650,7 +711,7 @@
     </section>
     </div>
 
-    <div id="users" class="admin-section-grid">
+    <div id="users" class="admin-section-grid admin-panel" hidden>
     <section class="admin-section">
       <div class="section-title">
         <div><h2>邮件通知记录</h2><p>管理员与贡献者邮件的发送状态。</p></div>

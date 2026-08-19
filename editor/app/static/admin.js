@@ -22,43 +22,179 @@ function setupAdminNavigation() {
       return { link, target: id ? document.getElementById(id) : null };
     })
     .filter((item) => item.target);
-  let scheduled = false;
+  if (!targets.length) return;
 
-  function update() {
-    scheduled = false;
-    const threshold =
-      Number.parseFloat(
-        getComputedStyle(document.documentElement)
-          .getPropertyValue("--header-height")
-      ) + 90;
-    let active = targets[0];
-    for (const item of targets) {
-      if (item.target.getBoundingClientRect().top <= threshold) {
-        active = item;
-      }
-    }
+  function activate(id, options = {}) {
+    const active =
+      targets.find((item) => item.target.id === id) || targets[0];
     for (const item of targets) {
       const selected = item === active;
+      if (!item.link.id) item.link.id = `adminNav-${item.target.id}`;
+      item.target.hidden = !selected;
+      item.target.classList.toggle("is-active", selected);
+      item.target.setAttribute("role", "tabpanel");
+      item.target.setAttribute("aria-labelledby", item.link.id);
       item.link.classList.toggle("is-active", selected);
-      if (selected) item.link.setAttribute("aria-current", "location");
+      item.link.setAttribute("role", "tab");
+      item.link.setAttribute("aria-controls", item.target.id);
+      item.link.setAttribute("aria-selected", String(selected));
+      item.link.tabIndex = selected ? 0 : -1;
+      if (selected) item.link.setAttribute("aria-current", "page");
       else item.link.removeAttribute("aria-current");
+    }
+    if (
+      options.updateHistory &&
+      window.location.hash !== `#${active.target.id}`
+    ) {
+      window.history.pushState(null, "", `#${active.target.id}`);
+    }
+    if (options.scroll) {
+      const top = document.querySelector(".admin-layout")?.offsetTop || 0;
+      window.scrollTo({ top: Math.max(0, top - 76), behavior: "auto" });
     }
   }
 
-  window.addEventListener(
-    "scroll",
-    () => {
-      if (scheduled) return;
-      scheduled = true;
-      requestAnimationFrame(update);
-    },
-    { passive: true }
+  links.forEach((link, index) => {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      activate(link.hash.slice(1), {
+        updateHistory: true,
+        scroll: true
+      });
+    });
+    link.addEventListener("keydown", (event) => {
+      if (
+        ![
+          "ArrowUp",
+          "ArrowDown",
+          "ArrowLeft",
+          "ArrowRight",
+          "Home",
+          "End"
+        ].includes(event.key)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      let targetIndex = index;
+      if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+        targetIndex = (index - 1 + links.length) % links.length;
+      } else if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+        targetIndex = (index + 1) % links.length;
+      } else if (event.key === "Home") {
+        targetIndex = 0;
+      } else if (event.key === "End") {
+        targetIndex = links.length - 1;
+      }
+      const targetLink = links[targetIndex];
+      activate(targetLink.hash.slice(1), { updateHistory: true });
+      targetLink.focus();
+    });
+  });
+  window.addEventListener("popstate", () => {
+    activate(window.location.hash.slice(1));
+  });
+  activate(window.location.hash.slice(1));
+}
+
+function setupVisualSettingsNavigation() {
+  const storageKey = "gck-admin-visual-panel:v1";
+  const buttons = Array.from(
+    document.querySelectorAll("[data-visual-panel-target]")
   );
-  links.forEach((link) => link.addEventListener("click", () => {
-    links.forEach((item) => item.classList.remove("is-active"));
-    link.classList.add("is-active");
-  }));
-  update();
+  const panels = Array.from(
+    document.querySelectorAll("[data-visual-panel]")
+  );
+  if (!buttons.length || !panels.length) return;
+
+  function activate(id, focus = false) {
+    const selectedButton =
+      buttons.find((button) => button.dataset.visualPanelTarget === id) ||
+      buttons[0];
+    const selectedId = selectedButton.dataset.visualPanelTarget;
+    for (const button of buttons) {
+      const selected = button === selectedButton;
+      button.setAttribute("aria-selected", String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    }
+    for (const panel of panels) {
+      panel.hidden = panel.dataset.visualPanel !== selectedId;
+    }
+    try {
+      window.localStorage.setItem(storageKey, selectedId);
+    } catch {
+      // The first visual panel remains the fallback without local storage.
+    }
+    if (focus) selectedButton.focus();
+  }
+
+  buttons.forEach((button, index) => {
+    button.addEventListener("click", () => {
+      activate(button.dataset.visualPanelTarget);
+    });
+    button.addEventListener("keydown", (event) => {
+      const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+      if (!keys.includes(event.key)) return;
+      event.preventDefault();
+      let targetIndex = index;
+      if (event.key === "ArrowLeft") {
+        targetIndex = (index - 1 + buttons.length) % buttons.length;
+      } else if (event.key === "ArrowRight") {
+        targetIndex = (index + 1) % buttons.length;
+      } else if (event.key === "Home") {
+        targetIndex = 0;
+      } else if (event.key === "End") {
+        targetIndex = buttons.length - 1;
+      }
+      activate(buttons[targetIndex].dataset.visualPanelTarget, true);
+    });
+  });
+
+  let initial = "";
+  try {
+    initial = window.localStorage.getItem(storageKey) || "";
+  } catch {
+    // Use the first visual panel.
+  }
+  activate(initial);
+  let invalidPanelActivated = false;
+  byId("visualSettingsForm").addEventListener(
+    "invalid",
+    (event) => {
+      if (invalidPanelActivated) return;
+      const panel = event.target.closest("[data-visual-panel]");
+      if (!panel) return;
+      invalidPanelActivated = true;
+      if (panel.hidden) activate(panel.dataset.visualPanel);
+      window.setTimeout(() => {
+        invalidPanelActivated = false;
+      }, 0);
+    },
+    true
+  );
+}
+
+function renderStarFormulaReference() {
+  const variableTarget = byId("starFormulaVariableReference");
+  const functionTarget = byId("starFormulaFunctionReference");
+  if (!variableTarget || !functionTarget || !starFormulaEngine) return;
+  variableTarget.replaceChildren();
+  for (const definition of starFormulaEngine.VARIABLE_DEFINITIONS) {
+    const row = document.createElement("div");
+    const term = document.createElement("dt");
+    const identifier = document.createElement("code");
+    const label = document.createElement("span");
+    const description = document.createElement("dd");
+    identifier.textContent = definition.id;
+    label.textContent = definition.label;
+    description.textContent = definition.description;
+    term.append(identifier, label);
+    row.append(term, description);
+    variableTarget.append(row);
+  }
+  functionTarget.textContent =
+    `函数：${starFormulaEngine.FUNCTIONS.join(", ")}；` +
+    "运算符：+ - * / % ^ 和括号。";
 }
 
 function formatNumber(value) {
@@ -1155,6 +1291,8 @@ byId("logoutButton").addEventListener("click", async () => {
 
 (async () => {
   setupAdminNavigation();
+  setupVisualSettingsNavigation();
+  renderStarFormulaReference();
   const session = await api("/session");
   if (!session.authenticated || session.user.role !== "admin") {
     location.href = "./";
