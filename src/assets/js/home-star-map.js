@@ -1070,9 +1070,22 @@
       return runtimeSettings.home_star_strong_relation_style;
     }
 
-    function applyLineStyle(type, alpha, time) {
+    // Deterministic per-edge bend so the constellation arcs are stable
+    // frame to frame but vary organically from edge to edge.
+    function edgeCurve(edge, source, target) {
+      const seed = hashSeed(illumination.edgeId(edge));
+      const bend = ((seed % 1000) / 1000 - 0.5) * 0.32;
+      const dx = target.x - source.x;
+      const dy = target.y - source.y;
+      const length = Math.hypot(dx, dy) || 1;
+      return {
+        cx: (source.x + target.x) / 2 - (dy / length) * length * bend,
+        cy: (source.y + target.y) / 2 + (dx / length) * length * bend
+      };
+    }
+
+    function applyLineStyle(type, time) {
       const style = relationStyle(type);
-      context.strokeStyle = `rgba(${relationColors[type]}, ${alpha})`;
       context.lineWidth = style === "glow" ? 1.35 : 0.8;
       context.setLineDash(style === "dashed" ? [5, 6] : []);
       context.shadowColor =
@@ -1081,9 +1094,50 @@
         style === "glow" ? 5 + Math.sin(time * 0.003) * 1.5 : 0;
     }
 
+    // Stroke one edge as a curved arc whose color fades in and out toward
+    // the endpoints — the "deep space energy thread" look.
+    function strokeEdge(edge, source, target, alpha) {
+      const curve = edgeCurve(edge, source, target);
+      const rgb = relationColors[edge.type];
+      const gradient = context.createLinearGradient(
+        source.x,
+        source.y,
+        target.x,
+        target.y
+      );
+      gradient.addColorStop(0, `rgba(${rgb}, 0)`);
+      gradient.addColorStop(0.22, `rgba(${rgb}, ${alpha})`);
+      gradient.addColorStop(0.78, `rgba(${rgb}, ${alpha})`);
+      gradient.addColorStop(1, `rgba(${rgb}, 0)`);
+      context.strokeStyle = gradient;
+      context.beginPath();
+      context.moveTo(source.x, source.y);
+      context.quadraticCurveTo(curve.cx, curve.cy, target.x, target.y);
+      context.stroke();
+      return curve;
+    }
+
+    // A bright pulse traveling along a highlighted edge — the sci-fi
+    // "data stream" accent on the active knowledge path.
+    function drawEdgePulse(edge, source, target, curve, time) {
+      const seed = hashSeed(`${illumination.edgeId(edge)}:pulse`);
+      const t = (time * 0.00042 + (seed % 1000) / 1000) % 1;
+      const u = 1 - t;
+      const px = u * u * source.x + 2 * u * t * curve.cx + t * t * target.x;
+      const py = u * u * source.y + 2 * u * t * curve.cy + t * t * target.y;
+      const sprite = haloSprite(null, "#ffffff");
+      const size = 16;
+      context.globalCompositeOperation = "lighter";
+      context.globalAlpha = 0.85;
+      context.drawImage(sprite, px - size / 2, py - size / 2, size, size);
+      context.globalAlpha = 1;
+      context.globalCompositeOperation = "source-over";
+    }
+
     function drawEdges(time) {
       const visibility = runtimeSettings.home_star_relation_visibility;
       const distanceLimit = width < 700 ? 100 : 150;
+      const pulses = [];
       for (const edge of edges) {
         const source = starById.get(edge.source);
         const target = starById.get(edge.target);
@@ -1096,19 +1150,24 @@
           visibility === "always" ||
           (visibility === "near" && distance <= distanceLimit);
         if (!visible) continue;
-        const alpha = highlighted
+        const baseAlpha = highlighted
           ? 0.78
           : visibility === "always"
             ? 0.18
             : 0.28 * (1 - distance / distanceLimit);
-        applyLineStyle(edge.type, Math.max(0.05, alpha), time);
-        context.beginPath();
-        context.moveTo(source.x, source.y);
-        context.lineTo(target.x, target.y);
-        context.stroke();
+        // Slow per-edge breathing keeps the web of relations alive.
+        const seed = hashSeed(illumination.edgeId(edge));
+        const breath = 0.82 + 0.18 * Math.sin(time * 0.0007 + (seed % 628) / 100);
+        const alpha = Math.max(0.05, baseAlpha * breath);
+        applyLineStyle(edge.type, time);
+        const curve = strokeEdge(edge, source, target, alpha);
+        if (highlighted) pulses.push([edge, source, target, curve]);
       }
       context.setLineDash([]);
       context.shadowBlur = 0;
+      for (const [edge, source, target, curve] of pulses) {
+        drawEdgePulse(edge, source, target, curve, time);
+      }
     }
 
     function variation(star, time) {
