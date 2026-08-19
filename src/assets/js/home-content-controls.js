@@ -76,12 +76,28 @@
     const button = documentRef.querySelector("[data-home-content-toggle]");
     if (!button) return null;
 
-    let hidden = readHidden(storage);
+    let portalMode =
+      documentRef.body.dataset.homeStarExperience ===
+      "contribution_portal";
+    try {
+      const cached = JSON.parse(
+        storage?.getItem("gck-home-intro-settings") || "null"
+      );
+      portalMode =
+        portalMode ||
+        cached?.home_star_experience_mode ===
+          "contribution_portal";
+    } catch {
+      // The server setting will reconcile the mode after bootstrap.
+    }
+    let hidden = portalMode ? false : readHidden(storage);
     let hiddenReason = hidden ? "manual" : "";
     let idleTimeoutSeconds = DEFAULT_IDLE_TIMEOUT_SECONDS;
     let idleTimer = 0;
     let lastTimerResetAt = 0;
     let ignoreActivityUntil = 0;
+    let portalPhase = "collapsed";
+    let idlePortalActive = false;
     let destroyed = false;
 
     function normalizeIdleTimeout(value) {
@@ -98,13 +114,41 @@
       idleTimer = 0;
     }
 
+    function requestPortal(action, reason) {
+      if (
+        !portalMode ||
+        !view ||
+        typeof view.CustomEvent !== "function" ||
+        typeof view.dispatchEvent !== "function"
+      ) {
+        return false;
+      }
+      view.dispatchEvent(
+        new view.CustomEvent("gck:contribution-space-request", {
+          detail: {
+            action,
+            reason: reason || "idle"
+          }
+        })
+      );
+      return true;
+    }
+
+    function closeIdlePortal(reason) {
+      if (!portalMode || !idlePortalActive) return false;
+      idlePortalActive = false;
+      requestPortal("close", reason || "activity");
+      return true;
+    }
+
     function scheduleIdleTimer() {
       clearIdleTimer();
       if (
         destroyed ||
         hidden ||
         idleTimeoutSeconds <= 0 ||
-        documentRef.hidden
+        documentRef.hidden ||
+        (portalMode && portalPhase !== "collapsed")
       ) {
         return;
       }
@@ -114,6 +158,10 @@
           documentRef.body.classList.contains("has-entry-sequence")
         ) {
           scheduleIdleTimer();
+          return;
+        }
+        if (portalMode) {
+          idlePortalActive = requestPortal("open", "idle");
           return;
         }
         apply(true, false, "idle");
@@ -161,6 +209,7 @@
     }
 
     function onClick() {
+      if (portalMode) return;
       apply(!hidden, true, "manual");
     }
 
@@ -174,6 +223,16 @@
       ) {
         return;
       }
+      if (portalMode) {
+        if (closeIdlePortal("activity")) return;
+        if (
+          portalPhase === "collapsed" &&
+          now() - lastTimerResetAt >= 250
+        ) {
+          scheduleIdleTimer();
+        }
+        return;
+      }
       if (hiddenReason === "idle") {
         apply(false, false, "");
         return;
@@ -183,9 +242,19 @@
       }
     }
 
+    function onPortalActivityCapture(event) {
+      if (!closeIdlePortal("activity")) return;
+      if (event?.cancelable) event.preventDefault();
+      event?.stopPropagation?.();
+    }
+
     function onVisibilityChange() {
       if (documentRef.hidden) {
         clearIdleTimer();
+      } else if (portalMode) {
+        if (!closeIdlePortal("visibility")) {
+          scheduleIdleTimer();
+        }
       } else if (hiddenReason === "idle") {
         apply(false, false, "");
       } else if (!hidden) {
@@ -197,9 +266,17 @@
 
     function updateIdleTimeout(value) {
       idleTimeoutSeconds = normalizeIdleTimeout(value);
-      if (idleTimeoutSeconds <= 0 && hiddenReason === "idle") {
-        apply(false, false, "");
-      } else if (!hidden) {
+      if (idleTimeoutSeconds <= 0) {
+        if (portalMode) closeIdlePortal("disabled");
+        if (hiddenReason === "idle") {
+          apply(false, false, "");
+        } else {
+          clearIdleTimer();
+        }
+      } else if (
+        !hidden &&
+        (!portalMode || portalPhase === "collapsed")
+      ) {
         scheduleIdleTimer();
       }
       documentRef.body.dataset.homeContentIdleTimeout =
@@ -208,18 +285,59 @@
     }
 
     function onVisualSettings(event) {
+      if (!event.detail) return;
       if (
-        !event.detail ||
-        !Object.hasOwn(
+        Object.hasOwn(
+          event.detail,
+          "home_star_experience_mode"
+        )
+      ) {
+        const nextPortalMode =
+          event.detail.home_star_experience_mode ===
+          "contribution_portal";
+        if (!nextPortalMode && portalMode) {
+          closeIdlePortal("mode-change");
+        }
+        portalMode = nextPortalMode;
+        if (portalMode && hidden) {
+          apply(false, false, "");
+        } else if (
+          !hidden &&
+          (!portalMode || portalPhase === "collapsed")
+        ) {
+          scheduleIdleTimer();
+        }
+        documentRef.body.dataset.homeContentControls =
+          portalMode ? "portal" : "immersive";
+      }
+      if (
+        Object.hasOwn(
           event.detail,
           "home_content_idle_timeout_seconds"
         )
       ) {
+        updateIdleTimeout(
+          event.detail.home_content_idle_timeout_seconds
+        );
+      }
+    }
+
+    function onPortalState(event) {
+      const phase = event.detail?.phase;
+      if (
+        !["collapsed", "opening", "expanded", "closing"].includes(
+          phase
+        )
+      ) {
         return;
       }
-      updateIdleTimeout(
-        event.detail?.home_content_idle_timeout_seconds
-      );
+      portalPhase = phase;
+      if (phase === "collapsed") {
+        idlePortalActive = false;
+        scheduleIdleTimer();
+      } else {
+        clearIdleTimer();
+      }
     }
 
     button.addEventListener("click", onClick);
@@ -228,23 +346,30 @@
       "pointerdown",
       "touchstart",
       "keydown",
+      "wheel",
       "scroll"
     ];
     activityEvents.forEach(function (eventName) {
       view?.addEventListener(eventName, onActivity, { passive: true });
+      view?.addEventListener(eventName, onPortalActivityCapture, {
+        capture: true,
+        passive: false
+      });
     });
     documentRef.addEventListener(
       "visibilitychange",
       onVisibilityChange
     );
     view?.addEventListener("gck:visual-settings", onVisualSettings);
+    view?.addEventListener(
+      "gck:contribution-space-state",
+      onPortalState
+    );
     apply(hidden, false, hiddenReason);
 
     if (view?.GCK_VISUAL_SETTINGS?.then) {
       view.GCK_VISUAL_SETTINGS.then(function (visualSettings) {
-        updateIdleTimeout(
-          visualSettings?.home_content_idle_timeout_seconds
-        );
+        onVisualSettings({ detail: visualSettings || {} });
       });
     }
 
@@ -255,6 +380,11 @@
         button.removeEventListener("click", onClick);
         activityEvents.forEach(function (eventName) {
           view?.removeEventListener(eventName, onActivity);
+          view?.removeEventListener(
+            eventName,
+            onPortalActivityCapture,
+            { capture: true }
+          );
         });
         documentRef.removeEventListener(
           "visibilitychange",
@@ -263,6 +393,10 @@
         view?.removeEventListener(
           "gck:visual-settings",
           onVisualSettings
+        );
+        view?.removeEventListener(
+          "gck:contribution-space-state",
+          onPortalState
         );
       },
       isHidden: function () {
@@ -273,6 +407,12 @@
       },
       idleTimeout: function () {
         return idleTimeoutSeconds;
+      },
+      portalPhase: function () {
+        return portalPhase;
+      },
+      idlePortalActive: function () {
+        return idlePortalActive;
       },
       setHidden: function (nextHidden) {
         return apply(nextHidden, true, "manual");

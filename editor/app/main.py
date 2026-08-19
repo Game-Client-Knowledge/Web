@@ -288,6 +288,22 @@ class VisualSettingsRequest(BaseModel):
     )
     home_star_scope: str = "hero"
     home_star_render_mode: str = "2d"
+    home_star_experience_mode: str = "immersive"
+    home_star_portal_rotation_speed: float = Field(
+        default=2.6,
+        ge=0,
+        le=30,
+    )
+    home_star_portal_size_percent: float = Field(
+        default=34,
+        ge=10,
+        le=100,
+    )
+    home_star_portal_brightness_percent: float = Field(
+        default=42,
+        ge=10,
+        le=100,
+    )
     home_star_relation_visibility: str = "near"
     home_star_strong_relation_style: str = "solid"
     home_star_reference_relation_style: str = "dashed"
@@ -361,6 +377,31 @@ class VisualSettingsRequest(BaseModel):
         default=1.4,
         ge=0.5,
         le=4,
+    )
+    home_star_3d_min_depth: float = Field(
+        default=280,
+        ge=100,
+        le=1000,
+    )
+    home_star_3d_halo_max_css_size: float = Field(
+        default=200,
+        ge=40,
+        le=600,
+    )
+    home_star_3d_core_max_css_size: float = Field(
+        default=36,
+        ge=8,
+        le=120,
+    )
+    home_star_3d_spike_max_css_size: float = Field(
+        default=240,
+        ge=40,
+        le=800,
+    )
+    home_star_3d_pulse_max_css_size: float = Field(
+        default=36,
+        ge=8,
+        le=120,
     )
     home_star_active_edge_mode: str = "single_path"
     home_star_brightness_rules: list[StarBrightnessRuleRequest] = Field(
@@ -1101,6 +1142,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "single_path",
         }:
             active_edge_mode = "single_path"
+        experience_mode = db.setting(
+            "home_star_experience_mode",
+            "immersive",
+        )
+        if experience_mode not in {
+            "immersive",
+            "contribution_portal",
+        }:
+            experience_mode = "immersive"
         return {
             "home_background_style": db.setting(
                 "home_background_style", "old_star_map"
@@ -1120,6 +1170,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "home_star_scope": db.setting("home_star_scope", "hero"),
             "home_star_render_mode": db.setting(
                 "home_star_render_mode", "2d"
+            ),
+            "home_star_experience_mode": experience_mode,
+            "home_star_portal_rotation_speed": max(
+                0,
+                min(
+                    30,
+                    setting_float(
+                        "home_star_portal_rotation_speed",
+                        2.6,
+                    ),
+                ),
+            ),
+            "home_star_portal_size_percent": max(
+                10,
+                min(
+                    100,
+                    setting_float(
+                        "home_star_portal_size_percent",
+                        34,
+                    ),
+                ),
+            ),
+            "home_star_portal_brightness_percent": max(
+                10,
+                min(
+                    100,
+                    setting_float(
+                        "home_star_portal_brightness_percent",
+                        42,
+                    ),
+                ),
             ),
             "home_star_relation_visibility": db.setting(
                 "home_star_relation_visibility", "near"
@@ -1233,6 +1314,53 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     setting_float(
                         "home_star_selected_contributor_line_width",
                         1.4,
+                    ),
+                ),
+            ),
+            "home_star_3d_min_depth": max(
+                100,
+                min(
+                    1000,
+                    setting_float("home_star_3d_min_depth", 280),
+                ),
+            ),
+            "home_star_3d_halo_max_css_size": max(
+                40,
+                min(
+                    600,
+                    setting_float(
+                        "home_star_3d_halo_max_css_size",
+                        200,
+                    ),
+                ),
+            ),
+            "home_star_3d_core_max_css_size": max(
+                8,
+                min(
+                    120,
+                    setting_float(
+                        "home_star_3d_core_max_css_size",
+                        36,
+                    ),
+                ),
+            ),
+            "home_star_3d_spike_max_css_size": max(
+                40,
+                min(
+                    800,
+                    setting_float(
+                        "home_star_3d_spike_max_css_size",
+                        240,
+                    ),
+                ),
+            ),
+            "home_star_3d_pulse_max_css_size": max(
+                8,
+                min(
+                    120,
+                    setting_float(
+                        "home_star_3d_pulse_max_css_size",
+                        36,
                     ),
                 ),
             ),
@@ -3399,6 +3527,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "3d-orbit",
         }:
             raise HTTPException(status_code=422, detail="主页星图渲染模式无效")
+        if payload.home_star_experience_mode not in {
+            "immersive",
+            "contribution_portal",
+        }:
+            raise HTTPException(status_code=422, detail="主页星图体验模式无效")
         if payload.home_star_relation_visibility not in {
             "always",
             "near",
@@ -3519,6 +3652,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "home_background_style": payload.home_background_style,
             "home_star_scope": payload.home_star_scope,
             "home_star_render_mode": payload.home_star_render_mode,
+            "home_star_experience_mode": (
+                payload.home_star_experience_mode
+            ),
+            "home_star_portal_rotation_speed": str(
+                payload.home_star_portal_rotation_speed
+            ),
+            "home_star_portal_size_percent": str(
+                payload.home_star_portal_size_percent
+            ),
+            "home_star_portal_brightness_percent": str(
+                payload.home_star_portal_brightness_percent
+            ),
             "home_star_relation_visibility": (
                 payload.home_star_relation_visibility
             ),
@@ -3586,6 +3731,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_star_selected_contributor_line_width": str(
                 payload.home_star_selected_contributor_line_width
+            ),
+            "home_star_3d_min_depth": str(
+                payload.home_star_3d_min_depth
+            ),
+            "home_star_3d_halo_max_css_size": str(
+                payload.home_star_3d_halo_max_css_size
+            ),
+            "home_star_3d_core_max_css_size": str(
+                payload.home_star_3d_core_max_css_size
+            ),
+            "home_star_3d_spike_max_css_size": str(
+                payload.home_star_3d_spike_max_css_size
+            ),
+            "home_star_3d_pulse_max_css_size": str(
+                payload.home_star_3d_pulse_max_css_size
             ),
             "home_star_active_edge_mode": (
                 payload.home_star_active_edge_mode

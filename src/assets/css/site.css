@@ -769,6 +769,306 @@ body[data-editor-state="loading"] [data-account-label] {
   backdrop-filter: blur(4px);
 }
 
+.contribution-space-section,
+.contribution-space-return {
+  display: none;
+}
+
+.home-star-experience-portal {
+  color: var(--ink);
+  background: #ffffff;
+}
+
+.home-star-experience-portal .library-intro {
+  background: transparent;
+  isolation: auto;
+}
+
+.library-intro-heading-row {
+  min-width: 0;
+}
+
+.home-star-experience-portal .library-intro-overlay {
+  z-index: 130;
+}
+
+.home-star-experience-portal .library-intro-heading-row {
+  display: grid;
+  min-width: 0;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 48px;
+}
+
+.home-star-experience-portal .contribution-ledger {
+  background: #ffffff;
+}
+
+.home-star-experience-portal .contribution-band {
+  background: #ffffff;
+  border-color: var(--line);
+}
+
+.home-star-experience-portal .site-footer {
+  color: var(--ink-soft);
+  background: #ffffff;
+  border-top: 1px solid var(--line);
+}
+
+.home-star-experience-portal .site-footer strong {
+  color: var(--ink);
+}
+
+.home-star-experience-portal .footer-meta {
+  color: var(--ink-faint);
+}
+
+.home-star-experience-portal .contribution-space-section {
+  position: relative;
+  display: block;
+  width: 260px;
+  color: #edf7f3;
+  background: transparent;
+  border: 0;
+  justify-self: end;
+}
+
+.contribution-space-section-inner {
+  display: grid;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  gap: 10px;
+}
+
+.contribution-space-heading {
+  position: relative;
+  z-index: 130;
+}
+
+.contribution-space-heading h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.contribution-space-portal {
+  position: relative;
+  z-index: 130;
+  display: grid;
+  width: 260px;
+  aspect-ratio: 1;
+  padding: 16px;
+  justify-self: end;
+  color: #edf7f3;
+  background: #07110f;
+  border: 1px solid rgba(99, 145, 132, 0.34);
+  border-radius: 4px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
+  place-items: end start;
+  text-align: left;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.contribution-space-portal:active {
+  cursor: grabbing;
+}
+
+.contribution-space-portal:hover {
+  background: #07110f;
+  border-color: rgba(156, 224, 205, 0.64);
+}
+
+.contribution-space-portal:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 4px;
+}
+
+.contribution-space-portal-label {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 3px;
+}
+
+.contribution-space-portal-label small {
+  color: #9ce0cd;
+  font-size: 10px;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.contribution-space-portal-label strong {
+  color: #ffffff;
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+.contribution-space-portal > svg,
+.contribution-space-portal > i {
+  position: absolute;
+  z-index: 2;
+  top: 15px;
+  right: 15px;
+  width: 18px;
+  height: 18px;
+}
+
+.contribution-space-backdrop {
+  position: fixed;
+  z-index: 1;
+  inset: 0;
+  display: none;
+  background: #07110f;
+  clip-path: inset(
+    var(--contribution-space-top, 50%)
+    var(--contribution-space-right, 50%)
+    var(--contribution-space-bottom, 50%)
+    var(--contribution-space-left, 50%)
+    round 4px
+  );
+  pointer-events: none;
+}
+
+.contribution-space-interaction-lock {
+  position: fixed;
+  z-index: 10004;
+  inset: 0;
+  display: none;
+  background: transparent;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: wait;
+}
+
+.home-contribution-space-opening
+  .contribution-space-interaction-lock,
+.home-contribution-space-closing
+  .contribution-space-interaction-lock {
+  display: block;
+}
+
+.home-contribution-space-ready .contribution-space-portal,
+.home-contribution-space-ready .contribution-space-portal:hover {
+  background: transparent;
+}
+
+.home-star-experience-portal.home-contribution-space-ready
+  .contribution-space-backdrop {
+  display: block;
+}
+
+.home-star-experience-portal
+  .knowledge-field[data-contribution-space] {
+  position: fixed;
+  z-index: 2;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  clip-path: inset(
+    var(--contribution-space-top, 50%)
+    var(--contribution-space-right, 50%)
+    var(--contribution-space-bottom, 50%)
+    var(--contribution-space-left, 50%)
+    round 4px
+  );
+  pointer-events: none;
+}
+
+.home-contribution-space-opening .contribution-space-backdrop,
+.home-contribution-space-expanded .contribution-space-backdrop,
+.home-contribution-space-closing .contribution-space-backdrop {
+  display: block;
+}
+
+.home-contribution-space-opening
+  .knowledge-field[data-contribution-space],
+.home-contribution-space-expanded
+  .knowledge-field[data-contribution-space],
+.home-contribution-space-closing
+  .knowledge-field[data-contribution-space] {
+  z-index: 10001;
+}
+
+.home-contribution-space-opening .contribution-space-backdrop,
+.home-contribution-space-expanded .contribution-space-backdrop,
+.home-contribution-space-closing .contribution-space-backdrop {
+  z-index: 10000;
+}
+
+.home-contribution-space-opening .library-intro-overlay,
+.home-contribution-space-expanded .library-intro-overlay,
+.home-contribution-space-closing .library-intro-overlay {
+  z-index: 10002;
+  pointer-events: none;
+}
+
+.home-contribution-space-opening,
+.home-contribution-space-expanded,
+.home-contribution-space-closing {
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+}
+
+.home-contribution-space-expanded .site-header,
+.home-contribution-space-expanded .library-intro-overlay,
+.home-contribution-space-expanded .contribution-ledger,
+.home-contribution-space-expanded .catalog-overview,
+.home-contribution-space-expanded .contribution-band,
+.home-contribution-space-expanded .site-footer {
+  pointer-events: none;
+}
+
+.home-star-experience-portal .site-header,
+.home-star-experience-portal .library-intro-overlay,
+.home-star-experience-portal .contribution-space-section,
+.home-star-experience-portal .contribution-ledger,
+.home-star-experience-portal .catalog-overview,
+.home-star-experience-portal .contribution-band,
+.home-star-experience-portal .site-footer {
+  transition:
+    opacity 360ms ease,
+    visibility 360ms ease;
+}
+
+.home-contribution-space-expanded .contribution-space-return {
+  position: fixed;
+  z-index: 10003;
+  top: 20px;
+  left: 20px;
+  display: inline-flex;
+  min-height: 40px;
+  padding: 0 14px;
+  color: #edf7f3;
+  background: rgba(7, 17, 15, 0.82);
+  border: 1px solid rgba(156, 224, 205, 0.38);
+  border-radius: 4px;
+  align-items: center;
+  gap: 8px;
+  backdrop-filter: blur(4px);
+}
+
+.home-contribution-space-expanded .contribution-space-return:hover {
+  color: #ffffff;
+  background: rgba(18, 52, 43, 0.94);
+  border-color: rgba(156, 224, 205, 0.68);
+}
+
+.home-contribution-space-return svg,
+.home-contribution-space-return i {
+  width: 18px;
+  height: 18px;
+}
+
+.page-home.home-star-experience-portal .home-content-toggle {
+  display: none;
+}
+
 .page-home.home-content-unmasked .library-intro,
 .page-home.home-content-unmasked .contribution-ledger,
 .page-home.home-content-unmasked .track-overview-card,
@@ -5077,6 +5377,28 @@ body.has-comments-open .reader-comments {
 }
 
 @media (max-width: 900px) {
+  .home-star-experience-portal .library-intro-heading-row {
+    grid-template-columns: minmax(0, 1fr) 220px;
+    gap: 24px;
+  }
+
+  .home-star-experience-portal .contribution-space-section {
+    width: 220px;
+  }
+
+  .contribution-space-section-inner {
+    padding: 0;
+    gap: 8px;
+  }
+
+  .contribution-space-heading {
+    text-align: left;
+  }
+
+  .contribution-space-portal {
+    width: 220px;
+  }
+
   .module-band {
     display: block;
   }
@@ -5226,6 +5548,31 @@ body.has-comments-open .reader-comments {
   .header-inner {
     width: calc(100% - 20px);
     gap: 10px;
+  }
+
+  .home-star-experience-portal .library-intro-heading-row {
+    display: block;
+  }
+
+  .home-star-experience-portal .contribution-space-section {
+    width: 210px;
+    margin: 24px 0 0 auto;
+  }
+
+  .contribution-space-portal {
+    width: 210px;
+    padding: 14px;
+  }
+
+  .contribution-space-portal > svg,
+  .contribution-space-portal > i {
+    top: 13px;
+    right: 13px;
+  }
+
+  .home-contribution-space-expanded .contribution-space-return {
+    top: 12px;
+    left: 12px;
   }
 
   .brand {
@@ -5821,7 +6168,9 @@ body.has-comments-open .reader-comments {
   .page-home .contribution-ledger,
   .page-home .catalog-overview,
   .page-home .contribution-band,
-  .page-home .site-footer {
+  .page-home .site-footer,
+  .knowledge-field[data-contribution-space],
+  .contribution-space-backdrop {
     transition: none;
   }
 

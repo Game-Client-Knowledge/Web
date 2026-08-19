@@ -9,24 +9,51 @@ permalink: index.html
 <section class="library-intro">
   <canvas class="knowledge-field" data-knowledge-field aria-hidden="true"></canvas>
   <div class="library-intro-overlay">
-    <div class="library-intro-copy">
-      <p class="eyebrow">开放 · 持续更新 · 多人共建</p>
-      <h1>Game Client Knowledge</h1>
-      <p class="intro-copy">
-        游戏客户端开发与面试知识库。按专题学习，按公司复盘面经，
-        直接阅读配套源码。
-      </p>
-      <div class="intro-actions">
-        <button class="intro-search" type="button" data-open-search>
-          <i data-lucide="search" aria-hidden="true"></i>
-          搜索全部内容
-          <span>⌘ K</span>
-        </button>
-        <a class="intro-catalog-link" href="#catalog-title">
-          浏览知识体系
-          <i data-lucide="arrow-down" aria-hidden="true"></i>
-        </a>
+    <div class="library-intro-heading-row">
+      <div class="library-intro-copy">
+        <p class="eyebrow">开放 · 持续更新 · 多人共建</p>
+        <h1>Game Client Knowledge</h1>
+        <p class="intro-copy">
+          游戏客户端开发与面试知识库。按专题学习，按公司复盘面经，
+          直接阅读配套源码。
+        </p>
+        <div class="intro-actions">
+          <button class="intro-search" type="button" data-open-search>
+            <i data-lucide="search" aria-hidden="true"></i>
+            搜索全部内容
+            <span>⌘ K</span>
+          </button>
+          <a class="intro-catalog-link" href="#catalog-title">
+            浏览知识体系
+            <i data-lucide="arrow-down" aria-hidden="true"></i>
+          </a>
+        </div>
       </div>
+      <section
+        class="contribution-space-section"
+        aria-labelledby="contribution-space-title"
+        data-contribution-space-section
+      >
+        <div class="contribution-space-section-inner">
+          <header class="contribution-space-heading">
+            <p class="eyebrow">Contribution space</p>
+            <h2 id="contribution-space-title">贡献</h2>
+          </header>
+          <button
+            class="contribution-space-portal"
+            type="button"
+            data-contribution-space-portal
+            aria-label="进入贡献空间"
+            title="拖动旋转，点击进入"
+          >
+            <span class="contribution-space-portal-label">
+              <small>Contribution</small>
+              <strong>贡献</strong>
+            </span>
+            <i data-lucide="arrow-up-right" aria-hidden="true"></i>
+          </button>
+        </div>
+      </section>
     </div>
     <dl class="intro-stats" aria-label="知识库内容统计">
       <div>
@@ -52,6 +79,16 @@ permalink: index.html
     </dl>
   </div>
 </section>
+
+<button
+  class="contribution-space-return"
+  type="button"
+  data-contribution-space-return
+  aria-label="返回主页面"
+>
+  <i data-lucide="arrow-left" aria-hidden="true"></i>
+  <span>返回主页面</span>
+</button>
 
 <section class="contribution-ledger" aria-labelledby="contribution-ledger-title">
   <div class="contribution-ledger-inner">

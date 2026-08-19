@@ -71,20 +71,38 @@ assert.equal(
 assert.match(html, /class="visual-form-actions"/);
 assert.match(html, /name="session_idle_days"/);
 assert.match(html, /name="home_star_brightness_min"/);
+assert.match(html, /name="home_star_experience_mode"/);
+assert.match(html, /贡献空间（试点）/);
 for (const field of [
   "home_star_selected_radius_boost",
   "home_star_selected_alpha_boost",
   "home_star_selected_halo_alpha_boost",
   "home_star_selected_glow_scale",
-  "home_star_selected_contributor_line_width"
+  "home_star_selected_contributor_line_width",
+  "home_star_portal_rotation_speed",
+  "home_star_portal_size_percent",
+  "home_star_portal_brightness_percent",
+  "home_star_3d_min_depth",
+  "home_star_3d_halo_max_css_size",
+  "home_star_3d_core_max_css_size",
+  "home_star_3d_spike_max_css_size",
+  "home_star_3d_pulse_max_css_size"
 ]) {
   assert.match(html, new RegExp(`name="${field}"`));
 }
 assert.match(html, /主动点亮星体效果/);
+assert.match(html, /<h3 id="contributionPortalTitle">贡献空间<\/h3>/);
+assert.match(html, /自动旋转速率（°\/秒）/);
+assert.match(html, /收拢尺寸（%）/);
+assert.match(html, /收拢亮度（%）/);
+assert.match(html, /主页空闲触发（秒，0 为关闭）/);
+assert.match(html, /贡献空间模式自动展开/);
 assert.match(html, /不修改逻辑亮度、等级或覆盖统计/);
+assert.match(html, /3D 星体尺寸保护/);
+assert.match(html, /高分辨率和近景透视/);
 assert.ok(
-  (html.match(/class="field-help"/g) || []).length >= 5,
-  "active star effect controls need inline descriptions"
+  (html.match(/class="field-help"/g) || []).length >= 10,
+  "star effect controls need inline descriptions"
 );
 assert.match(html, /id="starBrightnessRuleList"/);
 assert.match(html, /id="starBrightnessTierList"/);
@@ -154,6 +172,11 @@ assert.match(javascript, /function setupVisualSettingsNavigation\(\)/);
 assert.match(javascript, /function renderStarFormulaReference\(\)/);
 assert.match(javascript, /starFormulaEngine\.validateFormula/);
 assert.match(javascript, /home_star_brightness_tiers/);
+assert.match(javascript, /home_star_3d_halo_max_css_size/);
+assert.match(javascript, /home_star_experience_mode/);
+assert.match(javascript, /home_star_portal_rotation_speed/);
+assert.match(javascript, /home_star_portal_size_percent/);
+assert.match(javascript, /home_star_portal_brightness_percent/);
 assert.match(javascript, /whitelist_user_ids/);
 assert.match(javascript, /comment_agent_usage/);
 assert.match(javascript, /aria-current.*page/);

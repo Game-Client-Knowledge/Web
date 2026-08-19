@@ -14,6 +14,19 @@ The contribution map can occupy only the existing hero height or remain fixed
 behind the complete homepage. Full-page mode replaces the former white lower
 surface with translucent dark content bands so the graph remains visible.
 
+The optional `contribution_portal` experience keeps that immersive mode
+available but starts from a light homepage with a dark `贡献` portal. The graph
+is packed into a slowly rotating octahedral volume inside the portal. Dragging
+rotates it; clicking expands the black field and the same stars to the full
+viewport. The return control reverses the transition and restores the page
+scroll position.
+
+In this experience, `home_content_idle_timeout_seconds` auto-opens the portal
+instead of hiding homepage content. The first subsequent activity reverses
+only an idle-triggered opening; manually entered full-screen space is not
+closed by ordinary pointer movement. Page commands are blocked while either
+transition is in progress.
+
 ## Graph Model
 
 The build creates `catalog.homeStarGraph` from the authoritative content Git
@@ -251,6 +264,11 @@ shadow work to every animation frame.
 `PUT /api/admin/visual-settings` persists:
 
 - homepage background engine and hero/full scope;
+- immersive background or contribution-space pilot experience;
+- contribution-space automatic rotation speed, collapsed scale, and collapsed
+  exposure; scale and exposure interpolate back to 100% while expanding;
+- homepage idle timeout, which hides immersive content or auto-opens the
+  contribution space depending on the selected experience;
 - relation visibility;
 - directed or undirected graph traversal;
 - strong, reference, and contribution styles (`solid`, `dashed`, `glow`);

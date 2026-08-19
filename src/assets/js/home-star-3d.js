@@ -35,13 +35,23 @@
     "3d-galaxy": 780,
     "3d-orbit": 820
   };
-  const ORBIT_POINT_MIN_DEPTH = 280;
-  const POINT_MAX_CSS_SIZE = Object.freeze({
+  const DEFAULT_ORBIT_POINT_MIN_DEPTH = 280;
+  const DEFAULT_POINT_MAX_CSS_SIZE = Object.freeze({
     halo: 200,
     core: 36,
     spike: 240,
     pulse: 36
   });
+  const POINT_SIZE_SOFT_KNEE = 0.62;
+  const SECONDARY_SPIKE_FRACTION = 0.06;
+  const BACKGROUND_STAR_COUNT = 240;
+  const SPIKE_ART_SCALE = 2.1;
+  const CONTENT_EXPOSURE = 0.28;
+  const CONTRIBUTION_SPACE_DURATION = 1300;
+  const CONTRIBUTION_SPACE_RADIUS = 165;
+  const DEFAULT_PORTAL_ROTATION_SPEED = 2.6;
+  const DEFAULT_PORTAL_SIZE_PERCENT = 34;
+  const DEFAULT_PORTAL_BRIGHTNESS_PERCENT = 42;
 
   // ---------- Layout / motion strategies ----------
   // init() assigns base positions and motion parameters once; move()
@@ -143,7 +153,41 @@
     };
   }
 
-  // Random drift in a bounded volume; close stars link up.
+  function initializeSmoothDrift(star, random, bounds) {
+    star.driftAmpX = 24 + random() * 52;
+    star.driftAmpY = 14 + random() * 30;
+    star.driftAmpZ = 24 + random() * 52;
+    star.driftBaseX =
+      (random() * 2 - 1) * (bounds.x - star.driftAmpX);
+    star.driftBaseY =
+      (random() * 2 - 1) * (bounds.y - star.driftAmpY);
+    star.driftBaseZ =
+      (random() * 2 - 1) * (bounds.z - star.driftAmpZ);
+    star.driftPhaseX = random() * Math.PI * 2;
+    star.driftPhaseY = random() * Math.PI * 2;
+    star.driftPhaseZ = random() * Math.PI * 2;
+    star.driftSpeedX = 0.000015 + random() * 0.00002;
+    star.driftSpeedY = 0.000012 + random() * 0.000016;
+    star.driftSpeedZ = 0.000014 + random() * 0.000019;
+    moveSmoothDrift(star, 0);
+  }
+
+  function moveSmoothDrift(star, time) {
+    star.x =
+      star.driftBaseX +
+      Math.sin(time * star.driftSpeedX + star.driftPhaseX) *
+        star.driftAmpX;
+    star.y =
+      star.driftBaseY +
+      Math.sin(time * star.driftSpeedY + star.driftPhaseY) *
+        star.driftAmpY;
+    star.z =
+      star.driftBaseZ +
+      Math.cos(time * star.driftSpeedZ + star.driftPhaseZ) *
+        star.driftAmpZ;
+  }
+
+  // Low-frequency bounded drift; close stars link up.
   function driftStrategy() {
     const BOUNDS = { x: 380, y: 190, z: 380 };
     return {
@@ -153,37 +197,13 @@
       init(stars, ctx) {
         const { random } = ctx;
         for (const star of stars) {
-          star.x = (random() * 2 - 1) * BOUNDS.x;
-          star.y = (random() * 2 - 1) * BOUNDS.y;
-          star.z = (random() * 2 - 1) * BOUNDS.z;
-          const speed = 9 + random() * 13;
-          const theta = random() * Math.PI * 2;
-          const cosPhi = random() * 2 - 1;
-          const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
-          star.vx = speed * sinPhi * Math.cos(theta);
-          star.vy = speed * cosPhi * 0.5;
-          star.vz = speed * sinPhi * Math.sin(theta);
+          initializeSmoothDrift(star, random, BOUNDS);
         }
       },
       fit() {},
-      move(stars, dt) {
-        const step = Math.min(dt, 100) / 1000;
+      move(stars, dt, time) {
         for (const star of stars) {
-          star.x += star.vx * step;
-          star.y += star.vy * step;
-          star.z += star.vz * step;
-          if (Math.abs(star.x) > BOUNDS.x) {
-            star.x = Math.sign(star.x) * BOUNDS.x;
-            star.vx *= -1;
-          }
-          if (Math.abs(star.y) > BOUNDS.y) {
-            star.y = Math.sign(star.y) * BOUNDS.y;
-            star.vy *= -1;
-          }
-          if (Math.abs(star.z) > BOUNDS.z) {
-            star.z = Math.sign(star.z) * BOUNDS.z;
-            star.vz *= -1;
-          }
+          moveSmoothDrift(star, time);
         }
       }
     };
@@ -361,38 +381,14 @@
           star.z = Math.sin(theta) * ring * 300;
         });
         documents.forEach((star) => {
-          star.x = (random() * 2 - 1) * BOUNDS.x;
-          star.y = (random() * 2 - 1) * BOUNDS.y;
-          star.z = (random() * 2 - 1) * BOUNDS.z;
-          const speed = 9 + random() * 13;
-          const theta = random() * Math.PI * 2;
-          const cosPhi = random() * 2 - 1;
-          const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
-          star.vx = speed * sinPhi * Math.cos(theta);
-          star.vy = speed * cosPhi * 0.5;
-          star.vz = speed * sinPhi * Math.sin(theta);
+          initializeSmoothDrift(star, random, BOUNDS);
         });
       },
       fit() {},
-      move(stars, dt) {
-        const step = Math.min(dt, 100) / 1000;
+      move(stars, dt, time) {
         for (const star of stars) {
           if (star.kind === "contributor") continue;
-          star.x += star.vx * step;
-          star.y += star.vy * step;
-          star.z += star.vz * step;
-          if (Math.abs(star.x) > BOUNDS.x) {
-            star.x = Math.sign(star.x) * BOUNDS.x;
-            star.vx *= -1;
-          }
-          if (Math.abs(star.y) > BOUNDS.y) {
-            star.y = Math.sign(star.y) * BOUNDS.y;
-            star.vy *= -1;
-          }
-          if (Math.abs(star.z) > BOUNDS.z) {
-            star.z = Math.sign(star.z) * BOUNDS.z;
-            star.vz *= -1;
-          }
+          moveSmoothDrift(star, time);
         }
       }
     };
@@ -413,9 +409,18 @@
     const THREE = host.THREE;
     const runtimeSettings = host.settings;
     if (!THREE) return host.fallback2D();
-    const mode = WEBGL_MODES.includes(runtimeSettings.home_star_render_mode)
+    const portalExperience =
+      runtimeSettings.home_star_experience_mode ===
+      "contribution_portal";
+    const configuredMode = WEBGL_MODES.includes(
+      runtimeSettings.home_star_render_mode
+    )
       ? runtimeSettings.home_star_render_mode
-      : "3d";
+      : "3d-drift";
+    const mode =
+      portalExperience && configuredMode === "2d-webgl"
+        ? "3d-drift"
+        : configuredMode;
     const strategy = (STRATEGIES[mode] || depthStrategy)();
     const {
       canvas,
@@ -430,6 +435,15 @@
       seededRandom
     } = host;
     const reducedMotion = host.reducedMotion;
+    const portalElement = portalExperience
+      ? document.querySelector("[data-contribution-space-portal]")
+      : null;
+    const returnButton = portalExperience
+      ? document.querySelector("[data-contribution-space-return]")
+      : null;
+    const heroContent = portalExperience
+      ? hero.querySelector(".library-intro-overlay")
+      : null;
 
     // A 2D context already exists on the original canvas, and a canvas can
     // only host one context type — render WebGL into a dedicated element.
@@ -438,18 +452,53 @@
     glCanvas.setAttribute("data-knowledge-field", "");
     canvas.removeAttribute("data-knowledge-field");
     canvas.style.display = "none";
-    canvas.parentElement.insertBefore(glCanvas, canvas);
+    if (portalExperience) {
+      document.body.appendChild(glCanvas);
+    } else {
+      canvas.parentElement.insertBefore(glCanvas, canvas);
+    }
     document.body.classList.remove("home-stars-old");
     document.body.classList.toggle(
       "home-stars-full",
-      runtimeSettings.home_star_scope === "full"
+      !portalExperience &&
+        runtimeSettings.home_star_scope === "full"
     );
     document.body.classList.toggle(
       "home-stars-hero",
-      runtimeSettings.home_star_scope === "hero"
+      !portalExperience &&
+        runtimeSettings.home_star_scope === "hero"
+    );
+    document.body.classList.toggle(
+      "home-star-experience-portal",
+      portalExperience
+    );
+    glCanvas.toggleAttribute(
+      "data-contribution-space",
+      portalExperience
     );
     glCanvas.dataset.starMap = `contribution-${mode}`;
     glCanvas.dataset.starScope = runtimeSettings.home_star_scope;
+    glCanvas.dataset.starExperience = portalExperience
+      ? "contribution_portal"
+      : "immersive";
+
+    const portalBackdrop = portalExperience
+      ? document.createElement("div")
+      : null;
+    if (portalBackdrop) {
+      portalBackdrop.className = "contribution-space-backdrop";
+      portalBackdrop.setAttribute("aria-hidden", "true");
+      document.body.appendChild(portalBackdrop);
+    }
+    const portalInteractionLock = portalExperience
+      ? document.createElement("div")
+      : null;
+    if (portalInteractionLock) {
+      portalInteractionLock.className =
+        "contribution-space-interaction-lock";
+      portalInteractionLock.setAttribute("aria-hidden", "true");
+      document.body.appendChild(portalInteractionLock);
+    }
 
     let renderer = null;
     try {
@@ -460,6 +509,8 @@
       });
     } catch (error) {
       glCanvas.remove();
+      portalBackdrop?.remove();
+      portalInteractionLock?.remove();
       canvas.style.display = "";
       canvas.setAttribute("data-knowledge-field", "");
       return host.fallback2D();
@@ -469,6 +520,20 @@
     const random = seededRandom(
       hashSeed(`${sourceGraph.revision}:contribution-stars-3d`)
     );
+    function starColorGain(star) {
+      if (!runtimeSettings.home_star_color_random_enabled) {
+        return [1, 1, 1];
+      }
+      const colorRandom = seededRandom(
+        hashSeed(`${sourceGraph.revision}:${star.id}:temperature`)
+      );
+      const temperature =
+        (colorRandom() * 2 - 1) * (0.35 + colorRandom() * 0.65);
+      const amount = Math.abs(temperature);
+      return temperature < 0
+        ? [1, 1 - amount * 0.04, 1 - amount * 0.11]
+        : [1 - amount * 0.08, 1 - amount * 0.025, 1];
+    }
     const stars = sourceGraph.stars.map((source, index) => ({
       ...source,
       metrics: { ...(source.metrics || {}) },
@@ -499,6 +564,25 @@
         runtimeSettings.home_star_brightness_min,
         runtimeSettings.home_star_brightness_max
       );
+      star.colorGain = starColorGain(star);
+      if (portalExperience) {
+        const portalRandom = seededRandom(
+          hashSeed(
+            `${sourceGraph.revision}:${star.id}:contribution-space`
+          )
+        );
+        let x = 0;
+        let y = 0;
+        let z = 0;
+        do {
+          x = portalRandom() * 2 - 1;
+          y = portalRandom() * 2 - 1;
+          z = portalRandom() * 2 - 1;
+        } while (Math.abs(x) + Math.abs(y) + Math.abs(z) > 1);
+        star.portalX = x * CONTRIBUTION_SPACE_RADIUS;
+        star.portalY = y * CONTRIBUTION_SPACE_RADIUS;
+        star.portalZ = z * CONTRIBUTION_SPACE_RADIUS;
+      }
     }
     const starById = new Map(stars.map((star) => [star.id, star]));
     const edges = sourceGraph.edges.filter((edge) => {
@@ -604,30 +688,113 @@
       phi: Math.PI / 2.25,
       radius: CAMERA_RADIUS[mode] || 900
     };
+    function boundedSetting(key, fallback, minimum, maximum) {
+      const value = Number(runtimeSettings[key]);
+      return Math.max(
+        minimum,
+        Math.min(maximum, Number.isFinite(value) ? value : fallback)
+      );
+    }
     const pointMinDepth =
-      strategy.camera === "flat" ? 1 : ORBIT_POINT_MIN_DEPTH;
+      strategy.camera === "flat"
+        ? 1
+        : boundedSetting(
+            "home_star_3d_min_depth",
+            DEFAULT_ORBIT_POINT_MIN_DEPTH,
+            100,
+            1000
+          );
+    const pointMaxCssSize = Object.freeze({
+      halo: boundedSetting(
+        "home_star_3d_halo_max_css_size",
+        DEFAULT_POINT_MAX_CSS_SIZE.halo,
+        40,
+        600
+      ),
+      core: boundedSetting(
+        "home_star_3d_core_max_css_size",
+        DEFAULT_POINT_MAX_CSS_SIZE.core,
+        8,
+        120
+      ),
+      spike: boundedSetting(
+        "home_star_3d_spike_max_css_size",
+        DEFAULT_POINT_MAX_CSS_SIZE.spike,
+        40,
+        800
+      ),
+      pulse: boundedSetting(
+        "home_star_3d_pulse_max_css_size",
+        DEFAULT_POINT_MAX_CSS_SIZE.pulse,
+        8,
+        120
+      )
+    });
+    const portalRotationRadiansPerMs =
+      boundedSetting(
+        "home_star_portal_rotation_speed",
+        DEFAULT_PORTAL_ROTATION_SPEED,
+        0,
+        30
+      ) *
+      Math.PI /
+      180 /
+      1000;
+    const portalCollapsedScale =
+      boundedSetting(
+        "home_star_portal_size_percent",
+        DEFAULT_PORTAL_SIZE_PERCENT,
+        10,
+        100
+      ) / 100;
+    const portalCollapsedBrightness =
+      boundedSetting(
+        "home_star_portal_brightness_percent",
+        DEFAULT_PORTAL_BRIGHTNESS_PERCENT,
+        10,
+        100
+      ) / 100;
 
     const pointVertexShader = [
       "attribute float aSize;",
       "attribute float aAlpha;",
       "attribute float aTile;",
       "attribute float aRot;",
+      "attribute vec3 aColor;",
       "varying float vAlpha;",
       "varying float vTile;",
       "varying float vRot;",
+      "varying vec3 vColor;",
+      "varying vec2 vScreenUv;",
       "uniform float uScale;",
       "uniform float uPixelRatio;",
       "uniform float uMinDepth;",
       "uniform float uMaxCssSize;",
+      "uniform float uSoftKneeRatio;",
+      "uniform float uPortalScale;",
+      "uniform vec2 uScreenOffset;",
       "void main() {",
       "  vAlpha = aAlpha;",
       "  vTile = aTile;",
       "  vRot = aRot;",
+      "  vColor = aColor;",
       "  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);",
       "  float safeDepth = max(-mvPosition.z, uMinDepth);",
-      "  float projectedSize = aSize * (uScale / safeDepth);",
-      "  gl_PointSize = min(projectedSize, uMaxCssSize * uPixelRatio);",
+      "  float projectedSize =",
+      "    aSize * uPortalScale * (uScale / safeDepth);",
+      "  float sizeCap = uMaxCssSize * uPixelRatio;",
+      "  float sizeKnee = sizeCap * uSoftKneeRatio;",
+      "  float compressedSize = projectedSize;",
+      "  if (projectedSize > sizeKnee) {",
+      "    float softRange = max(1.0, sizeCap - sizeKnee);",
+      "    float excess = (projectedSize - sizeKnee) / softRange;",
+      "    compressedSize = sizeKnee + softRange * (1.0 - exp(-excess));",
+      "  }",
+      "  gl_PointSize = min(compressedSize, sizeCap);",
       "  gl_Position = projectionMatrix * mvPosition;",
+      "  gl_Position.xy += uScreenOffset * gl_Position.w;",
+      "  vec2 ndc = gl_Position.xy / max(gl_Position.w, 0.0001);",
+      "  vScreenUv = vec2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);",
       "}"
     ].join("\n");
     const pointFragmentShader = [
@@ -636,6 +803,37 @@
       "varying float vAlpha;",
       "varying float vTile;",
       "varying float vRot;",
+      "varying vec3 vColor;",
+      "varying vec2 vScreenUv;",
+      "uniform vec4 uContentRect0;",
+      "uniform vec4 uContentRect1;",
+      "uniform vec4 uContentRect2;",
+      "uniform vec2 uContentFeather;",
+      "uniform float uContentExposure;",
+      "uniform float uPortalBrightness;",
+      "float rectMask(vec2 point, vec4 rect) {",
+      "  float x = smoothstep(",
+      "    rect.x - uContentFeather.x,",
+      "    rect.x + uContentFeather.x,",
+      "    point.x",
+      "  );",
+      "  x *= 1.0 - smoothstep(",
+      "    rect.z - uContentFeather.x,",
+      "    rect.z + uContentFeather.x,",
+      "    point.x",
+      "  );",
+      "  float y = smoothstep(",
+      "    rect.y - uContentFeather.y,",
+      "    rect.y + uContentFeather.y,",
+      "    point.y",
+      "  );",
+      "  y *= 1.0 - smoothstep(",
+      "    rect.w - uContentFeather.y,",
+      "    rect.w + uContentFeather.y,",
+      "    point.y",
+      "  );",
+      "  return x * y;",
+      "}",
       "void main() {",
       "  vec2 uv = gl_PointCoord - vec2(0.5);",
       "  float c = cos(vRot);",
@@ -646,12 +844,25 @@
       "  vec2 atlasUv = vec2((vTile + uv.x) / uTiles, uv.y);",
       "  vec4 tex = texture2D(uAtlas, atlasUv);",
       "  float alpha = tex.a * vAlpha;",
+      "  float contentMask = max(",
+      "    rectMask(vScreenUv, uContentRect0),",
+      "    max(",
+      "      rectMask(vScreenUv, uContentRect1),",
+      "      rectMask(vScreenUv, uContentRect2)",
+      "    )",
+      "  );",
+      "  alpha *= mix(1.0, uContentExposure, contentMask);",
+      "  alpha *= uPortalBrightness;",
       "  if (alpha < 0.004) discard;",
-      "  gl_FragColor = vec4(tex.rgb, alpha);",
+      "  gl_FragColor = vec4(tex.rgb * vColor, alpha);",
       "}"
     ].join("\n");
 
-    function createPointLayer(count, maxCssSize) {
+    function createPointLayer(
+      count,
+      maxCssSize,
+      contentExposure = CONTENT_EXPOSURE
+    ) {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute(
         "position",
@@ -673,6 +884,10 @@
         "aRot",
         new THREE.BufferAttribute(new Float32Array(count), 1)
       );
+      geometry.setAttribute(
+        "aColor",
+        new THREE.BufferAttribute(new Float32Array(count * 3), 3)
+      );
       const material = new THREE.ShaderMaterial({
         uniforms: {
           uAtlas: { value: atlasTexture },
@@ -680,7 +895,29 @@
           uScale: { value: 1 },
           uPixelRatio: { value: 1 },
           uMinDepth: { value: pointMinDepth },
-          uMaxCssSize: { value: maxCssSize }
+          uMaxCssSize: { value: maxCssSize },
+          uSoftKneeRatio: {
+            value:
+              strategy.camera === "flat" ? 1 : POINT_SIZE_SOFT_KNEE
+          },
+          uPortalScale: { value: 1 },
+          uContentRect0: {
+            value: new Float32Array([-2, -2, -2, -2])
+          },
+          uContentRect1: {
+            value: new Float32Array([-2, -2, -2, -2])
+          },
+          uContentRect2: {
+            value: new Float32Array([-2, -2, -2, -2])
+          },
+          uContentFeather: {
+            value: new Float32Array([0.04, 0.04])
+          },
+          uContentExposure: { value: contentExposure },
+          uPortalBrightness: { value: 1 },
+          uScreenOffset: {
+            value: new Float32Array([0, 0])
+          }
         },
         vertexShader: pointVertexShader,
         fragmentShader: pointFragmentShader,
@@ -694,26 +931,145 @@
       return points;
     }
 
+    function createBackgroundStarLayer() {
+      const count =
+        strategy.camera === "flat" ? 0 : BACKGROUND_STAR_COUNT;
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(count * 3);
+      const sizes = new Float32Array(count);
+      const alphas = new Float32Array(count);
+      const colors = new Float32Array(count * 3);
+      const backgroundRandom = seededRandom(
+        hashSeed(`${sourceGraph.revision}:background-stars-3d`)
+      );
+      for (let index = 0; index < count; index += 1) {
+        const radius = 1100 + backgroundRandom() * 500;
+        const theta = backgroundRandom() * Math.PI * 2;
+        const cosPhi = backgroundRandom() * 2 - 1;
+        const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
+        positions[index * 3] = radius * sinPhi * Math.cos(theta);
+        positions[index * 3 + 1] = radius * cosPhi;
+        positions[index * 3 + 2] = radius * sinPhi * Math.sin(theta);
+        sizes[index] = 0.55 + Math.pow(backgroundRandom(), 2.4) * 1.75;
+        alphas[index] = 0.05 + Math.pow(backgroundRandom(), 1.8) * 0.18;
+        const temperature = backgroundRandom() * 2 - 1;
+        const amount = Math.abs(temperature);
+        const color =
+          temperature < 0
+            ? [1, 1 - amount * 0.05, 1 - amount * 0.12]
+            : [1 - amount * 0.09, 1 - amount * 0.035, 1];
+        colors.set(color, index * 3);
+      }
+      geometry.setAttribute(
+        "position",
+        new THREE.BufferAttribute(positions, 3)
+      );
+      geometry.setAttribute(
+        "aSize",
+        new THREE.BufferAttribute(sizes, 1)
+      );
+      geometry.setAttribute(
+        "aAlpha",
+        new THREE.BufferAttribute(alphas, 1)
+      );
+      geometry.setAttribute(
+        "aColor",
+        new THREE.BufferAttribute(colors, 3)
+      );
+      const material = new THREE.ShaderMaterial({
+        uniforms: {
+          uScale: { value: 1 },
+          uPixelRatio: { value: 1 },
+          uOpacity: { value: 1 }
+        },
+        vertexShader: [
+          "attribute float aSize;",
+          "attribute float aAlpha;",
+          "attribute vec3 aColor;",
+          "varying float vAlpha;",
+          "varying vec3 vColor;",
+          "uniform float uScale;",
+          "uniform float uPixelRatio;",
+          "void main() {",
+          "  vAlpha = aAlpha;",
+          "  vColor = aColor;",
+          "  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);",
+          "  float projected = aSize * (uScale / max(-mvPosition.z, 500.0));",
+          "  gl_PointSize = clamp(",
+          "    projected,",
+          "    0.65 * uPixelRatio,",
+          "    2.2 * uPixelRatio",
+          "  );",
+          "  gl_Position = projectionMatrix * mvPosition;",
+          "}"
+        ].join("\n"),
+        fragmentShader: [
+          "varying float vAlpha;",
+          "varying vec3 vColor;",
+          "uniform float uOpacity;",
+          "void main() {",
+          "  vec2 offset = gl_PointCoord - vec2(0.5);",
+          "  float radius = length(offset);",
+          "  if (radius > 0.5) discard;",
+          "  float falloff = exp(-radius * radius * 22.0);",
+          "  float alpha = falloff * vAlpha * uOpacity;",
+          "  if (alpha < 0.003) discard;",
+          "  gl_FragColor = vec4(vColor, alpha);",
+          "}"
+        ].join("\n"),
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        depthWrite: false,
+        transparent: true
+      });
+      const points = new THREE.Points(geometry, material);
+      points.frustumCulled = false;
+      points.renderOrder = -2;
+      return points;
+    }
+
+    const backgroundLayer = createBackgroundStarLayer();
     const haloLayer = createPointLayer(
       stars.length,
-      POINT_MAX_CSS_SIZE.halo
+      pointMaxCssSize.halo
     );
     haloLayer.renderOrder = 1;
     // Solid-ish core dots. The Canvas 2D map always draws a bright core,
     // so without this layer dim stars are almost invisible in WebGL.
     const coreLayer = createPointLayer(
       stars.length,
-      POINT_MAX_CSS_SIZE.core
+      pointMaxCssSize.core
     );
     coreLayer.renderOrder = 2;
-    const spikedStars = stars.filter((star) => {
+    const spikeCandidates = stars.filter((star) => {
       return tierProfile(star.brightnessTier).spikeGain > 0;
     });
+    const primarySpikedStars = spikeCandidates.filter((star) => {
+      return star.brightnessTier?.id === "blue-giant";
+    });
+    const secondarySpikeLimit = Math.max(
+      1,
+      Math.ceil(stars.length * SECONDARY_SPIKE_FRACTION)
+    );
+    const secondarySpikedStars = spikeCandidates
+      .filter((star) => star.brightnessTier?.id !== "blue-giant")
+      .sort((left, right) => {
+        return (
+          right.baseBrightness - left.baseBrightness ||
+          left.index - right.index
+        );
+      })
+      .slice(0, secondarySpikeLimit);
+    const spikedStars = [
+      ...primarySpikedStars,
+      ...secondarySpikedStars
+    ].sort((left, right) => left.index - right.index);
     const spikeLayer = createPointLayer(
       spikedStars.length,
-      POINT_MAX_CSS_SIZE.spike
+      pointMaxCssSize.spike
     );
     spikeLayer.renderOrder = 3;
+    scene.add(backgroundLayer);
     scene.add(haloLayer);
     scene.add(coreLayer);
     scene.add(spikeLayer);
@@ -831,6 +1187,10 @@
       "aRot",
       new THREE.BufferAttribute(new Float32Array(0), 1)
     );
+    pulseGeometry.setAttribute(
+      "aColor",
+      new THREE.BufferAttribute(new Float32Array(0), 3)
+    );
     const pulseLayer = new THREE.Points(
       pulseGeometry,
       new THREE.ShaderMaterial({
@@ -840,7 +1200,29 @@
           uScale: { value: 1 },
           uPixelRatio: { value: 1 },
           uMinDepth: { value: pointMinDepth },
-          uMaxCssSize: { value: POINT_MAX_CSS_SIZE.pulse }
+          uMaxCssSize: { value: pointMaxCssSize.pulse },
+          uSoftKneeRatio: {
+            value:
+              strategy.camera === "flat" ? 1 : POINT_SIZE_SOFT_KNEE
+          },
+          uPortalScale: { value: 1 },
+          uContentRect0: {
+            value: new Float32Array([-2, -2, -2, -2])
+          },
+          uContentRect1: {
+            value: new Float32Array([-2, -2, -2, -2])
+          },
+          uContentRect2: {
+            value: new Float32Array([-2, -2, -2, -2])
+          },
+          uContentFeather: {
+            value: new Float32Array([0.04, 0.04])
+          },
+          uContentExposure: { value: 0.78 },
+          uPortalBrightness: { value: 1 },
+          uScreenOffset: {
+            value: new Float32Array([0, 0])
+          }
         },
         vertexShader: pointVertexShader,
         fragmentShader: pointFragmentShader,
@@ -871,6 +1253,490 @@
     let labelTimer = 0;
     let selectionTimer = 0;
     let lastFrameAt = 0;
+    let contentMaskFrame = 0;
+    const portalState = {
+      enabled: portalExperience && Boolean(portalElement),
+      phase: portalExperience ? "collapsed" : "expanded",
+      progress: portalExperience ? 0 : 1,
+      startedAt: 0,
+      yaw: 0.64,
+      pitch: -0.36,
+      dragging: false,
+      moved: 0,
+      x: 0,
+      y: 0,
+      scrollY: 0,
+      rectangle: null,
+      heroRectangle: null,
+      heroContentRectangle: null,
+      reason: ""
+    };
+    const contentMaskMaterials = [
+      haloLayer.material,
+      coreLayer.material,
+      spikeLayer.material,
+      pulseLayer.material
+    ];
+    const portalPhases = [
+      "collapsed",
+      "opening",
+      "expanded",
+      "closing"
+    ];
+
+    function setPortalPhase(phase, reason) {
+      if (!portalPhases.includes(phase)) return;
+      portalState.phase = phase;
+      portalState.reason = reason || portalState.reason || "";
+      document.body.classList.toggle(
+        "home-contribution-space-opening",
+        phase === "opening"
+      );
+      document.body.classList.toggle(
+        "home-contribution-space-expanded",
+        phase === "expanded"
+      );
+      document.body.classList.toggle(
+        "home-contribution-space-closing",
+        phase === "closing"
+      );
+      document.body.dataset.contributionSpaceState = phase;
+      glCanvas.dataset.contributionSpaceState = phase;
+      window.dispatchEvent(
+        new CustomEvent("gck:contribution-space-state", {
+          detail: {
+            phase,
+            reason: portalState.reason
+          }
+        })
+      );
+    }
+
+    function portalTransitioning() {
+      return (
+        portalState.phase === "opening" ||
+        portalState.phase === "closing"
+      );
+    }
+
+    function easePortal(value) {
+      const progress = Math.max(0, Math.min(1, value));
+      return progress * progress * (3 - 2 * progress);
+    }
+
+    function portalDisplayPosition(star, time) {
+      const autoYaw =
+        portalState.yaw +
+        (
+          portalState.dragging || reducedMotion
+            ? 0
+            : time * portalRotationRadiansPerMs
+        );
+      const autoPitch =
+        portalState.pitch +
+        (reducedMotion ? 0 : Math.sin(time * 0.00012) * 0.045);
+      const cosYaw = Math.cos(autoYaw);
+      const sinYaw = Math.sin(autoYaw);
+      const cosPitch = Math.cos(autoPitch);
+      const sinPitch = Math.sin(autoPitch);
+      const yawX = star.portalX * cosYaw - star.portalZ * sinYaw;
+      const yawZ = star.portalX * sinYaw + star.portalZ * cosYaw;
+      return {
+        x: yawX,
+        y: star.portalY * cosPitch - yawZ * sinPitch,
+        z: star.portalY * sinPitch + yawZ * cosPitch
+      };
+    }
+
+    function updatePortalProgress(time) {
+      if (!portalState.enabled) return 1;
+      if (
+        portalState.phase !== "opening" &&
+        portalState.phase !== "closing"
+      ) {
+        return portalState.progress;
+      }
+      const raw = Math.max(
+        0,
+        Math.min(
+          1,
+          (time - portalState.startedAt) /
+            CONTRIBUTION_SPACE_DURATION
+        )
+      );
+      portalState.progress =
+        portalState.phase === "opening" ? raw : 1 - raw;
+      if (raw < 1) return portalState.progress;
+      if (portalState.phase === "opening") {
+        portalState.progress = 1;
+        setPortalPhase("expanded");
+      } else {
+        portalState.progress = 0;
+        setPortalPhase("collapsed");
+        window.scrollTo(0, portalState.scrollY);
+      }
+      return portalState.progress;
+    }
+
+    function updatePortalStarPositions(time) {
+      const rawProgress = updatePortalProgress(time);
+      if (!portalState.enabled || rawProgress >= 1) return;
+      const progress = easePortal(rawProgress);
+      for (const star of stars) {
+        const fullX = star.x;
+        const fullY = star.y;
+        const fullZ = star.z;
+        const portal = portalDisplayPosition(star, time);
+        star.x = portal.x + (fullX - portal.x) * progress;
+        star.y = portal.y + (fullY - portal.y) * progress;
+        star.z = portal.z + (fullZ - portal.z) * progress;
+      }
+    }
+
+    function measurePortal() {
+      if (!portalState.enabled) return;
+      const rectangle = portalElement.getBoundingClientRect();
+      const heroRectangle = hero.getBoundingClientRect();
+      const heroContentRectangle =
+        heroContent?.getBoundingClientRect();
+      const valid =
+        rectangle.width > 1 &&
+        rectangle.height > 1;
+      portalState.rectangle = valid
+        ? {
+            left: rectangle.left,
+            top: rectangle.top,
+            right: rectangle.right,
+            bottom: rectangle.bottom,
+            width: rectangle.width,
+            height: rectangle.height
+          }
+        : null;
+      portalState.heroRectangle =
+        heroRectangle.width > 1 && heroRectangle.height > 1
+          ? {
+              top: heroRectangle.top,
+              bottom: heroRectangle.bottom
+            }
+          : null;
+      portalState.heroContentRectangle =
+        heroContentRectangle?.width > 1 &&
+        heroContentRectangle?.height > 1
+          ? {
+              left: heroContentRectangle.left,
+              top: heroContentRectangle.top,
+              right: heroContentRectangle.right,
+              bottom: heroContentRectangle.bottom,
+              width: heroContentRectangle.width,
+              height: heroContentRectangle.height
+            }
+          : null;
+      if (valid) {
+        const style = document.documentElement.style;
+        style.setProperty(
+          "--contribution-space-top",
+          `${Math.max(0, rectangle.top)}px`
+        );
+        style.setProperty(
+          "--contribution-space-right",
+          `${Math.max(0, window.innerWidth - rectangle.right)}px`
+        );
+        style.setProperty(
+          "--contribution-space-bottom",
+          `${Math.max(0, window.innerHeight - rectangle.bottom)}px`
+        );
+        style.setProperty(
+          "--contribution-space-left",
+          `${Math.max(0, rectangle.left)}px`
+        );
+      }
+    }
+
+    function contributionSpaceClip(progress) {
+      const rectangle = portalState.rectangle;
+      const heroRectangle = portalState.heroRectangle;
+      if (!rectangle || !heroRectangle) {
+        return {
+          clip: progress >= 1 ? "inset(0)" : "",
+          expansion: null
+        };
+      }
+      const eased = easePortal(progress);
+      const left = Math.max(0, rectangle.left * (1 - eased));
+      const top = Math.max(0, rectangle.top * (1 - eased));
+      const right = Math.min(
+        width,
+        rectangle.right + (width - rectangle.right) * eased
+      );
+      const bottom = Math.min(
+        height,
+        rectangle.bottom + (height - rectangle.bottom) * eased
+      );
+      const heroTop = Math.max(
+        0,
+        Math.min(height, heroRectangle.top)
+      );
+      const heroBottom = Math.max(
+        heroTop,
+        Math.min(height, heroRectangle.bottom)
+      );
+      const points = [];
+      if (top < heroTop) {
+        points.push(
+          [left, top],
+          [right, top],
+          [right, heroTop],
+          [width, heroTop]
+        );
+      } else {
+        points.push([0, heroTop], [width, heroTop]);
+      }
+      points.push([width, heroBottom]);
+      if (bottom > heroBottom) {
+        points.push(
+          [right, heroBottom],
+          [right, bottom],
+          [left, bottom],
+          [left, heroBottom]
+        );
+      }
+      points.push([0, heroBottom]);
+      if (top < heroTop) {
+        points.push([0, heroTop], [left, heroTop]);
+      }
+      return {
+        clip: `polygon(${points
+          .map(([x, y]) => `${x.toFixed(2)}px ${y.toFixed(2)}px`)
+          .join(", ")})`,
+        expansion: { left, top, right, bottom }
+      };
+    }
+
+    function updateHeroContentCover(expansion) {
+      if (!heroContent) return;
+      const content = portalState.heroContentRectangle;
+      if (
+        portalState.phase === "collapsed" ||
+        !expansion ||
+        expansion.left >= content?.right ||
+        expansion.top >= content?.bottom ||
+        expansion.right <= content?.left ||
+        expansion.bottom <= content?.top
+      ) {
+        heroContent.style.clipPath = "";
+        return;
+      }
+      const left = Math.max(
+        0,
+        Math.min(content.width, expansion.left - content.left)
+      );
+      const top = Math.max(
+        0,
+        Math.min(content.height, expansion.top - content.top)
+      );
+      const right = Math.max(
+        0,
+        Math.min(content.width, expansion.right - content.left)
+      );
+      const bottom = Math.max(
+        0,
+        Math.min(content.height, expansion.bottom - content.top)
+      );
+      if (
+        left <= 0 &&
+        top <= 0 &&
+        right >= content.width &&
+        bottom >= content.height
+      ) {
+        heroContent.style.clipPath = "inset(100%)";
+        return;
+      }
+      heroContent.style.clipPath = [
+        "polygon(evenodd, ",
+        "0 0, 100% 0, 100% 100%, 0 100%, 0 0, ",
+        `${left.toFixed(2)}px ${top.toFixed(2)}px, `,
+        `${left.toFixed(2)}px ${bottom.toFixed(2)}px, `,
+        `${right.toFixed(2)}px ${bottom.toFixed(2)}px, `,
+        `${right.toFixed(2)}px ${top.toFixed(2)}px, `,
+        `${left.toFixed(2)}px ${top.toFixed(2)}px)`
+      ].join("");
+    }
+
+    function updatePortalPresentation() {
+      if (!portalState.enabled) return;
+      const rectangle = portalState.rectangle;
+      const valid = Boolean(rectangle);
+      const centerX = valid
+        ? (rectangle.left + rectangle.right) / 2
+        : window.innerWidth / 2;
+      const centerY = valid
+        ? (rectangle.top + rectangle.bottom) / 2
+        : window.innerHeight / 2;
+      const collapsed = 1 - easePortal(portalState.progress);
+      const offset = [
+        (centerX / width * 2 - 1) * collapsed,
+        (1 - centerY / height * 2) * collapsed
+      ];
+      const portalScale =
+        portalCollapsedScale +
+        (1 - portalCollapsedScale) *
+          easePortal(portalState.progress);
+      const portalBrightness =
+        portalCollapsedBrightness +
+        (1 - portalCollapsedBrightness) *
+          easePortal(portalState.progress);
+      for (const material of contentMaskMaterials) {
+        material.uniforms.uScreenOffset.value.set(offset);
+        material.uniforms.uPortalScale.value = portalScale;
+        material.uniforms.uPortalBrightness.value =
+          portalBrightness;
+      }
+      const geometry = contributionSpaceClip(portalState.progress);
+      if (geometry.clip) {
+        glCanvas.style.clipPath = geometry.clip;
+        portalBackdrop.style.clipPath = geometry.clip;
+      }
+      updateHeroContentCover(geometry.expansion);
+      backgroundLayer.visible = true;
+      backgroundLayer.material.uniforms.uOpacity.value =
+        portalBrightness;
+      const relationsVisible = portalState.progress > 0.72;
+      for (const layer of edgeLayers) {
+        layer.visible = relationsVisible;
+      }
+      if (proximityLayer) {
+        proximityLayer.visible = relationsVisible;
+      }
+      highlightLayer.visible = relationsVisible;
+      pulseLayer.visible = relationsVisible;
+      label.hidden =
+        portalState.progress < 0.98 || !labelStar;
+      glCanvas.dataset.contributionSpaceState = portalState.phase;
+      glCanvas.dataset.contributionSpaceProgress =
+        portalState.progress.toFixed(3);
+    }
+
+    function openContributionSpace(reason) {
+      if (
+        !portalState.enabled ||
+        portalState.phase === "expanded" ||
+        portalState.phase === "opening"
+      ) {
+        return false;
+      }
+      const now = performance.now();
+      updatePortalProgress(now);
+      if (portalState.phase === "expanded") return false;
+      if (portalState.phase === "collapsed") {
+        portalState.scrollY = window.scrollY;
+      }
+      portalState.reason =
+        typeof reason === "string" ? reason : "manual";
+      if (reducedMotion) {
+        portalState.progress = 1;
+        setPortalPhase("expanded");
+        draw(now);
+        return true;
+      }
+      portalState.startedAt =
+        now - portalState.progress * CONTRIBUTION_SPACE_DURATION;
+      setPortalPhase(
+        "opening",
+        portalState.reason
+      );
+      return true;
+    }
+
+    function closeContributionSpace(reason) {
+      if (
+        !portalState.enabled ||
+        portalState.phase === "collapsed" ||
+        portalState.phase === "closing"
+      ) {
+        return false;
+      }
+      const now = performance.now();
+      updatePortalProgress(now);
+      if (portalState.phase === "collapsed") return false;
+      portalState.reason =
+        typeof reason === "string" ? reason : "manual";
+      clearSelection();
+      label.hidden = true;
+      if (reducedMotion) {
+        portalState.progress = 0;
+        setPortalPhase("collapsed");
+        window.scrollTo(0, portalState.scrollY);
+        draw(now);
+        return true;
+      }
+      portalState.startedAt =
+        now -
+        (1 - portalState.progress) * CONTRIBUTION_SPACE_DURATION;
+      setPortalPhase(
+        "closing",
+        portalState.reason
+      );
+      return true;
+    }
+
+    function updateContentMask() {
+      const hidden =
+        portalState.enabled ||
+        document.body.classList.contains("home-content-hidden");
+      const canvasRectangle = glCanvas.getBoundingClientRect();
+      const targets = hidden
+        ? []
+        : [
+            hero.querySelector(".library-intro-copy"),
+            hero.querySelector(".intro-stats"),
+            document.querySelector(".contribution-ledger")
+          ];
+      const rectangles = targets.map((element) => {
+        if (!element || element.hidden) return [-2, -2, -2, -2];
+        const rectangle = element.getBoundingClientRect();
+        const left = Math.max(
+          0,
+          (rectangle.left - canvasRectangle.left) / width
+        );
+        const top = Math.max(
+          0,
+          (rectangle.top - canvasRectangle.top) / height
+        );
+        const right = Math.min(
+          1,
+          (rectangle.right - canvasRectangle.left) / width
+        );
+        const bottom = Math.min(
+          1,
+          (rectangle.bottom - canvasRectangle.top) / height
+        );
+        return right > left && bottom > top
+          ? [left, top, right, bottom]
+          : [-2, -2, -2, -2];
+      });
+      while (rectangles.length < 3) {
+        rectangles.push([-2, -2, -2, -2]);
+      }
+      for (const material of contentMaskMaterials) {
+        material.uniforms.uContentRect0.value.set(rectangles[0]);
+        material.uniforms.uContentRect1.value.set(rectangles[1]);
+        material.uniforms.uContentRect2.value.set(rectangles[2]);
+        material.uniforms.uContentFeather.value.set([
+          56 / width,
+          56 / height
+        ]);
+      }
+    }
+
+    function scheduleContentMaskUpdate() {
+      if (disposed || contentMaskFrame) return;
+      contentMaskFrame = window.requestAnimationFrame(() => {
+        contentMaskFrame = 0;
+        measurePortal();
+        updateContentMask();
+        if (reducedMotion) draw(performance.now());
+      });
+    }
 
     function resize() {
       const rectangle =
@@ -879,6 +1745,10 @@
           : hero.getBoundingClientRect();
       width = Math.max(1, Math.round(rectangle.width));
       height = Math.max(1, Math.round(rectangle.height));
+      if (portalState.enabled) {
+        width = Math.max(1, Math.round(window.innerWidth));
+        height = Math.max(1, Math.round(window.innerHeight));
+      }
       const ratio = Math.min(window.devicePixelRatio || 1, 2);
       renderer.setPixelRatio(ratio);
       renderer.setSize(width, height, false);
@@ -893,10 +1763,15 @@
       coreLayer.material.uniforms.uScale.value = uScale;
       spikeLayer.material.uniforms.uScale.value = uScale;
       pulseLayer.material.uniforms.uScale.value = uScale;
+      backgroundLayer.material.uniforms.uScale.value = uScale;
       haloLayer.material.uniforms.uPixelRatio.value = ratio;
       coreLayer.material.uniforms.uPixelRatio.value = ratio;
       spikeLayer.material.uniforms.uPixelRatio.value = ratio;
       pulseLayer.material.uniforms.uPixelRatio.value = ratio;
+      backgroundLayer.material.uniforms.uPixelRatio.value = ratio;
+      measurePortal();
+      updateContentMask();
+      updatePortalPresentation();
       if (strategy.camera === "flat") {
         // Pin the camera so the z=0 plane maps 1:1 to CSS pixels.
         const distance =
@@ -953,7 +1828,7 @@
         runtimeSettings.home_star_brightness_min,
         Math.min(
           runtimeSettings.home_star_brightness_max,
-          star.baseBrightness + variation(star, time)
+          star.baseBrightness + variation(star, time) * 0.35
         )
       );
     }
@@ -963,19 +1838,28 @@
       const haloSize = haloLayer.geometry.attributes.aSize;
       const haloAlpha = haloLayer.geometry.attributes.aAlpha;
       const haloTile = haloLayer.geometry.attributes.aTile;
+      const haloColor = haloLayer.geometry.attributes.aColor;
       const corePosition = coreLayer.geometry.attributes.position;
       const coreSize = coreLayer.geometry.attributes.aSize;
       const coreAlpha = coreLayer.geometry.attributes.aAlpha;
       const coreTile = coreLayer.geometry.attributes.aTile;
+      const coreColor = coreLayer.geometry.attributes.aColor;
       const spikePosition = spikeLayer.geometry.attributes.position;
       const spikeSize = spikeLayer.geometry.attributes.aSize;
       const spikeAlpha = spikeLayer.geometry.attributes.aAlpha;
       const spikeTile = spikeLayer.geometry.attributes.aTile;
       const spikeRot = spikeLayer.geometry.attributes.aRot;
+      const spikeColor = spikeLayer.geometry.attributes.aColor;
       stars.forEach((star, index) => {
         const brightness = currentBrightness(star, time);
         const selected = selectedIds.has(star.id);
         const presentation = illumination.brightnessPresentation(
+          star.baseBrightness,
+          star.kind,
+          selected,
+          runtimeSettings.home_star_brightness_max
+        );
+        const intensityPresentation = illumination.brightnessPresentation(
           brightness,
           star.kind,
           selected,
@@ -987,7 +1871,7 @@
           (1 + profile.radiusBoost * presentation.luminous);
         const tierHaloRadius = presentation.haloRadius * profile.haloScale;
         const tierHaloAlpha =
-          presentation.haloAlpha * profile.haloAlphaScale;
+          intensityPresentation.haloAlpha * profile.haloAlphaScale;
         haloPosition.setXYZ(index, star.x, star.y, star.z);
         haloSize.setX(index, Math.max(1, tierHaloRadius * 2 * 3));
         haloAlpha.setX(
@@ -997,15 +1881,23 @@
             : 0
         );
         haloTile.setX(index, tierTileIndex.get(tierIdOf(star)) * 2);
+        haloColor.setXYZ(index, ...star.colorGain);
         corePosition.setXYZ(index, star.x, star.y, star.z);
         coreSize.setX(index, Math.max(8, tierRadius * 4));
-        coreAlpha.setX(index, Math.min(1, presentation.alpha));
+        coreAlpha.setX(index, Math.min(1, intensityPresentation.alpha));
         coreTile.setX(index, tierTileIndex.get(tierIdOf(star)) * 2);
+        coreColor.setXYZ(index, ...star.colorGain);
       });
       spikedStars.forEach((star, index) => {
         const brightness = currentBrightness(star, time);
         const selected = selectedIds.has(star.id);
         const presentation = illumination.brightnessPresentation(
+          star.baseBrightness,
+          star.kind,
+          selected,
+          runtimeSettings.home_star_brightness_max
+        );
+        const intensityPresentation = illumination.brightnessPresentation(
           brightness,
           star.kind,
           selected,
@@ -1024,34 +1916,45 @@
         spikePosition.setXYZ(index, star.x, star.y, star.z);
         // The spike artwork occupies the central 72% of its tile, so the
         // point size is scaled up to keep the on-screen arm length.
-        spikeSize.setX(index, (spikeExtent * 2 * 3) / SPIKE_INSET);
+        spikeSize.setX(
+          index,
+          (spikeExtent * 2 * SPIKE_ART_SCALE) / SPIKE_INSET
+        );
         spikeAlpha.setX(
           index,
-          presentation.luminous > 0.06
+          intensityPresentation.luminous > 0.06
             ? Math.min(
                 1,
-                (0.35 + presentation.luminous * 0.7 + (selected ? 0.15 : 0)) *
+                (
+                  0.35 +
+                  intensityPresentation.luminous * 0.7 +
+                  (selected ? 0.15 : 0)
+                ) *
                   profile.spikeAlpha *
-                  2.2
+                  1.45
               )
             : 0
         );
         spikeTile.setX(index, tierTileIndex.get(tierIdOf(star)) * 2 + 1);
-        spikeRot.setX(index, ((star.index * 53) % 50 - 25) * (Math.PI / 180));
+        spikeRot.setX(index, ((star.index * 53) % 7 - 3) * (Math.PI / 180));
+        spikeColor.setXYZ(index, ...star.colorGain);
       });
       haloPosition.needsUpdate = true;
       haloSize.needsUpdate = true;
       haloAlpha.needsUpdate = true;
       haloTile.needsUpdate = true;
+      haloColor.needsUpdate = true;
       corePosition.needsUpdate = true;
       coreSize.needsUpdate = true;
       coreAlpha.needsUpdate = true;
       coreTile.needsUpdate = true;
+      coreColor.needsUpdate = true;
       spikePosition.needsUpdate = true;
       spikeSize.needsUpdate = true;
       spikeAlpha.needsUpdate = true;
       spikeTile.needsUpdate = true;
       spikeRot.needsUpdate = true;
+      spikeColor.needsUpdate = true;
     }
 
     function writeEdgePositions(time) {
@@ -1160,6 +2063,7 @@
       const alpha = pulseGeometry.attributes.aAlpha;
       const tile = pulseGeometry.attributes.aTile;
       const rot = pulseGeometry.attributes.aRot;
+      const color = pulseGeometry.attributes.aColor;
       highlightEdges.forEach((edge, index) => {
         const source = starById.get(edge.source);
         const target = starById.get(edge.target);
@@ -1174,6 +2078,7 @@
         alpha.setX(index, 0.9);
         tile.setX(index, 0);
         rot.setX(index, 0);
+        color.setXYZ(index, 1, 1, 1);
       });
       pulseGeometry.setDrawRange(0, count);
       position.needsUpdate = true;
@@ -1181,6 +2086,7 @@
       alpha.needsUpdate = true;
       tile.needsUpdate = true;
       rot.needsUpdate = true;
+      color.needsUpdate = true;
     }
 
     function projectStar(star) {
@@ -1226,6 +2132,8 @@
       updateVariations(time);
       strategy.move(stars, time - (draw.lastTime || time), time);
       draw.lastTime = time;
+      updatePortalStarPositions(time);
+      updatePortalPresentation();
       if (strategy.camera !== "flat") {
         camera.position.set(
           cameraState.radius *
@@ -1244,14 +2152,19 @@
       renderer.render(scene, camera);
       updateLabel(time);
     }
-
     function animate(time) {
+      frame = 0;
       frame = 0;
       if (disposed || document.hidden) return;
       const delta = lastFrameAt ? time - lastFrameAt : 16;
       lastFrameAt = time;
-      if (!dragState.active && !reducedMotion && strategy.camera !== "flat") {
-        cameraState.theta += delta * 0.00004;
+      if (
+        !portalState.enabled &&
+        !dragState.active &&
+        !reducedMotion &&
+        strategy.camera !== "flat"
+      ) {
+        cameraState.theta += delta * 0.000015;
       }
       draw(time);
       frame = window.requestAnimationFrame(animate);
@@ -1332,12 +2245,20 @@
         "position",
         new THREE.BufferAttribute(new Float32Array(0), 3)
       );
-      for (const name of ["position", "aSize", "aAlpha", "aTile", "aRot"]) {
+      pulseGeometry.setAttribute(
+        "position",
+        new THREE.BufferAttribute(new Float32Array(0), 3)
+      );
+      for (const name of ["aSize", "aAlpha", "aTile", "aRot"]) {
         pulseGeometry.setAttribute(
           name,
-          new THREE.BufferAttribute(new Float32Array(0), 3)
+          new THREE.BufferAttribute(new Float32Array(0), 1)
         );
       }
+      pulseGeometry.setAttribute(
+        "aColor",
+        new THREE.BufferAttribute(new Float32Array(0), 3)
+      );
       panel.hidden = true;
       glCanvas.dataset.selectedCount = "0";
       glCanvas.dataset.selectedTier = "";
@@ -1389,6 +2310,10 @@
           new THREE.BufferAttribute(new Float32Array(pulseCount), 1)
         );
       }
+      pulseGeometry.setAttribute(
+        "aColor",
+        new THREE.BufferAttribute(new Float32Array(pulseCount * 3), 3)
+      );
       glCanvas.dataset.selectedCount = String(selectedIds.size);
       glCanvas.dataset.selectedTier = selectedTier?.name || "";
       updateCoverage();
@@ -1421,6 +2346,12 @@
     function documentClick(event) {
       if (event.target === label) return;
       if (
+        portalState.enabled &&
+        portalState.phase !== "expanded"
+      ) {
+        return;
+      }
+      if (
         event.target.closest(
           "a, button, input, select, textarea, summary, [role='button']"
         )
@@ -1447,10 +2378,97 @@
       if (labelStar) selectStar(labelStar, performance.now());
     }
 
+    function portalPointerDown(event) {
+      if (
+        !portalState.enabled ||
+        portalState.phase !== "collapsed" ||
+        event.button !== 0
+      ) {
+        return;
+      }
+      event.preventDefault();
+      portalState.dragging = true;
+      portalState.moved = 0;
+      portalState.x = event.clientX;
+      portalState.y = event.clientY;
+      portalElement.setPointerCapture?.(event.pointerId);
+    }
+
+    function portalPointerMove(event) {
+      if (!portalState.dragging) return;
+      event.preventDefault();
+      const dx = event.clientX - portalState.x;
+      const dy = event.clientY - portalState.y;
+      portalState.x = event.clientX;
+      portalState.y = event.clientY;
+      portalState.moved += Math.abs(dx) + Math.abs(dy);
+      portalState.yaw += dx * 0.008;
+      portalState.pitch = Math.max(
+        -Math.PI * 0.45,
+        Math.min(Math.PI * 0.45, portalState.pitch + dy * 0.006)
+      );
+      if (reducedMotion) draw(performance.now());
+    }
+
+    function portalPointerUp(event) {
+      if (!portalState.dragging) return;
+      portalState.dragging = false;
+      portalElement.releasePointerCapture?.(event.pointerId);
+    }
+
+    function portalClick(event) {
+      if (!portalState.enabled) return;
+      if (portalState.moved > 6) {
+        event.preventDefault();
+        portalState.moved = 0;
+        return;
+      }
+      openContributionSpace();
+    }
+
+    function portalKeyDown(event) {
+      if (event.key === "Escape") {
+        closeContributionSpace();
+      }
+    }
+
+    function portalRequest(event) {
+      const action = event.detail?.action;
+      const reason = event.detail?.reason || "external";
+      if (action === "open") {
+        openContributionSpace(reason);
+      } else if (action === "close") {
+        closeContributionSpace(reason);
+      }
+    }
+
+    function blockPortalTransitionInteraction(event) {
+      if (!portalTransitioning()) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+
+    const portalBlockedEvents = [
+      "click",
+      "pointerdown",
+      "pointerup",
+      "touchstart",
+      "touchend",
+      "wheel",
+      "keydown",
+      "submit"
+    ];
+
     // Drag-to-orbit (depth modes only), guarded like the click handler.
     const dragState = { active: false, x: 0, y: 0, moved: 0 };
     function pointerDown(event) {
       if (strategy.camera === "flat") return;
+      if (
+        portalState.enabled &&
+        portalState.phase !== "expanded"
+      ) {
+        return;
+      }
       if (
         event.target.closest(
           "a, button, input, select, textarea, summary, [role='button']"
@@ -1495,12 +2513,58 @@
         : null;
     if (resizeObserver) resizeObserver.observe(hero);
     else window.addEventListener("resize", resize);
+    window.addEventListener("scroll", scheduleContentMaskUpdate, {
+      passive: true
+    });
+    window.addEventListener(
+      "gck:home-content-visibility",
+      scheduleContentMaskUpdate
+    );
+    window.addEventListener(
+      "gck:contribution-space-request",
+      portalRequest
+    );
+    if (portalElement) {
+      portalElement.addEventListener(
+        "pointerdown",
+        portalPointerDown
+      );
+      portalElement.addEventListener("click", portalClick);
+    }
+    if (returnButton) {
+      returnButton.addEventListener(
+        "click",
+        closeContributionSpace
+      );
+    }
+    document.addEventListener("pointermove", portalPointerMove, {
+      passive: false
+    });
+    document.addEventListener("pointerup", portalPointerUp);
+    document.addEventListener("pointercancel", portalPointerUp);
+    document.addEventListener("keydown", portalKeyDown);
     document.addEventListener("click", documentClick, true);
     document.addEventListener("pointerdown", pointerDown, true);
     document.addEventListener("pointermove", pointerMove, true);
     document.addEventListener("pointerup", pointerUp, true);
+    for (const eventName of portalBlockedEvents) {
+      document.addEventListener(
+        eventName,
+        blockPortalTransitionInteraction,
+        {
+          capture: true,
+          passive: false
+        }
+      );
+    }
     label.addEventListener("click", labelClick);
     resize();
+    if (portalState.enabled) {
+      document.body.classList.add(
+        "home-contribution-space-ready"
+      );
+      setPortalPhase("collapsed", "ready");
+    }
     glCanvas.dataset.starCount = String(stars.length);
     glCanvas.dataset.edgeCount = String(edges.length);
     glCanvas.dataset.contributorCount = String(contributors.length);
@@ -1510,6 +2574,10 @@
     );
     glCanvas.dataset.contributionEdgeCount = String(
       edges.filter((edge) => edge.type === "contribution").length
+    );
+    glCanvas.dataset.spikeCount = String(spikedStars.length);
+    glCanvas.dataset.backgroundStarCount = String(
+      backgroundLayer.geometry.attributes.position.count
     );
     glCanvas.dataset.selectedCount = "0";
     glCanvas.dataset.selectedTier = "";
@@ -1522,28 +2590,81 @@
       scene,
       camera,
       stars,
+      portalState,
+      openContributionSpace,
+      closeContributionSpace,
+      portalSettings: {
+        rotationDegreesPerSecond:
+          portalRotationRadiansPerMs * 1000 * 180 / Math.PI,
+        collapsedScale: portalCollapsedScale,
+        collapsedBrightness: portalCollapsedBrightness
+      },
       pointSizeLimits: {
         minDepth: pointMinDepth,
-        ...POINT_MAX_CSS_SIZE
+        ...pointMaxCssSize
       },
+      backgroundLayer,
       layers: { haloLayer, coreLayer, spikeLayer, pulseLayer }
     };
 
     return function () {
       disposed = true;
       if (frame) window.cancelAnimationFrame(frame);
+      if (contentMaskFrame) {
+        window.cancelAnimationFrame(contentMaskFrame);
+      }
       window.clearTimeout(labelTimer);
       window.clearTimeout(selectionTimer);
       if (resizeObserver) resizeObserver.disconnect();
       else window.removeEventListener("resize", resize);
+      window.removeEventListener("scroll", scheduleContentMaskUpdate);
+      window.removeEventListener(
+        "gck:home-content-visibility",
+        scheduleContentMaskUpdate
+      );
+      window.removeEventListener(
+        "gck:contribution-space-request",
+        portalRequest
+      );
+      if (portalElement) {
+        portalElement.removeEventListener(
+          "pointerdown",
+          portalPointerDown
+        );
+        portalElement.removeEventListener("click", portalClick);
+      }
+      if (returnButton) {
+        returnButton.removeEventListener(
+          "click",
+          closeContributionSpace
+        );
+      }
+      document.removeEventListener(
+        "pointermove",
+        portalPointerMove
+      );
+      document.removeEventListener("pointerup", portalPointerUp);
+      document.removeEventListener(
+        "pointercancel",
+        portalPointerUp
+      );
+      document.removeEventListener("keydown", portalKeyDown);
       document.removeEventListener("click", documentClick, true);
       document.removeEventListener("pointerdown", pointerDown, true);
       document.removeEventListener("pointermove", pointerMove, true);
       document.removeEventListener("pointerup", pointerUp, true);
+      for (const eventName of portalBlockedEvents) {
+        document.removeEventListener(
+          eventName,
+          blockPortalTransitionInteraction,
+          { capture: true }
+        );
+      }
       label.removeEventListener("click", labelClick);
       label.remove();
       panel.remove();
       for (const layer of [
+        backgroundLayer,
         haloLayer,
         coreLayer,
         spikeLayer,
@@ -1558,9 +2679,31 @@
       atlasTexture.dispose();
       renderer.dispose();
       glCanvas.remove();
+      portalBackdrop?.remove();
+      portalInteractionLock?.remove();
+      if (heroContent) {
+        heroContent.style.clipPath = "";
+      }
       canvas.style.display = "";
       canvas.setAttribute("data-knowledge-field", "");
-      document.body.classList.remove("home-stars-full", "home-stars-hero");
+      document.body.classList.remove(
+        "home-stars-full",
+        "home-stars-hero",
+        "home-contribution-space-ready",
+        "home-contribution-space-opening",
+        "home-contribution-space-expanded",
+        "home-contribution-space-closing"
+      );
+      delete document.body.dataset.contributionSpaceState;
+      const documentStyle = document.documentElement.style;
+      for (const name of [
+        "--contribution-space-top",
+        "--contribution-space-right",
+        "--contribution-space-bottom",
+        "--contribution-space-left"
+      ]) {
+        documentStyle.removeProperty(name);
+      }
     };
   }
 

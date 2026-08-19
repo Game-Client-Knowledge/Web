@@ -21,6 +21,10 @@
     home_background_style: "old_star_map",
     home_star_scope: "hero",
     home_star_render_mode: "2d",
+    home_star_experience_mode: "immersive",
+    home_star_portal_rotation_speed: 2.6,
+    home_star_portal_size_percent: 34,
+    home_star_portal_brightness_percent: 42,
     home_star_relation_visibility: "near",
     home_star_strong_relation_style: "solid",
     home_star_reference_relation_style: "dashed",
@@ -43,6 +47,11 @@
     home_star_selected_halo_alpha_boost: 0.18,
     home_star_selected_glow_scale: 1.25,
     home_star_selected_contributor_line_width: 1.4,
+    home_star_3d_min_depth: 280,
+    home_star_3d_halo_max_css_size: 200,
+    home_star_3d_core_max_css_size: 36,
+    home_star_3d_spike_max_css_size: 240,
+    home_star_3d_pulse_max_css_size: 36,
     home_star_active_edge_mode: "single_path",
     home_star_brightness_rules:
       formulaEngine.DEFAULT_BRIGHTNESS_RULES.map((rule) => ({ ...rule })),
@@ -665,6 +674,27 @@
       )
         ? merged.home_star_render_mode
         : defaults.home_star_render_mode,
+      home_star_experience_mode: [
+        "immersive",
+        "contribution_portal"
+      ].includes(merged.home_star_experience_mode)
+        ? merged.home_star_experience_mode
+        : defaults.home_star_experience_mode,
+      home_star_portal_rotation_speed: clampedSetting(
+        "home_star_portal_rotation_speed",
+        0,
+        30
+      ),
+      home_star_portal_size_percent: clampedSetting(
+        "home_star_portal_size_percent",
+        10,
+        100
+      ),
+      home_star_portal_brightness_percent: clampedSetting(
+        "home_star_portal_brightness_percent",
+        10,
+        100
+      ),
       home_star_relation_visibility: ["always", "near", "hidden"].includes(
         merged.home_star_relation_visibility
       )
@@ -734,6 +764,31 @@
         "home_star_selected_contributor_line_width",
         0.5,
         4
+      ),
+      home_star_3d_min_depth: clampedSetting(
+        "home_star_3d_min_depth",
+        100,
+        1000
+      ),
+      home_star_3d_halo_max_css_size: clampedSetting(
+        "home_star_3d_halo_max_css_size",
+        40,
+        600
+      ),
+      home_star_3d_core_max_css_size: clampedSetting(
+        "home_star_3d_core_max_css_size",
+        8,
+        120
+      ),
+      home_star_3d_spike_max_css_size: clampedSetting(
+        "home_star_3d_spike_max_css_size",
+        40,
+        800
+      ),
+      home_star_3d_pulse_max_css_size: clampedSetting(
+        "home_star_3d_pulse_max_css_size",
+        8,
+        120
       ),
       home_star_active_edge_mode: [
         "full",
@@ -1715,9 +1770,12 @@
   function apply(nextSettings) {
     settings = normalizeSettings(nextSettings);
     cleanup();
-    const webglMode = STAR_WEBGL_MODES.includes(
-      settings.home_star_render_mode
-    );
+    const portalExperience =
+      settings.home_star_experience_mode ===
+      "contribution_portal";
+    const webglMode =
+      portalExperience ||
+      STAR_WEBGL_MODES.includes(settings.home_star_render_mode);
     if (
       settings.home_background_style === "contribution_star_map" &&
       webglMode
@@ -1728,11 +1786,21 @@
         // Render 2D immediately and swap to WebGL once the vendor bundle
         // and the mode module arrive, so enabling 3D never blanks the
         // background.
-        cleanup = createContributionMap(settings);
+        cleanup = createContributionMap(
+          portalExperience
+            ? { ...settings, home_star_scope: "hero" }
+            : settings
+        );
         ensureStar3D(() => {
           if (
             ready &&
-            STAR_WEBGL_MODES.includes(settings.home_star_render_mode)
+            (
+              settings.home_star_experience_mode ===
+                "contribution_portal" ||
+              STAR_WEBGL_MODES.includes(
+                settings.home_star_render_mode
+              )
+            )
           ) {
             apply(settings);
           }

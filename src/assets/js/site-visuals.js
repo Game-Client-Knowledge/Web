@@ -13,7 +13,11 @@
     home_intro_lock_scroll: true,
     home_intro_contributor_limit: 8,
     home_content_mask_enabled: false,
-    home_content_idle_timeout_seconds: 30
+    home_content_idle_timeout_seconds: 30,
+    home_star_experience_mode: "immersive",
+    home_star_portal_rotation_speed: 2.6,
+    home_star_portal_size_percent: 34,
+    home_star_portal_brightness_percent: 42
   };
   const HOME_INTRO_SETTINGS_CACHE = "gck-home-intro-settings";
   let releaseHomeIntro;
@@ -94,6 +98,33 @@
           10,
           Number.isFinite(contributorLimit) ? contributorLimit : 8
         )
+      ),
+      home_star_experience_mode: [
+        "immersive",
+        "contribution_portal"
+      ].includes(settings.home_star_experience_mode)
+        ? settings.home_star_experience_mode
+        : "immersive",
+      home_star_portal_rotation_speed: Math.max(
+        0,
+        Math.min(
+          30,
+          Number(settings.home_star_portal_rotation_speed) || 0
+        )
+      ),
+      home_star_portal_size_percent: Math.max(
+        10,
+        Math.min(
+          100,
+          Number(settings.home_star_portal_size_percent) || 34
+        )
+      ),
+      home_star_portal_brightness_percent: Math.max(
+        10,
+        Math.min(
+          100,
+          Number(settings.home_star_portal_brightness_percent) || 42
+        )
       )
     };
   }
@@ -148,6 +179,14 @@
           home_background_style: settings.home_background_style,
           home_star_scope: settings.home_star_scope,
           home_star_render_mode: settings.home_star_render_mode,
+          home_star_experience_mode:
+            settings.home_star_experience_mode,
+          home_star_portal_rotation_speed:
+            settings.home_star_portal_rotation_speed,
+          home_star_portal_size_percent:
+            settings.home_star_portal_size_percent,
+          home_star_portal_brightness_percent:
+            settings.home_star_portal_brightness_percent,
           home_star_relation_visibility:
             settings.home_star_relation_visibility,
           home_star_strong_relation_style:
@@ -194,6 +233,16 @@
             settings.home_star_selected_glow_scale,
           home_star_selected_contributor_line_width:
             settings.home_star_selected_contributor_line_width,
+          home_star_3d_min_depth:
+            settings.home_star_3d_min_depth,
+          home_star_3d_halo_max_css_size:
+            settings.home_star_3d_halo_max_css_size,
+          home_star_3d_core_max_css_size:
+            settings.home_star_3d_core_max_css_size,
+          home_star_3d_spike_max_css_size:
+            settings.home_star_3d_spike_max_css_size,
+          home_star_3d_pulse_max_css_size:
+            settings.home_star_3d_pulse_max_css_size,
           home_star_brightness_rules:
             settings.home_star_brightness_rules,
           home_star_brightness_tiers:
@@ -1667,10 +1716,20 @@
       document.body.dataset.pointerEffect =
         nextSettings.pointer_effect_enabled ? "on" : "off";
       if (type === "home") {
+        const portalExperience =
+          nextSettings.home_star_experience_mode ===
+          "contribution_portal";
         const maskEnabled =
+          portalExperience ||
           nextSettings.home_content_mask_enabled === true;
         document.body.dataset.homeContentMask =
           maskEnabled ? "on" : "off";
+        document.body.dataset.homeStarExperience =
+          nextSettings.home_star_experience_mode;
+        document.body.classList.toggle(
+          "home-star-experience-portal",
+          portalExperience
+        );
         document.body.classList.toggle(
           "home-content-masked",
           maskEnabled

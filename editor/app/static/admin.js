@@ -1052,6 +1052,14 @@ async function loadOverview() {
     data.settings.home_star_scope;
   byId("visualSettingsForm").home_star_render_mode.value =
     data.settings.home_star_render_mode || "2d";
+  byId("visualSettingsForm").home_star_experience_mode.value =
+    data.settings.home_star_experience_mode || "immersive";
+  byId("visualSettingsForm").home_star_portal_rotation_speed.value =
+    String(data.settings.home_star_portal_rotation_speed);
+  byId("visualSettingsForm").home_star_portal_size_percent.value =
+    String(data.settings.home_star_portal_size_percent);
+  byId("visualSettingsForm").home_star_portal_brightness_percent.value =
+    String(data.settings.home_star_portal_brightness_percent);
   byId("visualSettingsForm").home_star_relation_visibility.value =
     data.settings.home_star_relation_visibility;
   byId("visualSettingsForm").home_star_strong_relation_style.value =
@@ -1084,6 +1092,16 @@ async function loadOverview() {
     "visualSettingsForm"
   ).home_star_selected_contributor_line_width.value =
     String(data.settings.home_star_selected_contributor_line_width);
+  byId("visualSettingsForm").home_star_3d_min_depth.value =
+    String(data.settings.home_star_3d_min_depth);
+  byId("visualSettingsForm").home_star_3d_halo_max_css_size.value =
+    String(data.settings.home_star_3d_halo_max_css_size);
+  byId("visualSettingsForm").home_star_3d_core_max_css_size.value =
+    String(data.settings.home_star_3d_core_max_css_size);
+  byId("visualSettingsForm").home_star_3d_spike_max_css_size.value =
+    String(data.settings.home_star_3d_spike_max_css_size);
+  byId("visualSettingsForm").home_star_3d_pulse_max_css_size.value =
+    String(data.settings.home_star_3d_pulse_max_css_size);
   byId("visualSettingsForm").home_star_brightness_variation_enabled.checked =
     data.settings.home_star_brightness_variation_enabled;
   byId("visualSettingsForm").home_star_brightness_min.value =
@@ -1225,6 +1243,17 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         ),
         home_star_scope: form.home_star_scope.value,
         home_star_render_mode: form.home_star_render_mode.value,
+        home_star_experience_mode:
+          form.home_star_experience_mode.value,
+        home_star_portal_rotation_speed: Number(
+          form.home_star_portal_rotation_speed.value
+        ),
+        home_star_portal_size_percent: Number(
+          form.home_star_portal_size_percent.value
+        ),
+        home_star_portal_brightness_percent: Number(
+          form.home_star_portal_brightness_percent.value
+        ),
         home_star_relation_visibility:
           form.home_star_relation_visibility.value,
         home_star_strong_relation_style:
@@ -1262,6 +1291,21 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         ),
         home_star_selected_contributor_line_width: Number(
           form.home_star_selected_contributor_line_width.value
+        ),
+        home_star_3d_min_depth: Number(
+          form.home_star_3d_min_depth.value
+        ),
+        home_star_3d_halo_max_css_size: Number(
+          form.home_star_3d_halo_max_css_size.value
+        ),
+        home_star_3d_core_max_css_size: Number(
+          form.home_star_3d_core_max_css_size.value
+        ),
+        home_star_3d_spike_max_css_size: Number(
+          form.home_star_3d_spike_max_css_size.value
+        ),
+        home_star_3d_pulse_max_css_size: Number(
+          form.home_star_3d_pulse_max_css_size.value
         ),
         home_star_brightness_variation_enabled:
           form.home_star_brightness_variation_enabled.checked,
@@ -1318,6 +1362,14 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         saved.home_content_idle_timeout_seconds,
       home_star_scope: saved.home_star_scope,
       home_star_render_mode: saved.home_star_render_mode,
+      home_star_experience_mode:
+        saved.home_star_experience_mode,
+      home_star_portal_rotation_speed:
+        saved.home_star_portal_rotation_speed,
+      home_star_portal_size_percent:
+        saved.home_star_portal_size_percent,
+      home_star_portal_brightness_percent:
+        saved.home_star_portal_brightness_percent,
       home_star_relation_visibility: saved.home_star_relation_visibility,
       home_star_strong_relation_style:
         saved.home_star_strong_relation_style,
@@ -1347,6 +1399,16 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         saved.home_star_selected_glow_scale,
       home_star_selected_contributor_line_width:
         saved.home_star_selected_contributor_line_width,
+      home_star_3d_min_depth:
+        saved.home_star_3d_min_depth,
+      home_star_3d_halo_max_css_size:
+        saved.home_star_3d_halo_max_css_size,
+      home_star_3d_core_max_css_size:
+        saved.home_star_3d_core_max_css_size,
+      home_star_3d_spike_max_css_size:
+        saved.home_star_3d_spike_max_css_size,
+      home_star_3d_pulse_max_css_size:
+        saved.home_star_3d_pulse_max_css_size,
       home_star_brightness_variation_enabled:
         saved.home_star_brightness_variation_enabled,
       home_star_brightness_min:

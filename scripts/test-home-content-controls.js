@@ -229,6 +229,91 @@ restoredDocument.hidden = false;
 restoredDocument.dispatch("visibilitychange");
 assert.equal(restoredTimers.delay(), 2000);
 
+const portalStorage = memoryStorage();
+portalStorage.setItem(controls.CACHE_KEY, "1");
+portalStorage.setItem(
+  "gck-home-intro-settings",
+  JSON.stringify({
+    home_star_experience_mode: "contribution_portal"
+  })
+);
+const portalToggle = button();
+const portalView = {
+  ...eventTarget(),
+  CustomEvent: view.CustomEvent
+};
+const portalRequests = [];
+portalView.addEventListener(
+  "gck:contribution-space-request",
+  (event) => portalRequests.push(event.detail)
+);
+const portalTimers = fakeTimers();
+const portalDocument = homeDocument(portalToggle, portalView);
+const portalController = controls.initialize({
+  document: portalDocument,
+  storage: portalStorage,
+  view: portalView,
+  setTimeout: portalTimers.setTimeout,
+  clearTimeout: portalTimers.clearTimeout
+});
+assert.equal(portalController.isHidden(), false);
+assert.equal(portalTimers.delay(), 30000);
+portalTimers.runNext();
+assert.deepEqual(portalRequests.at(-1), {
+  action: "open",
+  reason: "idle"
+});
+assert.equal(portalController.idlePortalActive(), true);
+portalView.dispatch("gck:contribution-space-state", {
+  detail: { phase: "opening", reason: "idle" }
+});
+assert.equal(portalController.portalPhase(), "opening");
+assert.equal(portalTimers.count(), 0);
+portalView.dispatch("pointermove");
+assert.deepEqual(portalRequests.at(-1), {
+  action: "close",
+  reason: "activity"
+});
+assert.equal(portalController.idlePortalActive(), false);
+portalView.dispatch("gck:contribution-space-state", {
+  detail: { phase: "closing", reason: "activity" }
+});
+portalView.dispatch("gck:contribution-space-state", {
+  detail: { phase: "collapsed", reason: "activity" }
+});
+assert.equal(portalTimers.delay(), 30000);
+portalToggle.click();
+assert.equal(
+  portalController.isHidden(),
+  false,
+  "the contribution portal owns immersive state"
+);
+portalView.dispatch("gck:contribution-space-state", {
+  detail: { phase: "opening", reason: "manual" }
+});
+const manualRequestCount = portalRequests.length;
+portalView.dispatch("pointermove");
+assert.equal(
+  portalRequests.length,
+  manualRequestCount,
+  "activity must not close a manually opened contribution space"
+);
+portalView.dispatch("gck:contribution-space-state", {
+  detail: { phase: "expanded", reason: "manual" }
+});
+assert.equal(portalTimers.count(), 0);
+portalView.dispatch("gck:contribution-space-state", {
+  detail: { phase: "collapsed", reason: "manual" }
+});
+portalView.dispatch("gck:visual-settings", {
+  detail: {
+    home_star_experience_mode: "immersive",
+    home_content_idle_timeout_seconds: 2
+  }
+});
+assert.equal(portalTimers.delay(), 2000);
+portalController.destroy();
+
 const nonHome = homeDocument(button(), restoredView);
 nonHome.body.classList = classList(["page-document"]);
 assert.equal(

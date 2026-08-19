@@ -301,7 +301,7 @@
           保留主页内容半透明蒙版
         </label>
         <label>
-          主页空闲隐藏（秒，0 为关闭）
+          主页空闲触发（秒，0 为关闭）
           <input
             name="home_content_idle_timeout_seconds"
             type="number"
@@ -310,6 +310,10 @@
             step="1"
             required
           >
+          <small class="field-help">
+            沉浸模式隐藏主页内容；贡献空间模式自动展开，
+            检测到活动后自动收拢。
+          </small>
         </label>
         <label>
           贡献星图范围
@@ -329,6 +333,16 @@
             <option value="3d-galaxy">3D 银河系</option>
             <option value="3d-orbit">3D 轨道星系</option>
           </select>
+        </label>
+        <label>
+          星图体验
+          <select name="home_star_experience_mode">
+            <option value="immersive">沉浸背景（当前）</option>
+            <option value="contribution_portal">贡献空间（试点）</option>
+          </select>
+          <small class="field-help">
+            贡献空间在白色主页中收拢为可拖动菱形体，点击后展开为全屏星空。
+          </small>
         </label>
         <label class="check-label">
           <input name="pointer_effect_enabled" type="checkbox">
@@ -511,6 +525,124 @@
                   required
                 >
                 <small class="field-help">控制点亮贡献者静星的十字识别线粗细。</small>
+              </label>
+            </div>
+          </section>
+          <section
+            class="contribution-portal-editor"
+            aria-labelledby="contributionPortalTitle"
+          >
+            <div class="subsection-heading">
+              <h3 id="contributionPortalTitle">贡献空间</h3>
+              <p>仅作用于“贡献空间（试点）”的收拢状态；展开后平滑恢复为完整尺寸与亮度。</p>
+            </div>
+            <div class="visual-group-grid">
+              <label>
+                自动旋转速率（°/秒）
+                <input
+                  name="home_star_portal_rotation_speed"
+                  type="number"
+                  min="0"
+                  max="30"
+                  step="0.1"
+                  required
+                >
+                <small class="field-help">控制收拢菱形星体的自动旋转；设为 0 可停止自动旋转，拖动仍然有效。</small>
+              </label>
+              <label>
+                收拢尺寸（%）
+                <input
+                  name="home_star_portal_size_percent"
+                  type="number"
+                  min="10"
+                  max="100"
+                  step="1"
+                  required
+                >
+                <small class="field-help">控制收拢星体相对于全屏状态的尺寸，展开时平滑恢复至 100%。</small>
+              </label>
+              <label>
+                收拢亮度（%）
+                <input
+                  name="home_star_portal_brightness_percent"
+                  type="number"
+                  min="10"
+                  max="100"
+                  step="1"
+                  required
+                >
+                <small class="field-help">同时控制收拢星体与远景微星曝光，展开时平滑恢复至 100%。</small>
+              </label>
+            </div>
+          </section>
+          <section
+            class="star-size-limit-editor"
+            aria-labelledby="starSizeLimitTitle"
+          >
+            <div class="subsection-heading">
+              <h3 id="starSizeLimitTitle">3D 星体尺寸保护</h3>
+              <p>限制 WebGL 星体在高分辨率和近景透视下的屏幕尺寸，避免遮挡页面内容。</p>
+            </div>
+            <div class="visual-group-grid">
+              <label>
+                最小投影深度
+                <input
+                  name="home_star_3d_min_depth"
+                  type="number"
+                  min="100"
+                  max="1000"
+                  step="1"
+                  required
+                >
+                <small class="field-help">星体靠近相机后不再继续放大；值越大，近景星体越小。</small>
+              </label>
+              <label>
+                光晕直径上限（CSS px）
+                <input
+                  name="home_star_3d_halo_max_css_size"
+                  type="number"
+                  min="40"
+                  max="600"
+                  step="1"
+                  required
+                >
+                <small class="field-help">限制星体外围辉光的最大屏幕直径。</small>
+              </label>
+              <label>
+                核心直径上限（CSS px）
+                <input
+                  name="home_star_3d_core_max_css_size"
+                  type="number"
+                  min="8"
+                  max="120"
+                  step="1"
+                  required
+                >
+                <small class="field-help">限制星体明亮核心的最大屏幕直径。</small>
+              </label>
+              <label>
+                衍射芒直径上限（CSS px）
+                <input
+                  name="home_star_3d_spike_max_css_size"
+                  type="number"
+                  min="40"
+                  max="800"
+                  step="1"
+                  required
+                >
+                <small class="field-help">限制黄矮星、蓝巨星等星体衍射芒的最大屏幕直径。</small>
+              </label>
+              <label>
+                传播脉冲直径上限（CSS px）
+                <input
+                  name="home_star_3d_pulse_max_css_size"
+                  type="number"
+                  min="8"
+                  max="120"
+                  step="1"
+                  required
+                >
+                <small class="field-help">限制主动点亮关系线上移动脉冲的最大屏幕直径。</small>
               </label>
             </div>
           </section>

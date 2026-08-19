@@ -432,6 +432,13 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert payload["config"]["home_intro_contributor_limit"] == 8
     assert payload["config"]["home_content_mask_enabled"] is False
     assert payload["config"]["home_content_idle_timeout_seconds"] == 30
+    assert payload["config"]["home_star_experience_mode"] == "immersive"
+    assert payload["config"]["home_star_portal_rotation_speed"] == 2.6
+    assert payload["config"]["home_star_portal_size_percent"] == 34
+    assert (
+        payload["config"]["home_star_portal_brightness_percent"]
+        == 42
+    )
     assert payload["config"]["home_star_graph_direction"] == "directed"
     assert payload["config"]["home_star_brightness_initial"] == 10
     assert payload["config"]["home_star_brightness_max"] == 100
@@ -449,6 +456,11 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
         payload["config"]["home_star_selected_contributor_line_width"]
         == 1.4
     )
+    assert payload["config"]["home_star_3d_min_depth"] == 280
+    assert payload["config"]["home_star_3d_halo_max_css_size"] == 200
+    assert payload["config"]["home_star_3d_core_max_css_size"] == 36
+    assert payload["config"]["home_star_3d_spike_max_css_size"] == 240
+    assert payload["config"]["home_star_3d_pulse_max_css_size"] == 36
     assert payload["config"]["home_star_active_edge_mode"] == "single_path"
     assert [item["path"] for item in payload["drafts"]] == [
         "knowledge/cpp/bootstrap/README.md"
@@ -1339,6 +1351,10 @@ def test_admin_can_configure_client_visual_effects(
             "home_content_mask_enabled": True,
             "home_content_idle_timeout_seconds": 45,
             "home_star_scope": "full",
+            "home_star_experience_mode": "contribution_portal",
+            "home_star_portal_rotation_speed": 4.5,
+            "home_star_portal_size_percent": 48,
+            "home_star_portal_brightness_percent": 55,
             "home_star_relation_visibility": "hidden",
             "home_star_strong_relation_style": "glow",
             "home_star_reference_relation_style": "dashed",
@@ -1354,6 +1370,11 @@ def test_admin_can_configure_client_visual_effects(
             "home_star_selected_halo_alpha_boost": 0.26,
             "home_star_selected_glow_scale": 1.5,
             "home_star_selected_contributor_line_width": 1.8,
+            "home_star_3d_min_depth": 360,
+            "home_star_3d_halo_max_css_size": 180,
+            "home_star_3d_core_max_css_size": 32,
+            "home_star_3d_spike_max_css_size": 220,
+            "home_star_3d_pulse_max_css_size": 30,
             "home_star_brightness_variation_enabled": True,
             "home_star_brightness_min": 5,
             "home_star_brightness_initial": 25,
@@ -1420,6 +1441,10 @@ def test_admin_can_configure_client_visual_effects(
         "home_content_idle_timeout_seconds": 45,
         "home_star_scope": "full",
         "home_star_render_mode": "2d",
+        "home_star_experience_mode": "contribution_portal",
+        "home_star_portal_rotation_speed": 4.5,
+        "home_star_portal_size_percent": 48,
+        "home_star_portal_brightness_percent": 55,
         "home_star_relation_visibility": "hidden",
         "home_star_strong_relation_style": "glow",
         "home_star_reference_relation_style": "dashed",
@@ -1435,6 +1460,11 @@ def test_admin_can_configure_client_visual_effects(
         "home_star_selected_halo_alpha_boost": 0.26,
         "home_star_selected_glow_scale": 1.5,
         "home_star_selected_contributor_line_width": 1.8,
+        "home_star_3d_min_depth": 360,
+        "home_star_3d_halo_max_css_size": 180,
+        "home_star_3d_core_max_css_size": 32,
+        "home_star_3d_spike_max_css_size": 220,
+        "home_star_3d_pulse_max_css_size": 30,
         "home_star_brightness_variation_enabled": True,
         "home_star_brightness_min": 5,
         "home_star_brightness_initial": 25,
@@ -1498,6 +1528,13 @@ def test_admin_can_configure_client_visual_effects(
     assert config["home_content_mask_enabled"] is True
     assert config["home_content_idle_timeout_seconds"] == 45
     assert config["home_star_scope"] == "full"
+    assert (
+        config["home_star_experience_mode"]
+        == "contribution_portal"
+    )
+    assert config["home_star_portal_rotation_speed"] == 4.5
+    assert config["home_star_portal_size_percent"] == 48
+    assert config["home_star_portal_brightness_percent"] == 55
     assert config["home_star_relation_visibility"] == "hidden"
     assert config["home_star_strong_relation_style"] == "glow"
     assert config["home_star_graph_direction"] == "undirected"
@@ -1514,6 +1551,11 @@ def test_admin_can_configure_client_visual_effects(
     assert config["home_star_selected_halo_alpha_boost"] == 0.26
     assert config["home_star_selected_glow_scale"] == 1.5
     assert config["home_star_selected_contributor_line_width"] == 1.8
+    assert config["home_star_3d_min_depth"] == 360
+    assert config["home_star_3d_halo_max_css_size"] == 180
+    assert config["home_star_3d_core_max_css_size"] == 32
+    assert config["home_star_3d_spike_max_css_size"] == 220
+    assert config["home_star_3d_pulse_max_css_size"] == 30
     assert config["home_star_brightness_variation_enabled"] is True
     assert config["home_star_brightness_min"] == 5
     assert config["home_star_brightness_initial"] == 25
@@ -1647,6 +1689,26 @@ def test_admin_can_configure_client_visual_effects(
     )
     assert invalid_graph_direction.status_code == 422
 
+    invalid_experience_mode = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "home_star_experience_mode": "wormhole",
+        },
+    )
+    assert invalid_experience_mode.status_code == 422
+
+    invalid_portal_settings = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "home_star_portal_rotation_speed": 31,
+            "home_star_portal_size_percent": 9,
+            "home_star_portal_brightness_percent": 101,
+        },
+    )
+    assert invalid_portal_settings.status_code == 422
+
     invalid_brightness_range = client.put(
         "/api/admin/visual-settings",
         headers={"X-CSRF-Token": csrf},
@@ -1671,6 +1733,16 @@ def test_admin_can_configure_client_visual_effects(
         },
     )
     assert invalid_selected_effect.status_code == 422
+
+    invalid_3d_size_limit = client.put(
+        "/api/admin/visual-settings",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "home_star_3d_min_depth": 99,
+            "home_star_3d_halo_max_css_size": 601,
+        },
+    )
+    assert invalid_3d_size_limit.status_code == 422
 
     invalid_formula = client.put(
         "/api/admin/visual-settings",

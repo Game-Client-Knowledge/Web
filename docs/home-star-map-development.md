@@ -414,10 +414,85 @@ Directed and undirected modes use the same plain relation lines. The Canvas
 does not draw arrowheads; graph direction is represented by traversal behavior
 and the selected coverage result, which avoids visual noise in dense regions.
 
+### 10.1 WebGL optical profile
+
+The 3D renderer keeps all visual enrichment client-generated:
+
+- point-size limits use a 62% soft knee instead of a hard plateau;
+- every blue giant keeps diffraction spikes, while only the brightest 6% of
+  secondary spike-capable stars receive them;
+- spike orientation stays within three degrees of one optical axis;
+- random brightness variation changes exposure at 35% strength but never
+  changes the base core, halo, or spike size;
+- optional random color produces deterministic per-star warm/cool temperature
+  shifts without creating extra atlas textures;
+- drift modes use bounded low-frequency curves instead of box collisions;
+- 240 non-interactive distant stars are generated from the content revision
+  seed in one additional draw call;
+- bright graph stars are softly attenuated behind the hero copy, statistics,
+  and contribution ledger. Hiding homepage content removes this attenuation.
+
+The halo and spike source canvases remain cached in the existing module-level
+maps. The distant layer is regenerated from a fixed seed because its buffer is
+smaller than a persistent serialized cache and requires no network transfer.
+No image, model, font, API request, or Three.js export is added. The WebGL
+vendor bundle remains unchanged; only the already lazy-loaded mode script
+changes and continues to use the Web commit as its seven-day HTTP cache key.
+
+### 10.2 Contribution space pilot
+
+`home_star_experience_mode=contribution_portal` keeps the normal immersive
+renderer available while presenting the graph as an explicit homepage portal:
+
+1. the hero uses the live programmatic star field as its dark surface and
+   keeps the masked content treatment;
+2. lower homepage bands return to light surfaces;
+3. the `贡献` portal occupies the upper-right side of the hero title row
+   on desktop and remains right-aligned below the title copy on mobile;
+4. the same graph stars are deterministically packed inside an octahedral
+   volume and rendered at the configured collapsed scale inside the portal;
+5. pointer dragging changes the portal yaw and pitch without activating it;
+6. clicking drives star positions, star scale, distant-star exposure, and the
+   clipped black surface from the same eased progress so diffusion remains
+   synchronized while expanding to the viewport;
+7. the return command reverses both interpolation and clipping, then restores
+   the previous page scroll position.
+
+The homepage remains rendered beneath the clipped WebGL surface throughout
+opening, expanded, and closing states. Expansion therefore covers the real
+homepage directly, while closing reveals that same page as the clip contracts;
+there is no intermediate pure-black page or content-opacity swap.
+The complete hero content overlay, including the title, portal control, and
+four statistics, remains rendered throughout both transition directions. A
+single even-odd inverse clip derived from the same expansion rectangle makes
+all of it behave as content below the WebGL surface: only the region reached
+by the field is removed, and contraction reveals the content along the exact
+reverse path. No individual hero element uses transition-time visibility
+rules.
+
+The transition uses one explicit top-layer stack: backdrop `10000`, WebGL
+surface `10001`, inverse-clipped hero reveal `10002`, return command `10003`,
+and interaction shield `10004`. This keeps the contribution surface above all
+normal page stacking contexts without scattering page-specific z-index
+exceptions.
+
+The pilot does not create a second graph, texture set, Canvas, vendor bundle,
+or API request. Portal coordinates are derived from the content revision and
+star ID. The existing atlas, formula output, cached contribution graph, and
+Three.js module are reused. The existing homepage idle timeout opens the
+contribution space instead of hiding page content in this mode. Pointer,
+touch, keyboard, wheel, or scroll activity reverses an idle-triggered opening
+from its current progress, while manually opened space remains expanded.
+Opening and closing install a transparent interaction shield and capture
+keyboard events so no underlying page command can run during either
+transition.
+
 Useful Canvas datasets for browser tests:
 
 ```text
 data-star-count
+data-spike-count
+data-background-star-count
 data-document-count
 data-contributor-count
 data-code-system-count
@@ -448,6 +523,11 @@ Main settings:
 | --- | --- |
 | `home_background_style` | `old_star_map`, `contribution_star_map` |
 | `home_star_scope` | `hero`, `full` |
+| `home_star_experience_mode` | `immersive`, `contribution_portal` |
+| `home_star_portal_rotation_speed` | `0..30` degrees per second; default `2.6`, `0` disables automatic rotation |
+| `home_star_portal_size_percent` | `10..100` percent; default `34`, expands to `100%` |
+| `home_star_portal_brightness_percent` | `10..100` percent; default `42`, expands to `100%` |
+| `home_content_idle_timeout_seconds` | `0..3600`; hides immersive content or auto-opens contribution space, `0` disables |
 | `home_star_relation_visibility` | `always`, `near`, `hidden` |
 | `home_star_graph_direction` | `directed`, `undirected` |
 | `home_star_*_relation_style` | `solid`, `dashed`, `glow` |
@@ -461,6 +541,11 @@ Main settings:
 | `home_star_selected_halo_alpha_boost` | `0..0.5` |
 | `home_star_selected_glow_scale` | `1..3` |
 | `home_star_selected_contributor_line_width` | `0.5..4` px |
+| `home_star_3d_min_depth` | `100..1000` world units; closer 3D stars stop gaining size |
+| `home_star_3d_halo_max_css_size` | `40..600` CSS px diameter |
+| `home_star_3d_core_max_css_size` | `8..120` CSS px diameter |
+| `home_star_3d_spike_max_css_size` | `40..800` CSS px diameter |
+| `home_star_3d_pulse_max_css_size` | `8..120` CSS px diameter |
 | `home_star_brightness_min` | `0..100`, not above initial or maximum |
 | `home_star_brightness_initial` | `0..100`, inside configured bounds |
 | `home_star_brightness_max` | `1..100` |
