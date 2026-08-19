@@ -96,8 +96,8 @@ class GitHubClient:
                 detail = response.text
             if response.status_code == 401:
                 detail = (
-                    "GitHub 凭证已失效或被撤销；请在个人设置中解绑后"
-                    "重新绑定 GitHub，再次提交"
+                    "GitHub 凭证已失效或被撤销；请在个人设置中"
+                    "刷新 GitHub 授权后再次提交"
                 )
             elif (
                 response.status_code == 403

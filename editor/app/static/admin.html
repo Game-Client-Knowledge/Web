@@ -140,6 +140,17 @@
           >
         </label>
         <label>
+          登录保持天数
+          <input
+            name="session_idle_days"
+            type="number"
+            min="1"
+            max="365"
+            step="1"
+            required
+          >
+        </label>
+        <label>
           阅读器编辑模式
           <select name="reader_edit_mode">
             <option value="new">New · 同构预览编辑</option>

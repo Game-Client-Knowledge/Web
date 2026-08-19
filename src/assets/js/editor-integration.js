@@ -283,8 +283,12 @@
 
     const bind = query("[data-account-bind-github]");
     const unlink = query("[data-account-unlink-github]");
-    bind.hidden = Boolean(user.github_login);
+    const githubBound = Boolean(user.github_login);
+    bind.hidden = false;
     unlink.hidden = !user.github_login;
+    bind.innerHTML =
+      '<i data-lucide="github" aria-hidden="true"></i>' +
+      (githubBound ? "刷新 GitHub 授权" : "绑定 GitHub");
     if (state.config && state.config.github_oauth_enabled) {
       bind.href = githubAuthUrl("bind");
       bind.removeAttribute("aria-disabled");

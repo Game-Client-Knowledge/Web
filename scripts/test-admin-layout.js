@@ -65,6 +65,7 @@ assert.equal(
   4
 );
 assert.match(html, /class="visual-form-actions"/);
+assert.match(html, /name="session_idle_days"/);
 assert.match(html, /name="home_star_brightness_min"/);
 for (const field of [
   "home_star_selected_radius_boost",

@@ -57,6 +57,18 @@ EDITOR_PR_SYNC_INTERVAL_SECONDS=900
 The close threshold can also be changed at runtime from the administration page.
 Set it to `0` there to disable automatic close.
 
+Login sessions use a sliding idle expiration configured from the administration
+page. The default is 30 days. An active browser refreshes both the SQLite
+session expiry and the HttpOnly cookie at most once every 12 hours. This keeps
+regular users signed in without issuing a new cookie on every API request.
+The former `EDITOR_SESSION_HOURS` environment value is no longer used; the
+database-backed administration setting is authoritative.
+
+GitHub account binding is stored on the user record independently from the
+login session. A login timeout never removes `github_id`, `github_login`, or the
+encrypted OAuth token. If GitHub actually revokes the OAuth token, use
+**Refresh GitHub authorization** in the account menu; unlinking is unnecessary.
+
 The production bootstrap identity is:
 
 ```text

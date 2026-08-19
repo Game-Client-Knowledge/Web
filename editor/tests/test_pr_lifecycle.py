@@ -25,7 +25,6 @@ def make_settings(tmp_path: Path) -> Settings:
         base_url="https://example.test/editor",
         cookie_secure=False,
         cookie_path="/",
-        session_hours=24,
         registration_enabled=True,
         default_edit_policy="local_authenticated",
         pr_auto_close_days=7,

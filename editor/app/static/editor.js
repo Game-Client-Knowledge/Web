@@ -375,8 +375,12 @@ function renderWorkspaceIdentity() {
   byId("branchPreview").textContent = `web/${slugify(user.username)}/update`;
   const bindButton = byId("githubBindingButton");
   const unlinkButton = byId("githubUnlinkButton");
-  byId("githubPrerequisite").hidden = Boolean(user.github_login);
-  bindButton.hidden = Boolean(user.github_login);
+  const githubBound = Boolean(user.github_login);
+  byId("githubPrerequisite").hidden = githubBound;
+  bindButton.hidden = false;
+  bindButton.textContent = githubBound
+    ? "刷新 GitHub 授权"
+    : "绑定 GitHub";
   unlinkButton.hidden = !user.github_login;
   if (state.config.github_oauth_enabled) {
     bindButton.href =

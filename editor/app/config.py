@@ -18,7 +18,6 @@ class Settings:
     base_url: str
     cookie_secure: bool
     cookie_path: str
-    session_hours: int
     registration_enabled: bool
     default_edit_policy: str
     pr_auto_close_days: int
@@ -64,7 +63,6 @@ class Settings:
             ).rstrip("/"),
             cookie_secure=env_bool("EDITOR_COOKIE_SECURE", True),
             cookie_path=os.getenv("EDITOR_COOKIE_PATH", "/editor"),
-            session_hours=max(1, int(os.getenv("EDITOR_SESSION_HOURS", "24"))),
             registration_enabled=env_bool("EDITOR_REGISTRATION_ENABLED", True),
             default_edit_policy=policy,
             pr_auto_close_days=max(

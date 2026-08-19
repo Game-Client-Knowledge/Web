@@ -28,7 +28,6 @@ def make_settings(tmp_path: Path, *, oauth: bool = False) -> Settings:
         base_url="https://example.test/editor",
         cookie_secure=False,
         cookie_path="/",
-        session_hours=24,
         registration_enabled=True,
         default_edit_policy="local_authenticated",
         pr_auto_close_days=7,
@@ -121,6 +120,79 @@ def test_bootstrap_admin_must_change_password(client: TestClient) -> None:
 
     session = client.get("/api/session").json()
     assert session["user"]["must_change_password"] is False
+
+
+def test_active_session_uses_sliding_idle_expiration(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "sliding@example.test",
+            "username": "sliding-user",
+            "password": "local-password-123",
+        },
+    )
+    assert registered.status_code == 200
+    initial_cookie = registered.headers["set-cookie"]
+    assert "Max-Age=2592000" in initial_cookie
+
+    unchanged = client.get("/api/session")
+    assert unchanged.json()["authenticated"] is True
+    assert "gck_editor_session=" not in unchanged.headers.get(
+        "set-cookie",
+        "",
+    )
+
+    near_expiry = datetime.now(timezone.utc) + timedelta(hours=1)
+    with client.app.state.db.connect() as connection:
+        connection.execute(
+            """
+            UPDATE sessions
+            SET expires_at = ?
+            WHERE user_id = ?
+            """,
+            (
+                near_expiry.isoformat(),
+                registered.json()["user"]["id"],
+            ),
+        )
+
+    refreshed = client.get("/api/session")
+    assert refreshed.status_code == 200
+    assert refreshed.json()["authenticated"] is True
+    assert "Max-Age=2592000" in refreshed.headers["set-cookie"]
+
+    with client.app.state.db.connect() as connection:
+        row = connection.execute(
+            """
+            SELECT expires_at FROM sessions
+            WHERE user_id = ?
+            ORDER BY id DESC LIMIT 1
+            """,
+            (registered.json()["user"]["id"],),
+        ).fetchone()
+    refreshed_expiry = datetime.fromisoformat(row["expires_at"])
+    assert refreshed_expiry > datetime.now(timezone.utc) + timedelta(days=29)
+
+    with client.app.state.db.connect() as connection:
+        connection.execute(
+            "UPDATE settings SET value = '1' WHERE key = 'session_idle_days'"
+        )
+    shortened = client.get("/api/session")
+    assert shortened.json()["authenticated"] is True
+    assert "Max-Age=86400" in shortened.headers["set-cookie"]
+    with client.app.state.db.connect() as connection:
+        row = connection.execute(
+            """
+            SELECT expires_at FROM sessions
+            WHERE user_id = ?
+            ORDER BY id DESC LIMIT 1
+            """,
+            (registered.json()["user"]["id"],),
+        ).fetchone()
+    shortened_expiry = datetime.fromisoformat(row["expires_at"])
+    assert shortened_expiry < datetime.now(timezone.utc) + timedelta(hours=25)
 
 
 def test_anonymous_visit_cookie_and_admin_analytics(
@@ -345,6 +417,7 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert payload["config"]["reader_edit_mode"] == "new"
     assert payload["config"]["reader_diff_enabled"] is True
     assert payload["config"]["workspace_sync_interval_seconds"] == 60
+    assert payload["config"]["session_idle_days"] == 30
     assert payload["config"]["site_auto_update_interval_minutes"] == 10
     assert payload["config"]["catalog_background_style"] == "circuit"
     assert payload["config"]["reader_background_style"] == "blueprint"
@@ -980,6 +1053,7 @@ def test_admin_can_switch_to_github_required_policy(client: TestClient) -> None:
             "edit_policy": "github_verified",
             "registration_enabled": True,
             "pr_auto_close_days": 14,
+            "session_idle_days": 45,
             "reader_edit_mode": "old",
             "reader_diff_enabled": False,
             "workspace_sync_interval_seconds": 120,
@@ -989,6 +1063,7 @@ def test_admin_can_switch_to_github_required_policy(client: TestClient) -> None:
     assert response.status_code == 200, response.text
     assert response.json()["edit_policy"] == "github_verified"
     assert response.json()["pr_auto_close_days"] == 14
+    assert response.json()["session_idle_days"] == 45
     assert response.json()["reader_edit_mode"] == "old"
     assert response.json()["reader_diff_enabled"] is False
     assert response.json()["workspace_sync_interval_seconds"] == 120
@@ -997,6 +1072,7 @@ def test_admin_can_switch_to_github_required_policy(client: TestClient) -> None:
     assert config["reader_edit_mode"] == "old"
     assert config["reader_diff_enabled"] is False
     assert config["workspace_sync_interval_seconds"] == 120
+    assert config["session_idle_days"] == 45
     assert config["site_auto_update_interval_minutes"] == 30
 
     invalid = client.put(
@@ -1719,7 +1795,7 @@ def test_legacy_root_cookie_cannot_override_editor_session(
             for value in set_cookies
             if "gck_editor_session=" in value
             and "Path=/editor" in value
-            and "Max-Age=86400" in value
+            and "Max-Age=2592000" in value
         )
         session_token = editor_cookie.split(
             "gck_editor_session=",
@@ -2874,6 +2950,33 @@ def test_local_account_can_explicitly_bind_and_unlink_github(
     assert submitted.status_code == 200, submitted.text
     assert github.submit.await_args.kwargs["token"] == "github-token"
     assert github.submit.await_args.kwargs["author"] is None
+
+    github.exchange_oauth_code = AsyncMock(return_value="refreshed-token")
+    refresh_start = oauth_client.get(
+        "/api/auth/github",
+        params={"mode": "bind"},
+        follow_redirects=False,
+    )
+    refresh_state = parse_qs(
+        urlparse(refresh_start.headers["location"]).query
+    )["state"][0]
+    refreshed = oauth_client.get(
+        "/api/auth/github/callback",
+        params={"code": "refresh-code", "state": refresh_state},
+        follow_redirects=False,
+    )
+    assert refreshed.status_code == 307
+    with oauth_client.app.state.db.connect() as connection:
+        row = connection.execute(
+            "SELECT github_token_encrypted FROM users WHERE id = ?",
+            (registered["user"]["id"],),
+        ).fetchone()
+    assert (
+        oauth_client.app.state.cipher.decrypt(
+            row["github_token_encrypted"]
+        )
+        == "refreshed-token"
+    )
 
     unlinked = oauth_client.post(
         "/api/auth/github/unlink",

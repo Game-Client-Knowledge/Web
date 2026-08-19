@@ -44,6 +44,12 @@ replace a different existing binding. OAuth tokens are encrypted at rest and nev
 enter browser JavaScript. A local account can unlink GitHub only when it retains a
 password login method.
 
+Traditional GitHub OAuth App tokens are long-lived. The website login session is
+separate and uses a configurable sliding idle timeout (30 days by default).
+Expiring a website session does not remove the GitHub binding. If GitHub revokes
+the token, **Refresh GitHub authorization** replaces it in place without unlinking
+the account.
+
 When a GitHub-authenticated session submits:
 
 - The user's OAuth token performs the API request.

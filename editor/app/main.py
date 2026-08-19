@@ -209,6 +209,7 @@ class SettingsRequest(BaseModel):
     edit_policy: str
     registration_enabled: bool
     pr_auto_close_days: int = Field(ge=0, le=365)
+    session_idle_days: int = Field(default=30, ge=1, le=365)
     reader_edit_mode: str = "new"
     reader_diff_enabled: bool = True
     workspace_sync_interval_seconds: int = Field(
@@ -622,6 +623,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "frame-ancestors 'self'; "
             "form-action 'self' https://github.com"
         )
+        refresh_token = getattr(
+            request.state,
+            "session_refresh_token",
+            None,
+        )
+        if refresh_token:
+            response.set_cookie(
+                SESSION_COOKIE,
+                refresh_token,
+                max_age=request.state.session_refresh_max_age,
+                secure=settings.cookie_secure,
+                httponly=True,
+                samesite="lax",
+                path=settings.cookie_path,
+            )
         if settings.cookie_path != "/":
             response.delete_cookie(
                 SESSION_COOKIE,
@@ -660,11 +676,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 values.append(value)
         return values
 
+    def session_idle_days() -> int:
+        try:
+            value = int(db.setting("session_idle_days", "30"))
+        except (TypeError, ValueError):
+            value = 30
+        return max(1, min(365, value))
+
+    def session_max_age() -> int:
+        return session_idle_days() * 24 * 60 * 60
+
     def read_session(request: Request) -> dict[str, Any] | None:
         tokens = request_cookie_values(request, SESSION_COOKIE)
         if not tokens:
             return None
-        now = utc_now()
+        now_value = datetime.now(timezone.utc)
+        now = now_value.isoformat()
+        lifetime = timedelta(days=session_idle_days())
+        refresh_interval = min(timedelta(hours=12), lifetime / 2)
         with db.connect() as connection:
             for token in tokens:
                 row = connection.execute(
@@ -679,10 +708,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ).fetchone()
                 if not row or row["status"] != "active":
                     continue
-                connection.execute(
-                    "UPDATE sessions SET last_seen_at = ? WHERE id = ?",
-                    (now, row["session_id"]),
+                expires_at = datetime.fromisoformat(row["expires_at"])
+                target_expiry = now_value + lifetime
+                should_refresh = (
+                    expires_at
+                    <= target_expiry - refresh_interval
+                    or expires_at > target_expiry
                 )
+                if should_refresh:
+                    expires_at = target_expiry
+                    connection.execute(
+                        """
+                        UPDATE sessions
+                        SET expires_at = ?, last_seen_at = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            expires_at.isoformat(),
+                            now,
+                            row["session_id"],
+                        ),
+                    )
+                    request.state.session_refresh_token = token
+                    request.state.session_refresh_max_age = int(
+                        lifetime.total_seconds()
+                    )
+                else:
+                    connection.execute(
+                        "UPDATE sessions SET last_seen_at = ? WHERE id = ?",
+                        (now, row["session_id"]),
+                    )
                 return dict(row)
         return None
 
@@ -728,6 +783,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         raw = random_token()
         csrf = random_token()
         now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(days=session_idle_days())
         connection.execute(
             """
             INSERT INTO sessions(
@@ -741,7 +797,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 csrf,
                 user_id,
                 auth_provider,
-                (now + timedelta(hours=settings.session_hours)).isoformat(),
+                expires_at.isoformat(),
                 now.isoformat(),
                 now.isoformat(),
             ),
@@ -768,7 +824,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.set_cookie(
             SESSION_COOKIE,
             session_token,
-            max_age=settings.session_hours * 3600,
+            max_age=session_max_age(),
             secure=settings.cookie_secure,
             httponly=True,
             samesite="lax",
@@ -1132,6 +1188,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "workspace_sync_interval_seconds": int(
                 db.setting("workspace_sync_interval_seconds", "60")
             ),
+            "session_idle_days": session_idle_days(),
             "site_auto_update_interval_minutes": int(
                 db.setting("site_auto_update_interval_minutes", "10")
             ),
@@ -1872,7 +1929,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             response.set_cookie(
                 SESSION_COOKIE,
                 raw,
-                max_age=settings.session_hours * 3600,
+                max_age=session_max_age(),
                 secure=settings.cookie_secure,
                 httponly=True,
                 samesite="lax",
@@ -2449,7 +2506,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except RuntimeError as exc:
                 raise HTTPException(
                     status_code=403,
-                    detail="GitHub 登录令牌已失效，请重新绑定",
+                    detail=(
+                        "服务器无法解密已保存的 GitHub 凭证；"
+                        "绑定信息仍在，请联系管理员检查加密密钥"
+                    ),
                 ) from exc
             author = None
             actor = f"@{user['github_login']} (GitHub)"
@@ -2465,7 +2525,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except RuntimeError as exc:
                 raise HTTPException(
                     status_code=403,
-                    detail="GitHub 登录令牌已失效，请重新登录",
+                    detail=(
+                        "服务器无法解密已保存的 GitHub 凭证；"
+                        "请联系管理员检查加密密钥"
+                    ),
                 ) from exc
             token_source = "github-user"
             author = None
@@ -2500,7 +2563,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if token_source == "github-user":
                 return (
                     "GitHub 令牌已失效（可能已被撤销或过期），"
-                    "请在账号菜单中解绑 GitHub 后重新绑定"
+                    "请在账号菜单中刷新 GitHub 授权"
                 )
             return (
                 "服务器提交 Bot 令牌已失效，请联系站点管理员更新 "
@@ -3009,6 +3072,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "workspace_sync_interval_seconds": int(
                     db.setting("workspace_sync_interval_seconds", "60")
                 ),
+                "session_idle_days": session_idle_days(),
                 "site_auto_update_interval_minutes": int(
                     db.setting("site_auto_update_interval_minutes", "10")
                 ),
@@ -3150,6 +3214,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "1" if payload.registration_enabled else "0"
                 ),
                 "pr_auto_close_days": str(payload.pr_auto_close_days),
+                "session_idle_days": str(payload.session_idle_days),
                 "reader_edit_mode": payload.reader_edit_mode,
                 "reader_diff_enabled": (
                     "1" if payload.reader_diff_enabled else "0"
@@ -3182,6 +3247,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "edit_policy": payload.edit_policy,
             "registration_enabled": payload.registration_enabled,
             "pr_auto_close_days": payload.pr_auto_close_days,
+            "session_idle_days": payload.session_idle_days,
             "reader_edit_mode": payload.reader_edit_mode,
             "reader_diff_enabled": payload.reader_diff_enabled,
             "workspace_sync_interval_seconds": (

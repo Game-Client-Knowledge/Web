@@ -519,6 +519,14 @@ class Database:
                 """,
                 (now,),
             )
+            connection.execute(
+                """
+                INSERT INTO settings(key, value, updated_at)
+                VALUES('session_idle_days', '30', ?)
+                ON CONFLICT(key) DO NOTHING
+                """,
+                (now,),
+            )
             intro_duration_row = connection.execute(
                 """
                 SELECT value FROM settings
