@@ -158,40 +158,204 @@
     return family[Math.floor(random() * family.length)];
   }
 
-  function hexToRgbChannels(hex) {
-    const value = String(hex || "#ffffff").replace("#", "");
-    return [
-      parseInt(value.slice(0, 2), 16) || 0,
-      parseInt(value.slice(2, 4), 16) || 0,
-      parseInt(value.slice(4, 6), 16) || 0
-    ].join(", ");
+  // Per-tier visual profile. Each brightness tier has its own texture: color
+  // tint mixed with the star's color, halo scale, chromatic ring, and
+  // diffraction spike shape. `default` covers stars without a tier match.
+  const TIER_PROFILES = {
+    "brown-dwarf": {
+      tintHex: "#8a4a2b",
+      tintMix: 0.7,
+      coreMix: 0.55,
+      haloScale: 0.6,
+      haloAlphaScale: 0.55,
+      coreAlphaScale: 0.5,
+      radiusBoost: 0,
+      spikeCount: 0,
+      spikeLength: 0,
+      spikeAlpha: 0,
+      ringAlpha: 0
+    },
+    "red-dwarf": {
+      tintHex: "#e07a3f",
+      tintMix: 0.45,
+      coreMix: 0.35,
+      haloScale: 0.88,
+      haloAlphaScale: 0.9,
+      coreAlphaScale: 0.85,
+      radiusBoost: 0.15,
+      spikeCount: 0,
+      spikeLength: 0,
+      spikeAlpha: 0,
+      ringAlpha: 0
+    },
+    "yellow-dwarf": {
+      tintHex: "#fbd07b",
+      tintMix: 0.32,
+      coreMix: 0.2,
+      haloScale: 1.18,
+      haloAlphaScale: 1.05,
+      coreAlphaScale: 1.05,
+      radiusBoost: 0.35,
+      spikeCount: 4,
+      spikeLength: 3.6,
+      spikeAlpha: 0.34,
+      ringAlpha: 0.09
+    },
+    "blue-giant": {
+      tintHex: "#b8ddff",
+      tintMix: 0.42,
+      coreMix: 0.28,
+      haloScale: 1.65,
+      haloAlphaScale: 1.32,
+      coreAlphaScale: 1.35,
+      radiusBoost: 0.7,
+      spikeCount: 4,
+      spikeLength: 5.8,
+      spikeAlpha: 0.52,
+      ringAlpha: 0.24
+    },
+    default: {
+      tintHex: null,
+      tintMix: 0,
+      coreMix: 0,
+      haloScale: 1,
+      haloAlphaScale: 1,
+      coreAlphaScale: 1,
+      radiusBoost: 0,
+      spikeCount: 0,
+      spikeLength: 0,
+      spikeAlpha: 0,
+      ringAlpha: 0
+    }
+  };
+
+  function tierProfile(tier) {
+    if (!tier) return TIER_PROFILES.default;
+    return TIER_PROFILES[tier.id] || TIER_PROFILES.default;
   }
 
-  const glowSprites = new Map();
-  function glowSprite(color) {
-    let sprite = glowSprites.get(color);
+  function hexToRgb(hex) {
+    const value = String(hex || "#ffffff").replace("#", "");
+    return {
+      r: parseInt(value.slice(0, 2), 16) || 0,
+      g: parseInt(value.slice(2, 4), 16) || 0,
+      b: parseInt(value.slice(4, 6), 16) || 0
+    };
+  }
+
+  function mixRgb(sourceHex, targetHex, ratio) {
+    if (!targetHex) return sourceHex;
+    const clamped = Math.max(0, Math.min(1, ratio || 0));
+    const source = hexToRgb(sourceHex);
+    const target = hexToRgb(targetHex);
+    return {
+      r: Math.round(source.r + (target.r - source.r) * clamped),
+      g: Math.round(source.g + (target.g - source.g) * clamped),
+      b: Math.round(source.b + (target.b - source.b) * clamped)
+    };
+  }
+
+  function rgbString(rgb) {
+    return `${rgb.r}, ${rgb.g}, ${rgb.b}`;
+  }
+
+  const haloSprites = new Map();
+  function haloSprite(tier, color) {
+    const profile = tierProfile(tier);
+    const key = `${tier?.id || "default"}\u0000${color}`;
+    let sprite = haloSprites.get(key);
     if (sprite) return sprite;
-    const size = 96;
-    const rgb = hexToRgbChannels(color);
+    const size = 128;
+    const half = size / 2;
+    const bodyRgb = mixRgb(color, profile.tintHex, profile.tintMix);
+    const coreRgb = mixRgb("#ffffff", profile.tintHex, profile.coreMix);
     sprite = document.createElement("canvas");
     sprite.width = size;
     sprite.height = size;
-    const spriteContext = sprite.getContext("2d");
-    const gradient = spriteContext.createRadialGradient(
-      size / 2,
-      size / 2,
-      0,
-      size / 2,
-      size / 2,
-      size / 2
-    );
-    gradient.addColorStop(0, `rgba(${rgb}, 0.9)`);
-    gradient.addColorStop(0.22, `rgba(${rgb}, 0.38)`);
-    gradient.addColorStop(0.5, `rgba(${rgb}, 0.1)`);
-    gradient.addColorStop(1, `rgba(${rgb}, 0)`);
-    spriteContext.fillStyle = gradient;
-    spriteContext.fillRect(0, 0, size, size);
-    glowSprites.set(color, sprite);
+    const ctx = sprite.getContext("2d");
+    // Body glow — pre-rendered radial gradient, tier-tinted.
+    const gradient = ctx.createRadialGradient(half, half, 0, half, half, half);
+    gradient.addColorStop(0, `rgba(${rgbString(coreRgb)}, 0.95)`);
+    gradient.addColorStop(0.14, `rgba(${rgbString(bodyRgb)}, 0.72)`);
+    gradient.addColorStop(0.32, `rgba(${rgbString(bodyRgb)}, 0.32)`);
+    gradient.addColorStop(0.62, `rgba(${rgbString(bodyRgb)}, 0.08)`);
+    gradient.addColorStop(1, `rgba(${rgbString(bodyRgb)}, 0)`);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+    // Optional chromatic ring for high tiers, gives a photographic diffraction
+    // ring impression on bright stars without extra draw-time cost.
+    if (profile.ringAlpha > 0) {
+      ctx.strokeStyle = `rgba(${rgbString(bodyRgb)}, ${profile.ringAlpha})`;
+      ctx.lineWidth = size * 0.014;
+      ctx.beginPath();
+      ctx.arc(half, half, size * 0.24, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    haloSprites.set(key, sprite);
+    return sprite;
+  }
+
+  const spikeSprites = new Map();
+  function spikeSprite(tier, color) {
+    const profile = tierProfile(tier);
+    if (profile.spikeCount <= 0 || profile.spikeAlpha <= 0) return null;
+    const key = `${tier?.id || "default"}\u0000${color}`;
+    let sprite = spikeSprites.get(key);
+    if (sprite) return sprite;
+    const size = 128;
+    const half = size / 2;
+    const bodyRgb = mixRgb(color, profile.tintHex, profile.tintMix * 0.6);
+    sprite = document.createElement("canvas");
+    sprite.width = size;
+    sprite.height = size;
+    const ctx = sprite.getContext("2d");
+    // Additive spikes — a soft gradient beam from center outward, then rotated
+    // to cover N points. Each beam fades to transparent at the edge so the
+    // sprite tiles cleanly.
+    const beamLength = size * 0.48;
+    const beamWidth = size * 0.05;
+    function drawBeam(angle) {
+      ctx.save();
+      ctx.translate(half, half);
+      ctx.rotate(angle);
+      const beamGradient = ctx.createLinearGradient(0, 0, beamLength, 0);
+      beamGradient.addColorStop(0, `rgba(${rgbString(bodyRgb)}, ${profile.spikeAlpha})`);
+      beamGradient.addColorStop(0.15, `rgba(${rgbString(bodyRgb)}, ${profile.spikeAlpha * 0.75})`);
+      beamGradient.addColorStop(0.6, `rgba(${rgbString(bodyRgb)}, ${profile.spikeAlpha * 0.15})`);
+      beamGradient.addColorStop(1, `rgba(${rgbString(bodyRgb)}, 0)`);
+      ctx.fillStyle = beamGradient;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(beamLength, -beamWidth / 2);
+      ctx.lineTo(beamLength, beamWidth / 2);
+      ctx.closePath();
+      ctx.fill();
+      // Mirror beam for a bidirectional star spike.
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-beamLength, -beamWidth / 2);
+      ctx.lineTo(-beamLength, beamWidth / 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    // 4-point uses a horizontal/vertical cross plus a subtler 45° pair so the
+    // star reads as a clean cross with soft secondary flares. 6-point evenly
+    // spaces beams around the circle.
+    if (profile.spikeCount === 6) {
+      for (let index = 0; index < 3; index += 1) {
+        drawBeam((Math.PI * index) / 3);
+      }
+    } else {
+      drawBeam(0);
+      drawBeam(Math.PI / 2);
+      // Subtler diagonal flares — half the strength of the main cross.
+      ctx.globalAlpha = 0.4;
+      drawBeam(Math.PI / 4);
+      drawBeam(-Math.PI / 4);
+      ctx.globalAlpha = 1;
+    }
+    spikeSprites.set(key, sprite);
     return sprite;
   }
 
@@ -891,19 +1055,56 @@
         selected,
         runtimeSettings.home_star_brightness_max
       );
+      const profile = tierProfile(star.brightnessTier);
+      const tierRadius =
+        presentation.radius * (1 + profile.radiusBoost * presentation.luminous);
+      const tierHaloRadius =
+        presentation.haloRadius * profile.haloScale;
+      const tierHaloAlpha =
+        presentation.haloAlpha * profile.haloAlphaScale;
+      const tierCoreAlpha =
+        presentation.coreAlpha * profile.coreAlphaScale;
 
-      // Soft glow from a pre-rendered radial gradient sprite. This avoids
-      // per-frame shadowBlur and the hard edge of a flat halo disc.
-      if (presentation.haloAlpha > 0.04) {
-        const diameter = presentation.haloRadius * 2;
-        context.globalAlpha = Math.min(1, presentation.haloAlpha * 2.4);
+      // Halo — pre-rendered radial gradient, tier-tinted. We composite with
+      // "lighter" so overlapping stars accumulate to true bright zones instead
+      // of washing out into gray.
+      if (tierHaloAlpha > 0.04) {
+        const diameter = tierHaloRadius * 2;
+        const previousComposite = context.globalCompositeOperation;
+        context.globalCompositeOperation = "lighter";
+        context.globalAlpha = Math.min(1, tierHaloAlpha * 2.2);
         context.drawImage(
-          glowSprite(star.color),
-          star.x - presentation.haloRadius,
-          star.y - presentation.haloRadius,
+          haloSprite(star.brightnessTier, star.color),
+          star.x - tierHaloRadius,
+          star.y - tierHaloRadius,
           diameter,
           diameter
         );
+        context.globalCompositeOperation = previousComposite;
+      }
+
+      // Diffraction spikes for higher tiers (yellow-dwarf / blue-giant). The
+      // spike sprite is nullable — dim tiers skip this entirely.
+      const spike = spikeSprite(star.brightnessTier, star.color);
+      if (spike && presentation.luminous > 0.06) {
+        const spikeExtent = Math.max(
+          tierHaloRadius * 1.05,
+          tierRadius * profile.spikeLength
+        );
+        const previousComposite = context.globalCompositeOperation;
+        context.globalCompositeOperation = "lighter";
+        context.globalAlpha = Math.min(
+          1,
+          0.35 + presentation.luminous * 0.7 + (selected ? 0.15 : 0)
+        );
+        context.drawImage(
+          spike,
+          star.x - spikeExtent,
+          star.y - spikeExtent,
+          spikeExtent * 2,
+          spikeExtent * 2
+        );
+        context.globalCompositeOperation = previousComposite;
       }
 
       context.fillStyle = star.color;
@@ -912,21 +1113,26 @@
       context.arc(
         star.x,
         star.y,
-        presentation.radius,
+        tierRadius,
         0,
         Math.PI * 2
       );
       context.fill();
 
-      // Bright stars get a hotter white center for extra depth.
-      if (presentation.coreAlpha > 0.02) {
-        context.globalAlpha = presentation.coreAlpha;
-        context.fillStyle = "#ffffff";
+      // Bright stars get a hotter white center for extra depth, biased toward
+      // the tier's canonical color so blue giants read cyan-white and yellow
+      // dwarfs read cream-white.
+      if (tierCoreAlpha > 0.02) {
+        const coreColor = profile.tintHex
+          ? `rgb(${rgbString(mixRgb("#ffffff", profile.tintHex, profile.coreMix * 0.6))})`
+          : "#ffffff";
+        context.globalAlpha = Math.min(0.95, tierCoreAlpha);
+        context.fillStyle = coreColor;
         context.beginPath();
         context.arc(
           star.x,
           star.y,
-          Math.max(0.45, presentation.radius * 0.42),
+          Math.max(0.45, tierRadius * 0.42),
           0,
           Math.PI * 2
         );
@@ -939,20 +1145,20 @@
         context.lineWidth = selected ? 1.2 : 0.7;
         context.beginPath();
         context.moveTo(
-          star.x - presentation.radius * 2.4,
+          star.x - tierRadius * 2.4,
           star.y
         );
         context.lineTo(
-          star.x + presentation.radius * 2.4,
+          star.x + tierRadius * 2.4,
           star.y
         );
         context.moveTo(
           star.x,
-          star.y - presentation.radius * 2.4
+          star.y - tierRadius * 2.4
         );
         context.lineTo(
           star.x,
-          star.y + presentation.radius * 2.4
+          star.y + tierRadius * 2.4
         );
         context.stroke();
       }
