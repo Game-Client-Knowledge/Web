@@ -1018,6 +1018,8 @@ async function loadOverview() {
     data.settings.home_star_brightness_variation_enabled;
   byId("visualSettingsForm").home_star_brightness_min.value =
     String(data.settings.home_star_brightness_min);
+  byId("visualSettingsForm").home_star_edge_glow_strength.value =
+    String(data.settings.home_star_edge_glow_strength ?? 1);
   byId("visualSettingsForm").home_star_brightness_initial.value =
     String(data.settings.home_star_brightness_initial);
   byId("visualSettingsForm").home_star_brightness_max.value =
@@ -1196,6 +1198,9 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         home_star_brightness_min: Number(
           form.home_star_brightness_min.value
         ),
+        home_star_edge_glow_strength: Number(
+          form.home_star_edge_glow_strength.value
+        ),
         home_star_brightness_initial: Number(
           form.home_star_brightness_initial.value
         ),
@@ -1279,6 +1284,8 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         saved.home_star_brightness_variation_enabled,
       home_star_brightness_min:
         saved.home_star_brightness_min,
+      home_star_edge_glow_strength:
+        saved.home_star_edge_glow_strength,
       home_star_brightness_initial:
         saved.home_star_brightness_initial,
       home_star_brightness_max:

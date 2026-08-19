@@ -588,6 +588,7 @@ class Database:
                 "home_content_idle_timeout_seconds": "30",
                 "home_star_scope": "hero",
                 "home_star_render_mode": "2d",
+                "home_star_edge_glow_strength": "1",
                 "home_star_relation_visibility": "near",
                 "home_star_strong_relation_style": "solid",
                 "home_star_reference_relation_style": "dashed",

@@ -19,6 +19,7 @@
     home_star_scope: "hero",
     home_star_render_mode: "2d",
     home_star_relation_visibility: "near",
+    home_star_edge_glow_strength: 1,
     home_star_strong_relation_style: "solid",
     home_star_reference_relation_style: "dashed",
     home_star_contributor_relation_style: "solid",
@@ -720,6 +721,10 @@
         ? merged.home_star_relation_visibility
         : defaults.home_star_relation_visibility,
       home_star_brightness_min: brightnessMinimum,
+      home_star_edge_glow_strength: Math.max(
+        0.1,
+        Math.min(2, Number(merged.home_star_edge_glow_strength) || 1)
+      ),
       home_star_brightness_initial: brightnessInitial,
       home_star_brightness_max: brightnessMax,
       home_star_brightness_variation_amount: Math.max(

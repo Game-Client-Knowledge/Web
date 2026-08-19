@@ -480,7 +480,9 @@
 
     // Tier canonical colors as 0..1 RGB, cached per tier id. Edges blend
     // these so a link between two different brightness tiers renders as
-    // a smooth nebula-like gradient.
+    // a smooth nebula-like gradient. Saturation is boosted because the
+    // canonical tier tints are mostly near-white (warm white, ice blue)
+    // and would otherwise read as plain white lines.
     const tierRgbCache = new Map();
     function tierRgbOf(star) {
       const id = tierIdOf(star);
@@ -489,11 +491,15 @@
         const hex = String(
           tierProfile(star.brightnessTier).tintHex || "#ffffff"
         ).replace("#", "");
-        rgb = [
+        const raw = [
           parseInt(hex.slice(0, 2), 16) / 255 || 0,
           parseInt(hex.slice(2, 4), 16) / 255 || 0,
           parseInt(hex.slice(4, 6), 16) / 255 || 0
         ];
+        const avg = (raw[0] + raw[1] + raw[2]) / 3;
+        rgb = raw.map((channel) =>
+          Math.max(0, Math.min(1, avg + (channel - avg) * 2.2))
+        );
         tierRgbCache.set(id, rgb);
       }
       return rgb;
@@ -629,6 +635,11 @@
     //   hidden — none
     const visibility = runtimeSettings.home_star_relation_visibility;
     const NEAR_LIMIT = 170;
+    // Admin-tunable global gain for relation edge brightness.
+    const edgeGlowStrength = Math.max(
+      0.1,
+      Math.min(2, Number(runtimeSettings.home_star_edge_glow_strength) || 1)
+    );
     const edgeLayers = [];
     if (visibility !== "hidden") {
       for (const type of ["strong", "reference", "contribution"]) {
@@ -650,7 +661,8 @@
           // brightness-scaled glow; opacity is just the global gain.
           vertexColors: true,
           transparent: true,
-          opacity: visibility === "always" ? 0.18 : 0.4,
+          opacity:
+            (visibility === "always" ? 0.18 : 0.4) * edgeGlowStrength,
           blending: THREE.AdditiveBlending,
           depthTest: false,
           depthWrite: false
@@ -683,7 +695,7 @@
         new THREE.LineBasicMaterial({
           vertexColors: true,
           transparent: true,
-          opacity: 0.2,
+          opacity: 0.2 * edgeGlowStrength,
           blending: THREE.AdditiveBlending,
           depthTest: false,
           depthWrite: false
