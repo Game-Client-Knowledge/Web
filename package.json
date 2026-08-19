@@ -31,13 +31,14 @@
     "test:content-statistics": "node scripts/test-content-statistics.js",
     "test:code-projects": "node scripts/test-code-project-loader.js",
     "test:code-intelligence": "node scripts/test-code-intelligence.js",
+    "test:reader-comments": "node scripts/test-reader-comments.js",
     "test:reader-diff": "node scripts/test-reader-diff.js",
     "test:visual": "node scripts/visual-check.js",
     "deploy:join": "bash scripts/deploy-join.sh",
     "deploy:editor": "bash scripts/deploy-editor.sh",
     "deploy:update-control": "bash scripts/install-update-control.sh",
     "deploy:server": "bash scripts/deploy-server.sh",
-    "check": "npm run test:markdown-preserve && npm run test:source-cache && npm run test:editor-buffer && npm run test:editor-document && npm run test:workspace-tree && npm run test:workspace-store && npm run test:editor-workspace && npm run test:site-update && npm run test:line-attribution && npm run test:home-intro-policy && npm run test:home-star-graph && npm run test:home-star-illumination && npm run test:star-formula && npm run test:home-content-controls && npm run test:admin-layout && npm run test:content-loader && npm run test:content-statistics && npm run test:code-projects && npm run test:code-intelligence && npm run test:reader-diff && npm run audit && npm run build && npm run audit:site"
+    "check": "npm run test:markdown-preserve && npm run test:source-cache && npm run test:editor-buffer && npm run test:editor-document && npm run test:workspace-tree && npm run test:workspace-store && npm run test:editor-workspace && npm run test:site-update && npm run test:line-attribution && npm run test:home-intro-policy && npm run test:home-star-graph && npm run test:home-star-illumination && npm run test:star-formula && npm run test:home-content-controls && npm run test:admin-layout && npm run test:content-loader && npm run test:content-statistics && npm run test:code-projects && npm run test:code-intelligence && npm run test:reader-comments && npm run test:reader-diff && npm run audit && npm run build && npm run audit:site"
   },
   "engines": {
     "node": ">=20.19"

@@ -475,7 +475,7 @@
     const script = document.createElement("script");
     const base = (window.GCK_CONFIG && window.GCK_CONFIG.basePath) || "";
     const version =
-      (window.GCK_CONFIG && window.GCK_CONFIG.contentVersion) || "local";
+      (window.GCK_CONFIG && window.GCK_CONFIG.assetVersion) || "local";
     script.src =
       base + "/assets/js/reader-comments.js?v=" + encodeURIComponent(version);
     document.body.appendChild(script);
