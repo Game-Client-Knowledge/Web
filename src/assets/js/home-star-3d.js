@@ -35,6 +35,13 @@
     "3d-galaxy": 780,
     "3d-orbit": 820
   };
+  const ORBIT_POINT_MIN_DEPTH = 280;
+  const POINT_MAX_CSS_SIZE = Object.freeze({
+    halo: 200,
+    core: 36,
+    spike: 240,
+    pulse: 36
+  });
 
   // ---------- Layout / motion strategies ----------
   // init() assigns base positions and motion parameters once; move()
@@ -597,6 +604,8 @@
       phi: Math.PI / 2.25,
       radius: CAMERA_RADIUS[mode] || 900
     };
+    const pointMinDepth =
+      strategy.camera === "flat" ? 1 : ORBIT_POINT_MIN_DEPTH;
 
     const pointVertexShader = [
       "attribute float aSize;",
@@ -607,12 +616,17 @@
       "varying float vTile;",
       "varying float vRot;",
       "uniform float uScale;",
+      "uniform float uPixelRatio;",
+      "uniform float uMinDepth;",
+      "uniform float uMaxCssSize;",
       "void main() {",
       "  vAlpha = aAlpha;",
       "  vTile = aTile;",
       "  vRot = aRot;",
       "  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);",
-      "  gl_PointSize = aSize * (uScale / -mvPosition.z);",
+      "  float safeDepth = max(-mvPosition.z, uMinDepth);",
+      "  float projectedSize = aSize * (uScale / safeDepth);",
+      "  gl_PointSize = min(projectedSize, uMaxCssSize * uPixelRatio);",
       "  gl_Position = projectionMatrix * mvPosition;",
       "}"
     ].join("\n");
@@ -637,7 +651,7 @@
       "}"
     ].join("\n");
 
-    function createPointLayer(count) {
+    function createPointLayer(count, maxCssSize) {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute(
         "position",
@@ -663,7 +677,10 @@
         uniforms: {
           uAtlas: { value: atlasTexture },
           uTiles: { value: usedTierIds.length * 2 },
-          uScale: { value: 1 }
+          uScale: { value: 1 },
+          uPixelRatio: { value: 1 },
+          uMinDepth: { value: pointMinDepth },
+          uMaxCssSize: { value: maxCssSize }
         },
         vertexShader: pointVertexShader,
         fragmentShader: pointFragmentShader,
@@ -677,16 +694,25 @@
       return points;
     }
 
-    const haloLayer = createPointLayer(stars.length);
+    const haloLayer = createPointLayer(
+      stars.length,
+      POINT_MAX_CSS_SIZE.halo
+    );
     haloLayer.renderOrder = 1;
     // Solid-ish core dots. The Canvas 2D map always draws a bright core,
     // so without this layer dim stars are almost invisible in WebGL.
-    const coreLayer = createPointLayer(stars.length);
+    const coreLayer = createPointLayer(
+      stars.length,
+      POINT_MAX_CSS_SIZE.core
+    );
     coreLayer.renderOrder = 2;
     const spikedStars = stars.filter((star) => {
       return tierProfile(star.brightnessTier).spikeGain > 0;
     });
-    const spikeLayer = createPointLayer(spikedStars.length);
+    const spikeLayer = createPointLayer(
+      spikedStars.length,
+      POINT_MAX_CSS_SIZE.spike
+    );
     spikeLayer.renderOrder = 3;
     scene.add(haloLayer);
     scene.add(coreLayer);
@@ -811,7 +837,10 @@
         uniforms: {
           uAtlas: { value: atlasTexture },
           uTiles: { value: usedTierIds.length * 2 },
-          uScale: { value: 1 }
+          uScale: { value: 1 },
+          uPixelRatio: { value: 1 },
+          uMinDepth: { value: pointMinDepth },
+          uMaxCssSize: { value: POINT_MAX_CSS_SIZE.pulse }
         },
         vertexShader: pointVertexShader,
         fragmentShader: pointFragmentShader,
@@ -864,6 +893,10 @@
       coreLayer.material.uniforms.uScale.value = uScale;
       spikeLayer.material.uniforms.uScale.value = uScale;
       pulseLayer.material.uniforms.uScale.value = uScale;
+      haloLayer.material.uniforms.uPixelRatio.value = ratio;
+      coreLayer.material.uniforms.uPixelRatio.value = ratio;
+      spikeLayer.material.uniforms.uPixelRatio.value = ratio;
+      pulseLayer.material.uniforms.uPixelRatio.value = ratio;
       if (strategy.camera === "flat") {
         // Pin the camera so the z=0 plane maps 1:1 to CSS pixels.
         const distance =
@@ -1489,6 +1522,10 @@
       scene,
       camera,
       stars,
+      pointSizeLimits: {
+        minDepth: pointMinDepth,
+        ...POINT_MAX_CSS_SIZE
+      },
       layers: { haloLayer, coreLayer, spikeLayer, pulseLayer }
     };
 
