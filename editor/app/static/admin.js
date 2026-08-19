@@ -915,6 +915,8 @@ async function loadOverview() {
     String(data.settings.home_content_idle_timeout_seconds);
   byId("visualSettingsForm").home_star_scope.value =
     data.settings.home_star_scope;
+  byId("visualSettingsForm").home_star_render_mode.value =
+    data.settings.home_star_render_mode || "2d";
   byId("visualSettingsForm").home_star_relation_visibility.value =
     data.settings.home_star_relation_visibility;
   byId("visualSettingsForm").home_star_strong_relation_style.value =
@@ -1081,6 +1083,7 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
           form.home_content_idle_timeout_seconds.value
         ),
         home_star_scope: form.home_star_scope.value,
+        home_star_render_mode: form.home_star_render_mode.value,
         home_star_relation_visibility:
           form.home_star_relation_visibility.value,
         home_star_strong_relation_style:
@@ -1173,6 +1176,7 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
       home_content_idle_timeout_seconds:
         saved.home_content_idle_timeout_seconds,
       home_star_scope: saved.home_star_scope,
+      home_star_render_mode: saved.home_star_render_mode,
       home_star_relation_visibility: saved.home_star_relation_visibility,
       home_star_strong_relation_style:
         saved.home_star_strong_relation_style,

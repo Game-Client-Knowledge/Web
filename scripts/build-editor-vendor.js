@@ -53,6 +53,18 @@ esbuild.buildSync({
   legalComments: "none"
 });
 
+esbuild.buildSync({
+  entryPoints: [path.join(__dirname, "star3d-entry.js")],
+  outfile: path.join(outputDirectory, "star3d-engine.js"),
+  bundle: true,
+  minify: true,
+  format: "iife",
+  globalName: "GCK_STAR3D",
+  platform: "browser",
+  target: ["es2020"],
+  legalComments: "none"
+});
+
 const commonMermaidModulePattern =
   /(?:flowDiagram|classDiagram|sequenceDiagram|stateDiagram|erDiagram|dagre-).*\.mjs$/;
 

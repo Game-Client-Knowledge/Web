@@ -590,6 +590,7 @@
           root: {% if document %}{{ document.moduleKey | json | safe }}{% elif module %}{{ module.key | json | safe }}{% else %}null{% endif %}
         }
       };
+      window.GCK_STAR3D_VENDOR_URL = {{ '/assets/vendor/star3d-engine.js' | assetUrl | json | safe }};
       window.GCK_VISUAL_SETTINGS = Promise.resolve().then(function () {
         var settings = {};
         try {

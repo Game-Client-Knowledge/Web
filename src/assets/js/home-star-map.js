@@ -6,6 +6,7 @@
   const defaults = {
     home_background_style: "old_star_map",
     home_star_scope: "hero",
+    home_star_render_mode: "2d",
     home_star_relation_visibility: "near",
     home_star_strong_relation_style: "solid",
     home_star_reference_relation_style: "dashed",
@@ -697,6 +698,11 @@
       home_star_scope: ["hero", "full"].includes(merged.home_star_scope)
         ? merged.home_star_scope
         : defaults.home_star_scope,
+      home_star_render_mode: ["2d", "3d"].includes(
+        merged.home_star_render_mode
+      )
+        ? merged.home_star_render_mode
+        : defaults.home_star_render_mode,
       home_star_relation_visibility: ["always", "near", "hidden"].includes(
         merged.home_star_relation_visibility
       )
@@ -1618,9 +1624,880 @@
     };
   }
 
+  // Lazy loader for the tree-shaken three.js vendor bundle. The 2D renderer
+  // stays the default; the bundle is only fetched when 3D mode is requested.
+  const star3dLoader = { loading: false, callbacks: [] };
+  function ensureStar3D(callback) {
+    if (window.GCK_STAR3D) {
+      callback(window.GCK_STAR3D);
+      return;
+    }
+    star3dLoader.callbacks.push(callback);
+    if (star3dLoader.loading) return;
+    star3dLoader.loading = true;
+    const script = document.createElement("script");
+    script.src =
+      window.GCK_STAR3D_VENDOR_URL || "/assets/vendor/star3d-engine.js";
+    script.onload = () => {
+      const pending = star3dLoader.callbacks.splice(0);
+      for (const queued of pending) queued(window.GCK_STAR3D);
+    };
+    script.onerror = () => {
+      star3dLoader.callbacks.splice(0);
+    };
+    document.head.append(script);
+  }
+
+  // 3D contribution star map. Renders the same graph as the 2D contribution
+  // map with a WebGL point-sprite scene: per-tier PSF textures packed into a
+  // single atlas, additive blending, orbiting camera, and the same selection
+  // / illumination / coverage interactions as the 2D renderer.
+  function createContributionMap3D(runtimeSettings) {
+    const THREE = window.GCK_STAR3D;
+    if (!THREE) return createContributionMap(runtimeSettings);
+
+    // A 2D context already exists on the original canvas, and a canvas can
+    // only host one context type — render WebGL into a dedicated element.
+    const glCanvas = document.createElement("canvas");
+    glCanvas.className = canvas.className;
+    glCanvas.setAttribute("data-knowledge-field", "");
+    canvas.removeAttribute("data-knowledge-field");
+    canvas.style.display = "none";
+    canvas.parentElement.insertBefore(glCanvas, canvas);
+    document.body.classList.remove("home-stars-old");
+    document.body.classList.toggle(
+      "home-stars-full",
+      runtimeSettings.home_star_scope === "full"
+    );
+    document.body.classList.toggle(
+      "home-stars-hero",
+      runtimeSettings.home_star_scope === "hero"
+    );
+    glCanvas.dataset.starMap = "contribution-3d";
+    glCanvas.dataset.starScope = runtimeSettings.home_star_scope;
+
+    let renderer = null;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        canvas: glCanvas,
+        alpha: true,
+        antialias: true
+      });
+    } catch (error) {
+      glCanvas.remove();
+      canvas.style.display = "";
+      canvas.setAttribute("data-knowledge-field", "");
+      return createContributionMap(runtimeSettings);
+    }
+
+    const cached = readContributionGraph();
+    const sourceGraph = graphWithCachedContributions(graph, cached);
+    const random = seededRandom(
+      hashSeed(`${graph.revision}:contribution-stars-3d`)
+    );
+    const stars = sourceGraph.stars.map((source, index) => ({
+      ...source,
+      metrics: { ...(source.metrics || {}) },
+      x: 0,
+      y: 0,
+      z: 0,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      baseBrightness: formulaEngine.calculateBrightness(
+        source,
+        runtimeSettings.home_star_brightness_rules,
+        runtimeSettings.home_star_brightness_min,
+        runtimeSettings.home_star_brightness_initial,
+        runtimeSettings.home_star_brightness_max
+      ),
+      variationFrom: 0,
+      variationTo: 0,
+      variationStartedAt: 0,
+      variationNextAt: 0,
+      index
+    }));
+    for (const star of stars) {
+      star.brightnessTier = formulaEngine.brightnessTier(
+        star.baseBrightness,
+        runtimeSettings.home_star_brightness_tiers,
+        runtimeSettings.home_star_brightness_min,
+        runtimeSettings.home_star_brightness_max
+      );
+    }
+    const starById = new Map(stars.map((star) => [star.id, star]));
+    const edges = sourceGraph.edges.filter((edge) => {
+      return starById.has(edge.source) && starById.has(edge.target);
+    });
+
+    // 3D layout: contributors on a fibonacci shell, documents in a sphere.
+    const contributors = stars.filter((star) => star.kind === "contributor");
+    const documents = stars.filter((star) => star.kind === "document");
+    contributors.forEach((star, index) => {
+      const golden = Math.PI * (3 - Math.sqrt(5));
+      const y = 1 - (index / Math.max(1, contributors.length - 1)) * 2;
+      const ring = Math.sqrt(Math.max(0, 1 - y * y));
+      const theta = golden * index;
+      star.x = Math.cos(theta) * ring * 240;
+      star.y = y * 240;
+      star.z = Math.sin(theta) * ring * 240;
+    });
+    documents.forEach((star) => {
+      const radius = 330 * Math.cbrt(random());
+      const theta = random() * Math.PI * 2;
+      const cosPhi = random() * 2 - 1;
+      const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
+      star.x = radius * sinPhi * Math.cos(theta);
+      star.y = radius * cosPhi;
+      star.z = radius * sinPhi * Math.sin(theta);
+      star.vx = (random() - 0.5) * 0.05;
+      star.vy = (random() - 0.5) * 0.05;
+      star.vz = (random() - 0.5) * 0.05;
+    });
+
+    // Texture atlas: one halo tile + one spike tile per used tier, tinted
+    // with the tier's canonical color so the field reads like an H-R diagram.
+    const usedTierIds = [];
+    for (const star of stars) {
+      const id = TIER_PROFILES[star.brightnessTier?.id]
+        ? star.brightnessTier.id
+        : "default";
+      if (!usedTierIds.includes(id)) usedTierIds.push(id);
+    }
+    const TILE = 128;
+    const atlasCanvas = document.createElement("canvas");
+    atlasCanvas.width = TILE * usedTierIds.length * 2;
+    atlasCanvas.height = TILE;
+    const atlasContext = atlasCanvas.getContext("2d");
+    const tierTileIndex = new Map();
+    usedTierIds.forEach((id, index) => {
+      const tier = id === "default" ? null : { id };
+      const profile = tierProfile(tier);
+      const canonical = profile.tintHex || "#ffffff";
+      atlasContext.drawImage(haloSprite(tier, canonical), index * 2 * TILE, 0);
+      const spike = spikeSprite(tier, canonical);
+      if (spike) {
+        atlasContext.drawImage(spike, (index * 2 + 1) * TILE, 0);
+      }
+      tierTileIndex.set(id, index);
+    });
+    const atlasTexture = new THREE.CanvasTexture(atlasCanvas);
+
+    function tierIdOf(star) {
+      return TIER_PROFILES[star.brightnessTier?.id]
+        ? star.brightnessTier.id
+        : "default";
+    }
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(55, 1, 1, 4000);
+    const cameraState = {
+      theta: 0.6,
+      phi: Math.PI / 2.25,
+      radius: 620
+    };
+
+    const pointVertexShader = [
+      "attribute float aSize;",
+      "attribute float aAlpha;",
+      "attribute float aTile;",
+      "attribute float aRot;",
+      "varying float vAlpha;",
+      "varying float vTile;",
+      "varying float vRot;",
+      "uniform float uScale;",
+      "void main() {",
+      "  vAlpha = aAlpha;",
+      "  vTile = aTile;",
+      "  vRot = aRot;",
+      "  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);",
+      "  gl_PointSize = aSize * (uScale / -mvPosition.z);",
+      "  gl_Position = projectionMatrix * mvPosition;",
+      "}"
+    ].join("\n");
+    const pointFragmentShader = [
+      "uniform sampler2D uAtlas;",
+      "uniform float uTiles;",
+      "varying float vAlpha;",
+      "varying float vTile;",
+      "varying float vRot;",
+      "void main() {",
+      "  vec2 uv = gl_PointCoord - vec2(0.5);",
+      "  float c = cos(vRot);",
+      "  float s = sin(vRot);",
+      "  uv = mat2(c, -s, s, c) * uv + vec2(0.5);",
+      "  vec2 atlasUv = vec2((vTile + uv.x) / uTiles, uv.y);",
+      "  vec4 tex = texture2D(uAtlas, atlasUv);",
+      "  float alpha = tex.a * vAlpha;",
+      "  if (alpha < 0.004) discard;",
+      "  gl_FragColor = vec4(tex.rgb, alpha);",
+      "}"
+    ].join("\n");
+
+    function createPointLayer(count) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute(
+        "position",
+        new THREE.BufferAttribute(new Float32Array(count * 3), 3)
+      );
+      geometry.setAttribute(
+        "aSize",
+        new THREE.BufferAttribute(new Float32Array(count), 1)
+      );
+      geometry.setAttribute(
+        "aAlpha",
+        new THREE.BufferAttribute(new Float32Array(count), 1)
+      );
+      geometry.setAttribute(
+        "aTile",
+        new THREE.BufferAttribute(new Float32Array(count), 1)
+      );
+      geometry.setAttribute(
+        "aRot",
+        new THREE.BufferAttribute(new Float32Array(count), 1)
+      );
+      const material = new THREE.ShaderMaterial({
+        uniforms: {
+          uAtlas: { value: atlasTexture },
+          uTiles: { value: usedTierIds.length * 2 },
+          uScale: { value: 1 }
+        },
+        vertexShader: pointVertexShader,
+        fragmentShader: pointFragmentShader,
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        depthWrite: false,
+        transparent: true
+      });
+      const points = new THREE.Points(geometry, material);
+      points.frustumCulled = false;
+      return points;
+    }
+
+    const haloLayer = createPointLayer(stars.length);
+    haloLayer.renderOrder = 1;
+    const spikedStars = stars.filter((star) => {
+      return tierProfile(star.brightnessTier).spikeGain > 0;
+    });
+    const spikeLayer = createPointLayer(spikedStars.length);
+    spikeLayer.renderOrder = 2;
+    scene.add(haloLayer);
+    scene.add(spikeLayer);
+
+    // Static edge layer, one LineSegments per relation type.
+    const edgeLayers = [];
+    for (const type of ["strong", "reference", "contribution"]) {
+      const typeEdges = edges.filter((edge) => edge.type === type);
+      if (!typeEdges.length) continue;
+      const positions = new Float32Array(typeEdges.length * 6);
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute(
+        "position",
+        new THREE.BufferAttribute(positions, 3)
+      );
+      const material = new THREE.LineBasicMaterial({
+        color: new THREE.Color(`rgb(${relationColors[type]})`),
+        transparent: true,
+        opacity: 0.22,
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        depthWrite: false
+      });
+      const lines = new THREE.LineSegments(geometry, material);
+      lines.renderOrder = 0;
+      lines.userData.edges = typeEdges;
+      scene.add(lines);
+      edgeLayers.push(lines);
+    }
+    // Highlight layer for the active selection path.
+    const highlightGeometry = new THREE.BufferGeometry();
+    highlightGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(new Float32Array(0), 3)
+    );
+    const highlightMaterial = new THREE.LineBasicMaterial({
+      color: new THREE.Color("#dff5ec"),
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+      depthTest: false,
+      depthWrite: false
+    });
+    const highlightLayer = new THREE.LineSegments(
+      highlightGeometry,
+      highlightMaterial
+    );
+    highlightLayer.renderOrder = 3;
+    scene.add(highlightLayer);
+
+    const panel = createCoveragePanel();
+    const label = createLabel();
+    let width = 1;
+    let height = 1;
+    let frame = 0;
+    let disposed = false;
+    let selectedRoot = "";
+    let selectedIds = new Set();
+    let selectedBrightness = 0;
+    let selectedTier = null;
+    let activeRelationPlan = null;
+    let activeVisualEdgeIds = new Set();
+    let labelStar = null;
+    let labelExpiresAt = 0;
+    let labelTimer = 0;
+    let selectionTimer = 0;
+    let lastFrameAt = 0;
+
+    function resize() {
+      const rectangle =
+        runtimeSettings.home_star_scope === "full"
+          ? { width: window.innerWidth, height: window.innerHeight }
+          : hero.getBoundingClientRect();
+      width = Math.max(1, Math.round(rectangle.width));
+      height = Math.max(1, Math.round(rectangle.height));
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      renderer.setPixelRatio(ratio);
+      renderer.setSize(width, height, false);
+      glCanvas.style.width = `${width}px`;
+      glCanvas.style.height = `${height}px`;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      const uScale =
+        (height * ratio) /
+        (2 * Math.tan((camera.fov * Math.PI) / 360));
+      haloLayer.material.uniforms.uScale.value = uScale;
+      spikeLayer.material.uniforms.uScale.value = uScale;
+      if (reducedMotion) draw(performance.now());
+    }
+
+    function variation(star, time) {
+      if (
+        reducedMotion ||
+        !runtimeSettings.home_star_brightness_variation_enabled
+      ) {
+        return 0;
+      }
+      const progress = Math.max(
+        0,
+        Math.min(
+          1,
+          (time - star.variationStartedAt) /
+            runtimeSettings.home_star_brightness_transition_ms
+        )
+      );
+      const eased = progress * progress * (3 - 2 * progress);
+      return (
+        star.variationFrom +
+        (star.variationTo - star.variationFrom) * eased
+      );
+    }
+
+    function updateVariations(time) {
+      if (!runtimeSettings.home_star_brightness_variation_enabled) return;
+      const interval = runtimeSettings.home_star_brightness_interval_ms;
+      for (const star of stars) {
+        if (!star.variationNextAt) {
+          star.variationNextAt = time + random() * interval;
+          continue;
+        }
+        if (time < star.variationNextAt) continue;
+        star.variationFrom = variation(star, time);
+        star.variationTo =
+          (random() * 2 - 1) *
+          runtimeSettings.home_star_brightness_variation_amount;
+        star.variationStartedAt = time;
+        star.variationNextAt = time + interval * (0.55 + random() * 0.9);
+      }
+    }
+
+    function currentBrightness(star, time) {
+      return Math.max(
+        runtimeSettings.home_star_brightness_min,
+        Math.min(
+          runtimeSettings.home_star_brightness_max,
+          star.baseBrightness + variation(star, time)
+        )
+      );
+    }
+
+    function writePointAttributes(time) {
+      const haloPosition = haloLayer.geometry.attributes.position;
+      const haloSize = haloLayer.geometry.attributes.aSize;
+      const haloAlpha = haloLayer.geometry.attributes.aAlpha;
+      const haloTile = haloLayer.geometry.attributes.aTile;
+      const haloRot = haloLayer.geometry.attributes.aRot;
+      const spikePosition = spikeLayer.geometry.attributes.position;
+      const spikeSize = spikeLayer.geometry.attributes.aSize;
+      const spikeAlpha = spikeLayer.geometry.attributes.aAlpha;
+      const spikeTile = spikeLayer.geometry.attributes.aTile;
+      const spikeRot = spikeLayer.geometry.attributes.aRot;
+      stars.forEach((star, index) => {
+        const brightness = currentBrightness(star, time);
+        const selected = selectedIds.has(star.id);
+        const presentation = illumination.brightnessPresentation(
+          brightness,
+          star.kind,
+          selected,
+          runtimeSettings.home_star_brightness_max
+        );
+        const profile = tierProfile(star.brightnessTier);
+        const tierRadius =
+          presentation.radius *
+          (1 + profile.radiusBoost * presentation.luminous);
+        const tierHaloRadius = presentation.haloRadius * profile.haloScale;
+        const tierHaloAlpha =
+          presentation.haloAlpha * profile.haloAlphaScale;
+        haloPosition.setXYZ(index, star.x, star.y, star.z);
+        haloSize.setX(index, Math.max(1, tierHaloRadius * 2 * 3));
+        haloAlpha.setX(
+          index,
+          tierHaloAlpha > 0.04 ? Math.min(1, tierHaloAlpha * 2.2) : 0
+        );
+        haloTile.setX(index, tierTileIndex.get(tierIdOf(star)) * 2);
+        haloRot.setX(index, 0);
+        return { tierRadius, presentation };
+      });
+      spikedStars.forEach((star, index) => {
+        const brightness = currentBrightness(star, time);
+        const selected = selectedIds.has(star.id);
+        const presentation = illumination.brightnessPresentation(
+          brightness,
+          star.kind,
+          selected,
+          runtimeSettings.home_star_brightness_max
+        );
+        const profile = tierProfile(star.brightnessTier);
+        const tierRadius =
+          presentation.radius *
+          (1 + profile.radiusBoost * presentation.luminous);
+        const tierHaloRadius = presentation.haloRadius * profile.haloScale;
+        const spikeExtent = Math.max(
+          tierHaloRadius * 1.25,
+          tierRadius * profile.spikeLength,
+          14
+        );
+        spikePosition.setXYZ(index, star.x, star.y, star.z);
+        spikeSize.setX(index, spikeExtent * 2 * 3);
+        spikeAlpha.setX(
+          index,
+          presentation.luminous > 0.06
+            ? Math.min(
+                1,
+                (0.35 + presentation.luminous * 0.7 + (selected ? 0.15 : 0)) *
+                  profile.spikeAlpha *
+                  2.2
+              )
+            : 0
+        );
+        spikeTile.setX(index, tierTileIndex.get(tierIdOf(star)) * 2 + 1);
+        spikeRot.setX(index, ((star.index * 53) % 50 - 25) * (Math.PI / 180));
+      });
+      haloPosition.needsUpdate = true;
+      haloSize.needsUpdate = true;
+      haloAlpha.needsUpdate = true;
+      haloTile.needsUpdate = true;
+      haloRot.needsUpdate = true;
+      spikePosition.needsUpdate = true;
+      spikeSize.needsUpdate = true;
+      spikeAlpha.needsUpdate = true;
+      spikeTile.needsUpdate = true;
+      spikeRot.needsUpdate = true;
+    }
+
+    function writeEdgePositions() {
+      for (const layer of edgeLayers) {
+        const attribute = layer.geometry.attributes.position;
+        layer.userData.edges.forEach((edge, index) => {
+          const source = starById.get(edge.source);
+          const target = starById.get(edge.target);
+          attribute.setXYZ(index * 2, source.x, source.y, source.z);
+          attribute.setXYZ(index * 2 + 1, target.x, target.y, target.z);
+        });
+        attribute.needsUpdate = true;
+      }
+      const highlightEdges = (activeRelationPlan?.visualEdges || []).filter(
+        (edge) => activeVisualEdgeIds.has(illumination.edgeId(edge))
+      );
+      const positions = new Float32Array(highlightEdges.length * 6);
+      highlightEdges.forEach((edge, index) => {
+        const source = starById.get(edge.source);
+        const target = starById.get(edge.target);
+        positions.set([source.x, source.y, source.z], index * 6);
+        positions.set([target.x, target.y, target.z], index * 6 + 3);
+      });
+      highlightGeometry.setAttribute(
+        "position",
+        new THREE.BufferAttribute(positions, 3)
+      );
+    }
+
+    function moveDocuments() {
+      if (reducedMotion) return;
+      for (const star of documents) {
+        star.x += star.vx;
+        star.y += star.vy;
+        star.z += star.vz;
+        const distance = Math.hypot(star.x, star.y, star.z);
+        if (distance > 340) {
+          const scale = 340 / distance;
+          star.x *= scale;
+          star.y *= scale;
+          star.z *= scale;
+          star.vx *= -1;
+          star.vy *= -1;
+          star.vz *= -1;
+        }
+      }
+    }
+
+    function projectStar(star) {
+      const vector = new THREE.Vector3(star.x, star.y, star.z);
+      vector.project(camera);
+      return {
+        x: ((vector.x + 1) / 2) * width,
+        y: ((1 - vector.y) / 2) * height,
+        visible: vector.z < 1
+      };
+    }
+
+    function updateLabel(time) {
+      if (!labelStar || time >= labelExpiresAt) {
+        label.hidden = true;
+        labelStar = null;
+        return;
+      }
+      const offset = glCanvas.getBoundingClientRect();
+      const projected = projectStar(labelStar);
+      label.hidden = false;
+      const labelWidth = label.offsetWidth || 180;
+      const labelHeight = label.offsetHeight || 34;
+      const x = Math.max(
+        8,
+        Math.min(
+          window.innerWidth - labelWidth - 8,
+          offset.left + projected.x + 10
+        )
+      );
+      const y = Math.max(
+        8,
+        Math.min(
+          window.innerHeight - labelHeight - 8,
+          offset.top + projected.y - 18
+        )
+      );
+      label.style.transform =
+        `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+    }
+
+    function draw(time) {
+      updateVariations(time);
+      moveDocuments();
+      camera.position.set(
+        cameraState.radius *
+          Math.sin(cameraState.phi) *
+          Math.sin(cameraState.theta),
+        cameraState.radius * Math.cos(cameraState.phi),
+        cameraState.radius *
+          Math.sin(cameraState.phi) *
+          Math.cos(cameraState.theta)
+      );
+      camera.lookAt(0, 0, 0);
+      writePointAttributes(time);
+      writeEdgePositions();
+      renderer.render(scene, camera);
+      updateLabel(time);
+    }
+
+    function animate(time) {
+      frame = 0;
+      if (disposed || document.hidden) return;
+      const delta = lastFrameAt ? time - lastFrameAt : 16;
+      lastFrameAt = time;
+      if (!dragState.active && !reducedMotion) {
+        cameraState.theta += delta * 0.00004;
+      }
+      draw(time);
+      frame = window.requestAnimationFrame(animate);
+    }
+
+    function percentage(value, total) {
+      return total ? `${(value / total * 100).toFixed(1)}%` : "0.0%";
+    }
+
+    function updateCoverage() {
+      if (
+        !selectedRoot ||
+        runtimeSettings.home_star_relation_visibility === "always"
+      ) {
+        panel.hidden = true;
+        return;
+      }
+      const litContributors = contributors.filter((star) =>
+        selectedIds.has(star.id)
+      ).length;
+      const litDocuments = documents.filter((star) =>
+        selectedIds.has(star.id)
+      ).length;
+      panel.hidden = false;
+      panel.querySelector("[data-star-coverage-tier]").textContent =
+        selectedTier?.name || "未分级";
+      panel.querySelector("[data-star-coverage-brightness]").textContent =
+        `${selectedBrightness.toFixed(1)} / ` +
+        `${runtimeSettings.home_star_brightness_max}`;
+      panel.querySelector("[data-star-coverage-total]").textContent =
+        `${selectedIds.size} / ${stars.length} · ` +
+        percentage(selectedIds.size, stars.length);
+      panel.querySelector("[data-star-coverage-contributors]").textContent =
+        `${litContributors} / ${contributors.length} · ` +
+        percentage(litContributors, contributors.length);
+      panel.querySelector("[data-star-coverage-documents]").textContent =
+        `${litDocuments} / ${documents.length} · ` +
+        percentage(litDocuments, documents.length);
+      panel.querySelector("[data-star-coverage-relations]").textContent =
+        `${activeRelationPlan.coverageCount} / ` +
+        `${activeRelationPlan.totalCount} · ` +
+        percentage(
+          activeRelationPlan.coverageCount,
+          activeRelationPlan.totalCount
+        );
+    }
+
+    function showLabel(star, now) {
+      const secondClick = labelStar === star && now < labelExpiresAt;
+      if (secondClick && star.kind === "document" && star.route) {
+        window.location.assign(star.route);
+        return;
+      }
+      labelStar = star;
+      const title = star.kind === "document" ? star.title : star.name;
+      const tier = star.brightnessTier?.name || "未分级";
+      label.textContent =
+        `${title} · ${tier} · ${star.baseBrightness.toFixed(1)}`;
+      label.dataset.starKind = star.kind;
+      labelExpiresAt = now + runtimeSettings.home_star_label_duration_ms;
+      window.clearTimeout(labelTimer);
+      labelTimer = window.setTimeout(() => {
+        label.hidden = true;
+        labelStar = null;
+      }, runtimeSettings.home_star_label_duration_ms);
+      updateLabel(now);
+    }
+
+    function clearSelection() {
+      selectedRoot = "";
+      selectedIds = new Set();
+      selectedBrightness = 0;
+      selectedTier = null;
+      activeRelationPlan = null;
+      activeVisualEdgeIds = new Set();
+      panel.hidden = true;
+      glCanvas.dataset.selectedCount = "0";
+      glCanvas.dataset.selectedTier = "";
+      if (reducedMotion) draw(performance.now());
+    }
+
+    function selectStar(star, now) {
+      showLabel(star, now);
+      window.clearTimeout(selectionTimer);
+      if (runtimeSettings.home_star_relation_visibility === "always") {
+        clearSelection();
+        return;
+      }
+      selectedRoot = star.id;
+      selectedBrightness = star.baseBrightness;
+      selectedTier = star.brightnessTier;
+      selectedIds = illumination.illuminate(
+        stars,
+        edges,
+        star.id,
+        runtimeSettings.home_star_illumination_rule,
+        runtimeSettings.home_star_illumination_depth,
+        runtimeSettings.home_star_graph_direction
+      );
+      activeRelationPlan = illumination.relationPlan(
+        stars,
+        edges,
+        selectedIds,
+        runtimeSettings.home_star_active_edge_mode
+      );
+      activeVisualEdgeIds = new Set(
+        activeRelationPlan.visualEdges.map(illumination.edgeId)
+      );
+      glCanvas.dataset.selectedCount = String(selectedIds.size);
+      glCanvas.dataset.selectedTier = selectedTier?.name || "";
+      updateCoverage();
+      selectionTimer = window.setTimeout(
+        clearSelection,
+        runtimeSettings.home_star_selection_duration_ms
+      );
+      if (reducedMotion) draw(now);
+    }
+
+    function hitTest(event) {
+      const rectangle = glCanvas.getBoundingClientRect();
+      const x = event.clientX - rectangle.left;
+      const y = event.clientY - rectangle.top;
+      let nearest = null;
+      let nearestDistance = Infinity;
+      for (const star of stars) {
+        const projected = projectStar(star);
+        if (!projected.visible) continue;
+        const distance = Math.hypot(projected.x - x, projected.y - y);
+        const limit = star.kind === "contributor" ? 14 : 10;
+        if (distance <= limit && distance < nearestDistance) {
+          nearest = star;
+          nearestDistance = distance;
+        }
+      }
+      return nearest;
+    }
+
+    function documentClick(event) {
+      if (event.target === label) return;
+      if (
+        event.target.closest(
+          "a, button, input, select, textarea, summary, [role='button']"
+        )
+      ) {
+        return;
+      }
+      const rectangle = glCanvas.getBoundingClientRect();
+      if (
+        event.clientX < rectangle.left ||
+        event.clientX > rectangle.right ||
+        event.clientY < rectangle.top ||
+        event.clientY > rectangle.bottom
+      ) {
+        return;
+      }
+      const star = hitTest(event);
+      if (star) {
+        event.preventDefault();
+        selectStar(star, performance.now());
+      }
+    }
+
+    function labelClick() {
+      if (labelStar) selectStar(labelStar, performance.now());
+    }
+
+    // Drag-to-orbit on the document, guarded like the click handler so page
+    // interactions are never hijacked.
+    const dragState = { active: false, x: 0, y: 0, moved: 0 };
+    function pointerDown(event) {
+      if (
+        event.target.closest(
+          "a, button, input, select, textarea, summary, [role='button']"
+        )
+      ) {
+        return;
+      }
+      const rectangle = glCanvas.getBoundingClientRect();
+      if (
+        event.clientX < rectangle.left ||
+        event.clientX > rectangle.right ||
+        event.clientY < rectangle.top ||
+        event.clientY > rectangle.bottom
+      ) {
+        return;
+      }
+      dragState.active = true;
+      dragState.moved = 0;
+      dragState.x = event.clientX;
+      dragState.y = event.clientY;
+    }
+    function pointerMove(event) {
+      if (!dragState.active) return;
+      const dx = event.clientX - dragState.x;
+      const dy = event.clientY - dragState.y;
+      dragState.x = event.clientX;
+      dragState.y = event.clientY;
+      dragState.moved += Math.abs(dx) + Math.abs(dy);
+      cameraState.theta -= dx * 0.004;
+      cameraState.phi = Math.max(
+        Math.PI * 0.18,
+        Math.min(Math.PI * 0.82, cameraState.phi - dy * 0.003)
+      );
+    }
+    function pointerUp() {
+      dragState.active = false;
+    }
+
+    const resizeObserver =
+      runtimeSettings.home_star_scope === "hero"
+        ? new ResizeObserver(resize)
+        : null;
+    if (resizeObserver) resizeObserver.observe(hero);
+    else window.addEventListener("resize", resize);
+    document.addEventListener("click", documentClick, true);
+    document.addEventListener("pointerdown", pointerDown, true);
+    document.addEventListener("pointermove", pointerMove, true);
+    document.addEventListener("pointerup", pointerUp, true);
+    label.addEventListener("click", labelClick);
+    resize();
+    glCanvas.dataset.starCount = String(stars.length);
+    glCanvas.dataset.edgeCount = String(edges.length);
+    glCanvas.dataset.contributorCount = String(contributors.length);
+    glCanvas.dataset.documentCount = String(documents.length);
+    glCanvas.dataset.codeSystemCount = String(
+      stars.filter((star) => star.resourceKind === "code_system").length
+    );
+    glCanvas.dataset.contributionEdgeCount = String(
+      edges.filter((edge) => edge.type === "contribution").length
+    );
+    glCanvas.dataset.selectedCount = "0";
+    glCanvas.dataset.selectedTier = "";
+    if (!reducedMotion) frame = window.requestAnimationFrame(animate);
+    else draw(performance.now());
+
+    return function () {
+      disposed = true;
+      if (frame) window.cancelAnimationFrame(frame);
+      window.clearTimeout(labelTimer);
+      window.clearTimeout(selectionTimer);
+      if (resizeObserver) resizeObserver.disconnect();
+      else window.removeEventListener("resize", resize);
+      document.removeEventListener("click", documentClick, true);
+      document.removeEventListener("pointerdown", pointerDown, true);
+      document.removeEventListener("pointermove", pointerMove, true);
+      document.removeEventListener("pointerup", pointerUp, true);
+      label.removeEventListener("click", labelClick);
+      label.remove();
+      panel.remove();
+      for (const layer of [haloLayer, spikeLayer, highlightLayer, ...edgeLayers]) {
+        layer.geometry.dispose();
+        layer.material.dispose();
+      }
+      atlasTexture.dispose();
+      renderer.dispose();
+      glCanvas.remove();
+      canvas.style.display = "";
+      canvas.setAttribute("data-knowledge-field", "");
+      document.body.classList.remove("home-stars-full", "home-stars-hero");
+    };
+  }
+
   function apply(nextSettings) {
     settings = normalizeSettings(nextSettings);
     cleanup();
+    if (
+      settings.home_background_style === "contribution_star_map" &&
+      settings.home_star_render_mode === "3d"
+    ) {
+      if (window.GCK_STAR3D) {
+        cleanup = createContributionMap3D(settings);
+      } else {
+        // Render 2D immediately and swap to 3D once the vendor bundle
+        // arrives, so enabling 3D never blanks the background.
+        cleanup = createContributionMap(settings);
+        ensureStar3D(() => {
+          if (ready && settings.home_star_render_mode === "3d") {
+            apply(settings);
+          }
+        });
+      }
+      return;
+    }
     cleanup =
       settings.home_background_style === "contribution_star_map"
         ? createContributionMap(settings)

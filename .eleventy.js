@@ -331,6 +331,9 @@ module.exports = function configureEleventy(eleventyConfig) {
       "assets/vendor/star-formula-engine.js"
   });
   eleventyConfig.addPassthroughCopy({
+    ".cache/vendor/star3d-engine.js": "assets/vendor/star3d-engine.js"
+  });
+  eleventyConfig.addPassthroughCopy({
     "node_modules/web-tree-sitter/tree-sitter.js":
       "assets/vendor/tree-sitter.js"
   });
