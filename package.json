@@ -55,6 +55,7 @@
     "mermaid": "11.16.1",
     "playwright-core": "1.62.1",
     "prismjs": "1.30.0",
+    "three": "0.185.1",
     "tree-sitter-wasms": "^0.1.13",
     "web-tree-sitter": "^0.20.8"
   },
