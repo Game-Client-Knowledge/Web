@@ -1836,6 +1836,12 @@ def test_admin_can_save_and_test_encrypted_comment_agent_configuration(
     assert tested.status_code == 200, tested.text
     assert tested.json()["provider"] == "deepseek"
     assert observed["configuration"].api_key == api_key
+    for _ in range(6):
+        repeated_test = client.post(
+            "/api/admin/comment-agent/test",
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert repeated_test.status_code == 200, repeated_test.text
 
     switched_without_key = client.put(
         "/api/admin/comment-agent",

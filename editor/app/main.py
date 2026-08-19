@@ -3763,12 +3763,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         admin: dict[str, Any] = Depends(require_admin),
     ) -> dict[str, str]:
         verify_csrf(admin, x_csrf_token)
-        if not rate_limiter.allow(
-            f"comment-agent-test:{admin['id']}",
-            5,
-            600,
-        ):
-            raise HTTPException(status_code=429, detail="Agent 测试请求过多")
         configuration = comment_agent_configuration()
         if not configuration.configured:
             raise HTTPException(
