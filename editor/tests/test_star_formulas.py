@@ -58,5 +58,5 @@ def test_tiers_are_bounded_and_sorted() -> None:
     )
     assert tiers == [
         {"id": "low", "name": "低亮", "min_brightness": 0},
-        {"id": "high", "name": "高亮", "min_brightness": 80},
+        {"id": "high", "name": "高亮", "min_brightness": 90},
     ]

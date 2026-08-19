@@ -256,7 +256,7 @@ def resolved_star_brightness_rules(value: Any) -> list[dict[str, Any]]:
 def resolved_star_brightness_tiers(
     value: Any,
     _minimum: float,
-    maximum: float,
+    _maximum: float,
 ) -> list[dict[str, Any]]:
     source = value if isinstance(value, list) else DEFAULT_STAR_BRIGHTNESS_TIERS
     tiers: list[dict[str, Any]] = []
@@ -271,7 +271,7 @@ def resolved_star_brightness_tiers(
             threshold = float(item.get("min_brightness"))
         except (TypeError, ValueError):
             continue
-        threshold = max(0, min(maximum, threshold))
+        threshold = max(0, min(100, threshold))
         if (
             not STAR_FORMULA_ID_PATTERN.fullmatch(tier_id)
             or tier_id in seen_ids
@@ -291,7 +291,7 @@ def resolved_star_brightness_tiers(
     if not tiers:
         return resolved_star_brightness_tiers(
             DEFAULT_STAR_BRIGHTNESS_TIERS,
-            minimum,
-            maximum,
+            _minimum,
+            _maximum,
         )
     return sorted(tiers, key=lambda item: item["min_brightness"])

@@ -445,7 +445,7 @@ Main settings:
 | `home_star_brightness_initial` | `0..100`, inside configured bounds |
 | `home_star_brightness_max` | `1..100` |
 | `home_star_brightness_rules` | Ordered formula rules, at most 50 |
-| `home_star_brightness_tiers` | Unique thresholds, 1 to 20 |
+| `home_star_brightness_tiers` | 1 to 20 unique thresholds in `0..100`; unreachable tiers are preserved |
 | `home_star_brightness_variation_amount` | `0..20` |
 | `home_star_brightness_transition_ms` | `100..10000` |
 | `home_star_brightness_interval_ms` | `200..30000` |

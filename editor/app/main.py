@@ -3223,7 +3223,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if (
                 tier.id in tier_ids
                 or tier.min_brightness in tier_thresholds
-                or tier.min_brightness > payload.home_star_brightness_max
             ):
                 raise HTTPException(
                     status_code=422,

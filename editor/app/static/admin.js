@@ -353,8 +353,7 @@ function renderStarBrightnessTiers() {
       const threshold = document.createElement("input");
       threshold.type = "number";
       threshold.min = "0";
-      threshold.max =
-        byId("visualSettingsForm").home_star_brightness_max.value || "100";
+      threshold.max = "100";
       threshold.step = "0.5";
       threshold.required = true;
       threshold.value = String(tier.min_brightness);
@@ -895,9 +894,6 @@ byId("addStarBrightnessRule").addEventListener("click", () => {
 
 byId("addStarBrightnessTier").addEventListener("click", () => {
   if (state.starBrightnessTiers.length >= 20) return;
-  const maximumBrightness = Number(
-    byId("visualSettingsForm").home_star_brightness_max.value
-  ) || 100;
   const highestThreshold = state.starBrightnessTiers.reduce(
     (value, tier) => Math.max(value, Number(tier.min_brightness) || 0),
     0
@@ -905,7 +901,7 @@ byId("addStarBrightnessTier").addEventListener("click", () => {
   const used = new Set(
     state.starBrightnessTiers.map((tier) => Number(tier.min_brightness))
   );
-  let threshold = Math.min(maximumBrightness, highestThreshold + 10);
+  let threshold = Math.min(100, highestThreshold + 10);
   while (threshold >= 0 && used.has(threshold)) threshold -= 0.5;
   if (threshold < 0) return;
   state.starBrightnessTiers.push({

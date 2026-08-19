@@ -1152,6 +1152,11 @@ def test_admin_can_configure_client_visual_effects(
                     "name": "褐矮星",
                     "min_brightness": 0,
                 },
+                {
+                    "id": "blue",
+                    "name": "蓝巨星",
+                    "min_brightness": 90,
+                },
             ],
         },
     )
@@ -1222,6 +1227,11 @@ def test_admin_can_configure_client_visual_effects(
                 "name": "褐矮星",
                 "min_brightness": 0,
             },
+            {
+                "id": "blue",
+                "name": "蓝巨星",
+                "min_brightness": 90,
+            },
         ],
     }
     config = client.get("/api/config").json()
@@ -1267,6 +1277,7 @@ def test_admin_can_configure_client_visual_effects(
     assert config["home_star_brightness_tiers"] == [
         {"id": "brown", "name": "褐矮星", "min_brightness": 0},
         {"id": "red", "name": "红矮星", "min_brightness": 25},
+        {"id": "blue", "name": "蓝巨星", "min_brightness": 90},
     ]
 
     legacy_timing = client.put(
