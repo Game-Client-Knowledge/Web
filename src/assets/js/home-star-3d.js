@@ -1261,6 +1261,7 @@
       startedAt: 0,
       yaw: 0.64,
       pitch: -0.36,
+      rotationAt: 0,
       dragging: false,
       moved: 0,
       x: 0,
@@ -1324,19 +1325,29 @@
       return progress * progress * (3 - 2 * progress);
     }
 
+    function updatePortalRotation(time) {
+      if (!portalState.enabled) return;
+      if (!portalState.rotationAt) {
+        portalState.rotationAt = time;
+        return;
+      }
+      const elapsed = Math.max(
+        0,
+        Math.min(100, time - portalState.rotationAt)
+      );
+      portalState.rotationAt = time;
+      if (!portalState.dragging && !reducedMotion) {
+        portalState.yaw +=
+          elapsed * portalRotationRadiansPerMs;
+      }
+    }
+
     function portalDisplayPosition(star, time) {
-      const autoYaw =
-        portalState.yaw +
-        (
-          portalState.dragging || reducedMotion
-            ? 0
-            : time * portalRotationRadiansPerMs
-        );
       const autoPitch =
         portalState.pitch +
         (reducedMotion ? 0 : Math.sin(time * 0.00012) * 0.045);
-      const cosYaw = Math.cos(autoYaw);
-      const sinYaw = Math.sin(autoYaw);
+      const cosYaw = Math.cos(portalState.yaw);
+      const sinYaw = Math.sin(portalState.yaw);
       const cosPitch = Math.cos(autoPitch);
       const sinPitch = Math.sin(autoPitch);
       const yawX = star.portalX * cosYaw - star.portalZ * sinYaw;
@@ -1379,6 +1390,7 @@
     }
 
     function updatePortalStarPositions(time) {
+      updatePortalRotation(time);
       const rawProgress = updatePortalProgress(time);
       if (!portalState.enabled || rawProgress >= 1) return;
       const progress = easePortal(rawProgress);

@@ -452,6 +452,8 @@ renderer available while presenting the graph as an explicit homepage portal:
 4. the same graph stars are deterministically packed inside an octahedral
    volume and rendered at the configured collapsed scale inside the portal;
 5. pointer dragging changes the portal yaw and pitch without activating it;
+   releasing preserves that orientation and resumes automatic rotation from
+   the dragged yaw instead of restoring a time-derived angle;
 6. clicking drives star positions, star scale, distant-star exposure, and the
    clipped black surface from the same eased progress so diffusion remains
    synchronized while expanding to the viewport;

@@ -78,6 +78,15 @@ assert.match(source, /home_star_portal_brightness_percent/);
 assert.match(source, /uniform float uPortalBrightness;/);
 assert.match(source, /alpha \*= uPortalBrightness;/);
 assert.match(source, /portalDisplayPosition/);
+assert.match(source, /function updatePortalRotation\(time\)/);
+assert.match(
+  source,
+  /portalState\.yaw \+=\s*elapsed \* portalRotationRadiansPerMs/
+);
+assert.doesNotMatch(
+  source,
+  /time \* portalRotationRadiansPerMs/
+);
 assert.match(source, /updateHeroContentCover/);
 assert.match(source, /heroContent\.style\.clipPath/);
 assert.match(source, /polygon\(evenodd,/);
