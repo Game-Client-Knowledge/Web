@@ -3294,7 +3294,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail="主页背景样式无效")
         if payload.home_star_scope not in {"hero", "full"}:
             raise HTTPException(status_code=422, detail="主页星图范围无效")
-        if payload.home_star_render_mode not in {"2d", "3d"}:
+        if payload.home_star_render_mode not in {
+            "2d",
+            "2d-webgl",
+            "3d",
+            "3d-drift",
+            "3d-galaxy",
+            "3d-orbit",
+        }:
             raise HTTPException(status_code=422, detail="主页星图渲染模式无效")
         if payload.home_star_relation_visibility not in {
             "always",
