@@ -1020,6 +1020,10 @@ async function loadOverview() {
     String(data.settings.home_star_brightness_min);
   byId("visualSettingsForm").home_star_edge_glow_strength.value =
     String(data.settings.home_star_edge_glow_strength ?? 1);
+  byId("visualSettingsForm").home_star_edge_color_saturation.value =
+    String(data.settings.home_star_edge_color_saturation ?? 2.2);
+  byId("visualSettingsForm").home_star_edge_tier_mix.value =
+    String(data.settings.home_star_edge_tier_mix ?? 0.65);
   byId("visualSettingsForm").home_star_brightness_initial.value =
     String(data.settings.home_star_brightness_initial);
   byId("visualSettingsForm").home_star_brightness_max.value =
@@ -1201,6 +1205,12 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         home_star_edge_glow_strength: Number(
           form.home_star_edge_glow_strength.value
         ),
+        home_star_edge_color_saturation: Number(
+          form.home_star_edge_color_saturation.value
+        ),
+        home_star_edge_tier_mix: Number(
+          form.home_star_edge_tier_mix.value
+        ),
         home_star_brightness_initial: Number(
           form.home_star_brightness_initial.value
         ),
@@ -1286,6 +1296,10 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         saved.home_star_brightness_min,
       home_star_edge_glow_strength:
         saved.home_star_edge_glow_strength,
+      home_star_edge_color_saturation:
+        saved.home_star_edge_color_saturation,
+      home_star_edge_tier_mix:
+        saved.home_star_edge_tier_mix,
       home_star_brightness_initial:
         saved.home_star_brightness_initial,
       home_star_brightness_max:
