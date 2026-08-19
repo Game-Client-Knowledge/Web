@@ -1005,13 +1005,14 @@
           presentation.radius *
           (1 + profile.radiusBoost * presentation.luminous);
         const tierHaloRadius = presentation.haloRadius * profile.haloScale;
-        // Spike length scales with live brightness so tiers read as a
-        // clear hierarchy instead of one uniform cross size.
+        // Spike length is proportional to the star's own halo, so rays
+        // can never dwarf their host. Tier hierarchy is preserved via
+        // spikeLength (yellow-dwarf ~1.75x halo, blue-giant ~2.2x).
+        const spikeTierScale = 1 + profile.spikeLength * 0.15;
         const spikeExtent = Math.max(
-          tierHaloRadius * 1.25,
-          tierRadius *
-            profile.spikeLength *
-            (0.55 + presentation.luminous * 1.1),
+          tierHaloRadius *
+            spikeTierScale *
+            (0.7 + presentation.luminous * 0.6),
           4
         );
         spikePosition.setXYZ(index, star.x, star.y, star.z);
