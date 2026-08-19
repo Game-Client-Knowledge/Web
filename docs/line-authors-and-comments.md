@@ -112,6 +112,13 @@ Mention suggestions are loaded only for authenticated users and filtered in
 the browser. The server verifies that each submitted mention ID has a matching
 `@username` or `@github_login` in the body before notifying it.
 
+When the optional Comment Agent is enabled, the suggestion list also exposes
+`@Agent`. Its reply is generated asynchronously from the current raw page and
+the active thread, then stored as a second-level system comment. The reader
+polls only the triggering request status. Configuration, provider adapters,
+security boundaries, and recovery behavior are documented in
+`docs/comment-agent.md`.
+
 ## Email Notifications
 
 A root comment notifies every distinct cached author in the selected line

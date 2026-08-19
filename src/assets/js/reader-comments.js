@@ -28,6 +28,7 @@
     focusedId: null,
     expandedReplies: new Set(),
     mentionIds: new Set(),
+    agentPolls: new Map(),
     selectionButton: null,
     pressTimer: 0
   };
@@ -418,6 +419,7 @@
     wrapper.className = root ? "comment-card" : "comment-reply";
     wrapper.dataset.commentId = String(comment.id);
     if (state.focusedId === comment.id) wrapper.classList.add("is-focused");
+    if (comment.author.is_agent) wrapper.classList.add("is-agent");
 
     const header = document.createElement("header");
     const author = document.createElement("strong");
@@ -426,7 +428,14 @@
     const time = document.createElement("time");
     time.dateTime = comment.created_at;
     time.textContent = formatDate(comment.created_at);
-    header.append(author, time);
+    header.append(author);
+    if (comment.author.is_agent) {
+      const badge = document.createElement("span");
+      badge.className = "comment-agent-badge";
+      badge.textContent = "AI";
+      header.append(badge);
+    }
+    header.append(time);
     wrapper.appendChild(header);
 
     if (root) {
@@ -449,6 +458,24 @@
       body.style.setProperty("--comment-lines", "8");
     }
     wrapper.appendChild(body);
+
+    if (comment.agent_status) {
+      const status = document.createElement("p");
+      status.className =
+        "comment-agent-status is-" + comment.agent_status;
+      if (comment.agent_status === "pending") {
+        status.textContent = "Agent 请求已排队";
+      } else if (comment.agent_status === "running") {
+        status.textContent = "Agent 正在读取页面与评论";
+      } else if (comment.agent_status === "failed") {
+        status.textContent =
+          "Agent 回复失败：" +
+          (comment.agent_error || "模型服务暂不可用");
+      } else {
+        status.textContent = "Agent 已回复";
+      }
+      wrapper.appendChild(status);
+    }
 
     const actions = document.createElement("div");
     actions.className = "comment-actions";
@@ -583,6 +610,57 @@
     state.members = payload.items;
   }
 
+  function pollAgent(commentId) {
+    if (state.agentPolls.has(commentId)) return;
+    let attempt = 0;
+    let failures = 0;
+
+    async function check() {
+      try {
+        const result = await api(
+          "/comments/" + commentId + "/agent-status"
+        );
+        failures = 0;
+        const trigger = state.payload.comments.find(function (item) {
+          return item.id === commentId;
+        });
+        if (trigger) {
+          trigger.agent_status = result.status;
+          trigger.agent_error = result.error;
+        }
+        const response = result.response_comment;
+        if (
+          response &&
+          !state.payload.comments.some(function (item) {
+            return item.id === response.id;
+          })
+        ) {
+          state.payload.comments.push(response);
+          state.expandedReplies.add(response.parent_id);
+          state.focusedId = response.id;
+        }
+        renderComments();
+        if (result.status === "pending" || result.status === "running") {
+          attempt += 1;
+          const delay = Math.min(8000, 1200 + attempt * 500);
+          const timer = window.setTimeout(check, delay);
+          state.agentPolls.set(commentId, timer);
+          return;
+        }
+      } catch {
+        failures += 1;
+        if (failures <= 4) {
+          const timer = window.setTimeout(check, failures * 2000);
+          state.agentPolls.set(commentId, timer);
+          return;
+        }
+      }
+      state.agentPolls.delete(commentId);
+    }
+
+    state.agentPolls.set(commentId, window.setTimeout(check, 900));
+  }
+
   async function refreshSession() {
     const session = await api("/session");
     if (!state.bootstrap) state.bootstrap = { session: session };
@@ -607,8 +685,14 @@
     menu.replaceChildren();
     matches.forEach(function (member) {
       const option = button(
-        "@" + (member.github_login || member.username) + " · " + member.username
+        member.is_agent
+          ? "@Agent · 页面与评论"
+          : "@" +
+            (member.github_login || member.username) +
+            " · " +
+            member.username
       );
+      if (member.is_agent) option.classList.add("is-agent");
       option.addEventListener("click", function () {
         const insertion = "@" + (member.github_login || member.username) + " ";
         const start = textarea.selectionStart - match[0].length;
@@ -618,7 +702,7 @@
           textarea.selectionStart,
           "end"
         );
-        state.mentionIds.add(member.id);
+        if (!member.is_agent) state.mentionIds.add(member.id);
         menu.hidden = true;
         textarea.focus();
       });
@@ -667,7 +751,9 @@
       }
       state.members.forEach(function (member) {
         const handle = member.github_login || member.username;
-        if (body.includes("@" + handle)) state.mentionIds.add(member.id);
+        if (!member.is_agent && body.includes("@" + handle)) {
+          state.mentionIds.add(member.id);
+        }
       });
       submit.disabled = true;
       try {
@@ -686,6 +772,12 @@
         state.focusedId = created.id;
         renderComments();
         applyHighlights();
+        if (
+          created.agent_status === "pending" ||
+          created.agent_status === "running"
+        ) {
+          pollAgent(created.id);
+        }
       } catch (error) {
         submit.disabled = false;
         submit.textContent = error.message;
@@ -890,6 +982,14 @@
       renderComments();
       bindSelection();
       bindNotificationPreference();
+      state.payload.comments.forEach(function (comment) {
+        if (
+          comment.agent_status === "pending" ||
+          comment.agent_status === "running"
+        ) {
+          pollAgent(comment.id);
+        }
+      });
       const requested = Number(
         new URLSearchParams(window.location.search).get("comment")
       );

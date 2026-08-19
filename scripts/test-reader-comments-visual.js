@@ -19,12 +19,100 @@ fs.mkdirSync(output, { recursive: true });
 
 async function inspect(browser, name, viewport) {
   const context = await browser.newContext({ viewport });
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Content-Type": "application/json"
+  };
+  await context.route("**/api/bootstrap**", (route) => {
+    route.fulfill({
+      headers: corsHeaders,
+      body: JSON.stringify({
+        config: {},
+        session: { authenticated: false },
+        drafts: []
+      })
+    });
+  });
+  await context.route("**/api/comments?**", (route) => {
+    route.fulfill({
+      headers: corsHeaders,
+      body: JSON.stringify({
+        revision: { commit_sha: "a".repeat(40), line_count: 200 },
+        authors: [
+          {
+            start_line: 1,
+            end_line: 200,
+            commit: "a".repeat(40),
+            author: {
+              name: "sourcecode",
+              github_login: "sourcecode",
+              user_id: 1
+            }
+          }
+        ],
+        comments: [
+          {
+            id: 1,
+            path: "program/knowledge/cpp/01-cpp98.md",
+            revision_sha: "a".repeat(40),
+            start_line: 1,
+            end_line: 2,
+            start_column: 0,
+            end_column: 12,
+            quote: "C++ 98 基础",
+            render_segments: [],
+            body: "@Agent 请解释这段内容。",
+            parent_id: null,
+            reply_to_id: null,
+            author: {
+              id: 2,
+              username: "reader",
+              github_login: null,
+              is_agent: false
+            },
+            mentions: [],
+            agent_status: "completed",
+            agent_error: null,
+            created_at: "2026-08-19T08:00:00+00:00",
+            updated_at: "2026-08-19T08:00:00+00:00"
+          },
+          {
+            id: 2,
+            path: "program/knowledge/cpp/01-cpp98.md",
+            revision_sha: "a".repeat(40),
+            start_line: 1,
+            end_line: 2,
+            start_column: 0,
+            end_column: 12,
+            quote: "C++ 98 基础",
+            render_segments: [],
+            body: "这段内容介绍了 C++ 98 的核心语言基础。",
+            parent_id: 1,
+            reply_to_id: 1,
+            author: {
+              id: -1,
+              username: "Agent",
+              github_login: null,
+              is_agent: true
+            },
+            mentions: [],
+            agent_status: null,
+            agent_error: null,
+            created_at: "2026-08-19T08:00:01+00:00",
+            updated_at: "2026-08-19T08:00:01+00:00"
+          }
+        ],
+        can_comment: false
+      })
+    });
+  });
   const page = await context.newPage();
   await page.goto(`${baseUrl}/knowledge/cpp/01-cpp98/`, {
     waitUntil: "networkidle"
   });
   await page.locator("[data-comments-toggle]").click();
   await page.locator("[data-comments-panel]").waitFor({ state: "visible" });
+  await page.getByRole("button", { name: "1 条回复" }).click();
   const layout = await page.evaluate(() => {
     const panel = document.querySelector("[data-comments-panel]");
     const rectangle = panel.getBoundingClientRect();
@@ -35,7 +123,14 @@ async function inspect(browser, name, viewport) {
       documentWidth: document.documentElement.scrollWidth,
       viewportWidth: innerWidth,
       commentGroups: document.querySelectorAll(".comment-group").length,
-      authorLabels: document.querySelectorAll(".reader-author-label").length
+      authorLabels: document.querySelectorAll(".reader-author-label").length,
+      agentBadges: document.querySelectorAll(".comment-agent-badge").length,
+      agentReplies: document.querySelectorAll(
+        ".comment-reply.is-agent"
+      ).length,
+      agentStatuses: document.querySelectorAll(
+        ".comment-agent-status"
+      ).length
     };
   });
   if (layout.panelWidth < 280) {
@@ -55,6 +150,13 @@ async function inspect(browser, name, viewport) {
   }
   if (layout.authorLabels < 1) {
     throw new Error(`${name}: line authors are not visible`);
+  }
+  if (
+    layout.agentBadges !== 1 ||
+    layout.agentReplies !== 1 ||
+    layout.agentStatuses !== 1
+  ) {
+    throw new Error(`${name}: Agent thread is incomplete`);
   }
   await page.screenshot({
     path: path.join(output, `${name}.png`),

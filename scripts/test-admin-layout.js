@@ -15,6 +15,10 @@ const javascript = fs.readFileSync(
   path.join(root, "editor/app/static/admin.js"),
   "utf8"
 );
+const commentAgentConfig = fs.readFileSync(
+  path.join(root, "editor/app/comment_agent_config.py"),
+  "utf8"
+);
 
 for (const target of [
   "overview",
@@ -89,6 +93,35 @@ assert.match(html, /id="addStarBrightnessTier"/);
 assert.match(html, /id="starFormulaVariableReference"/);
 assert.match(html, /id="starFormulaFunctionReference"/);
 assert.match(html, /star-formula-engine\.js/);
+assert.match(html, /id="commentAgentForm"/);
+assert.match(html, /id="commentAgentProvider"/);
+for (const field of [
+  "protocol",
+  "base_url",
+  "api_key",
+  "model",
+  "timeout_seconds",
+  "max_context_chars",
+  "max_output_tokens",
+  "system_prompt",
+  "enabled"
+]) {
+  assert.match(
+    html,
+    new RegExp(
+      `id="commentAgentForm"[\\s\\S]*name="${field}"`
+    )
+  );
+}
+for (const provider of [
+  "ChatGPT",
+  "DeepSeek",
+  "Claude",
+  "Kimi",
+  "千问"
+]) {
+  assert.match(commentAgentConfig, new RegExp(provider));
+}
 
 assert.match(css, /\.admin-layout\s*\{[\s\S]*grid-template-columns:/);
 assert.match(css, /\.admin-sidebar\s*\{[\s\S]*position:\s*sticky/);
@@ -97,6 +130,7 @@ assert.match(css, /\.visual-group-grid\s*\{/);
 assert.match(css, /\.admin-panel\[hidden\][\s\S]*display:\s*none/);
 assert.match(css, /\.visual-settings-tabs\s*\{/);
 assert.match(css, /\.star-variable-reference\s*\{/);
+assert.match(css, /\.agent-grid\s*\{/);
 assert.match(
   css,
   /@media \(max-width: 900px\)[\s\S]*\.admin-layout\s*\{[\s\S]*display:\s*block/

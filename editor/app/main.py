@@ -40,6 +40,22 @@ from .analytics import (
     record_visit,
     valid_device_token,
 )
+from .comment_agent import (
+    CommentAgentError,
+    call_agent_api,
+    process_comment_agent_request,
+    recover_comment_agent_requests,
+)
+from .comment_agent_config import (
+    COMMENT_AGENT_PROTOCOLS,
+    COMMENT_AGENT_TEMPLATE_IDS,
+    COMMENT_AGENT_TEMPLATES,
+    DEFAULT_COMMENT_AGENT_SYSTEM_PROMPT,
+    comment_agent_public_payload,
+    load_comment_agent_configuration,
+    save_comment_agent_configuration,
+    validate_agent_base_url,
+)
 from .comments import contribution_graph_payload, create_comments_router
 from .config import Settings
 from .database import Database, utc_now
@@ -377,6 +393,23 @@ class SmtpSettingsRequest(BaseModel):
     starttls: bool = True
 
 
+class CommentAgentSettingsRequest(BaseModel):
+    enabled: bool
+    provider: str = Field(max_length=32)
+    protocol: str = Field(max_length=32)
+    base_url: str = Field(max_length=500)
+    api_key: str = Field(default="", max_length=2000)
+    model: str = Field(min_length=1, max_length=200)
+    timeout_seconds: int = Field(default=45, ge=5, le=180)
+    max_context_chars: int = Field(default=24000, ge=4000, le=100000)
+    max_output_tokens: int = Field(default=1200, ge=128, le=8192)
+    system_prompt: str = Field(
+        default=DEFAULT_COMMENT_AGENT_SYSTEM_PROMPT,
+        min_length=1,
+        max_length=4000,
+    )
+
+
 class SlidingWindowLimiter:
     def __init__(self) -> None:
         self._hits: dict[str, deque[float]] = defaultdict(deque)
@@ -567,16 +600,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             await asyncio.sleep(settings.pr_sync_interval_seconds)
 
+    async def comment_agent_worker() -> None:
+        await asyncio.sleep(2)
+        while True:
+            try:
+                processed = await asyncio.to_thread(
+                    process_comment_agent_request,
+                    db,
+                    settings,
+                    cipher,
+                )
+                if not processed:
+                    await asyncio.sleep(5)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                db.audit(
+                    "comment_agent.worker_failed",
+                    "system",
+                    detail=str(exc)[:1000],
+                )
+                await asyncio.sleep(5)
+
     @asynccontextmanager
     async def lifespan(application: FastAPI):
-        task = asyncio.create_task(pr_sync_worker())
-        application.state.pr_sync_task = task
+        recover_comment_agent_requests(db)
+        pr_task = asyncio.create_task(pr_sync_worker())
+        agent_task = asyncio.create_task(comment_agent_worker())
+        application.state.pr_sync_task = pr_task
+        application.state.comment_agent_task = agent_task
         try:
             yield
         finally:
-            task.cancel()
-            with suppress(asyncio.CancelledError):
-                await task
+            pr_task.cancel()
+            agent_task.cancel()
+            for task in (pr_task, agent_task):
+                with suppress(asyncio.CancelledError):
+                    await task
 
     app = FastAPI(
         title="Game Client Knowledge Editor",
@@ -883,6 +943,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def smtp_configuration():
         return load_smtp_configuration(db, settings, cipher)
 
+    def comment_agent_configuration():
+        return load_comment_agent_configuration(db, cipher)
+
     app.include_router(
         create_comments_router(
             db,
@@ -891,6 +954,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             require_ready_user,
             verify_csrf,
             rate_limiter.allow,
+            cipher,
         )
     )
 
@@ -3007,7 +3071,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     SELECT id, email, username, github_login, github_verified,
                            email_verified, role, status,
                            must_change_password, created_at
-                    FROM users ORDER BY created_at DESC LIMIT 200
+                    FROM users
+                    WHERE is_system = 0
+                    ORDER BY created_at DESC LIMIT 200
                     """
                 ).fetchall()
             ]
@@ -3052,6 +3118,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ).fetchall()
             ]
         smtp = smtp_configuration()
+        comment_agent = comment_agent_configuration()
         intro_mode = resolved_home_intro_mode()
         intro_timing = resolved_home_intro_timing()
         return {
@@ -3118,6 +3185,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "smtp": smtp_public_payload(smtp),
             "smtp_templates": SMTP_TEMPLATES,
+            "comment_agent": comment_agent_public_payload(comment_agent),
+            "comment_agent_templates": COMMENT_AGENT_TEMPLATES,
         }
 
     @app.post("/api/admin/applications/{application_id}")
@@ -3604,6 +3673,136 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "queued": True,
             **queued,
+        }
+
+    @app.put("/api/admin/comment-agent")
+    async def update_comment_agent_settings(
+        payload: CommentAgentSettingsRequest,
+        request: Request,
+        x_csrf_token: str | None = Header(default=None),
+        admin: dict[str, Any] = Depends(require_admin),
+    ) -> dict[str, object]:
+        verify_csrf(admin, x_csrf_token)
+        if payload.provider not in COMMENT_AGENT_TEMPLATE_IDS:
+            raise HTTPException(status_code=422, detail="Agent 供应商无效")
+        if payload.protocol not in COMMENT_AGENT_PROTOCOLS:
+            raise HTTPException(status_code=422, detail="Agent API 协议无效")
+        try:
+            base_url = validate_agent_base_url(payload.base_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        model = payload.model.strip()
+        system_prompt = payload.system_prompt.strip()
+        current = comment_agent_configuration()
+        endpoint_changed = (
+            payload.provider != current.provider
+            or payload.protocol != current.protocol
+            or base_url != current.base_url
+        )
+        if endpoint_changed and current.api_key and not payload.api_key:
+            raise HTTPException(
+                status_code=422,
+                detail="切换 Agent 供应商、协议或地址时必须填写新的 API Key",
+            )
+        effective_key = payload.api_key or (
+            "" if endpoint_changed else current.api_key
+        )
+        if payload.enabled and not effective_key:
+            raise HTTPException(
+                status_code=422,
+                detail="启用评论 Agent 前必须配置 API Key",
+            )
+        try:
+            save_comment_agent_configuration(
+                db,
+                cipher,
+                admin_id=admin["id"],
+                enabled=payload.enabled,
+                provider=payload.provider,
+                protocol=payload.protocol,
+                base_url=base_url,
+                api_key=payload.api_key,
+                model=model,
+                timeout_seconds=payload.timeout_seconds,
+                max_context_chars=payload.max_context_chars,
+                max_output_tokens=payload.max_output_tokens,
+                system_prompt=system_prompt,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="服务未配置可用的密钥，无法保存 Agent API Key",
+            ) from exc
+        db.audit(
+            "comment_agent.settings_updated",
+            request_ip(request),
+            user_id=admin["id"],
+            detail=json.dumps(
+                {
+                    "enabled": payload.enabled,
+                    "provider": payload.provider,
+                    "protocol": payload.protocol,
+                    "base_url": base_url,
+                    "model": model,
+                    "timeout_seconds": payload.timeout_seconds,
+                    "max_context_chars": payload.max_context_chars,
+                    "max_output_tokens": payload.max_output_tokens,
+                    "api_key_changed": bool(payload.api_key),
+                },
+                ensure_ascii=False,
+            ),
+        )
+        return comment_agent_public_payload(
+            comment_agent_configuration()
+        )
+
+    @app.post("/api/admin/comment-agent/test")
+    def test_comment_agent_settings(
+        request: Request,
+        x_csrf_token: str | None = Header(default=None),
+        admin: dict[str, Any] = Depends(require_admin),
+    ) -> dict[str, str]:
+        verify_csrf(admin, x_csrf_token)
+        if not rate_limiter.allow(
+            f"comment-agent-test:{admin['id']}",
+            5,
+            600,
+        ):
+            raise HTTPException(status_code=429, detail="Agent 测试请求过多")
+        configuration = comment_agent_configuration()
+        if not configuration.configured:
+            raise HTTPException(
+                status_code=409,
+                detail="请先保存并启用评论 Agent",
+            )
+        try:
+            reply = call_agent_api(
+                configuration,
+                (
+                    "Reply with a short confirmation that the API is "
+                    "available. Do not include secrets."
+                ),
+                "请回复：连接成功",
+            )
+        except CommentAgentError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        db.audit(
+            "comment_agent.test",
+            request_ip(request),
+            user_id=admin["id"],
+            target=configuration.provider,
+            detail=json.dumps(
+                {
+                    "model": configuration.model,
+                    "reply_length": len(reply),
+                },
+                ensure_ascii=False,
+            ),
+        )
+        return {
+            "status": "ok",
+            "provider": configuration.provider,
+            "model": configuration.model,
         }
 
     @app.put("/api/admin/smtp")

@@ -13,10 +13,15 @@ from urllib.parse import quote
 from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from .comment_agent import (
+    has_agent_mention,
+    process_comment_agent_request,
+)
+from .comment_agent_config import load_comment_agent_configuration
 from .config import Settings
 from .database import Database, utc_now
 from .notifications import deliver_email
-from .security import TRACK_ROOTS, validate_content_path
+from .security import TRACK_ROOTS, TokenCipher, validate_content_path
 
 
 class AttributionLine(BaseModel):
@@ -177,7 +182,11 @@ def _canonical_contributor_names(
     return canonical
 
 
-def _public_comment(row: sqlite3.Row, mentions: list[dict[str, Any]]) -> dict[str, Any]:
+def _public_comment(
+    row: sqlite3.Row,
+    mentions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    columns = set(row.keys())
     return {
         "id": row["id"],
         "path": row["path"],
@@ -193,10 +202,23 @@ def _public_comment(row: sqlite3.Row, mentions: list[dict[str, Any]]) -> dict[st
         "reply_to_id": row["reply_to_id"],
         "author": {
             "id": row["author_id"],
-            "username": row["username"],
+            "username": (
+                "Agent"
+                if "is_system" in columns and row["is_system"]
+                else row["username"]
+            ),
             "github_login": row["github_login"],
+            "is_agent": bool(
+                "is_system" in columns and row["is_system"]
+            ),
         },
         "mentions": mentions,
+        "agent_status": (
+            row["agent_status"] if "agent_status" in columns else None
+        ),
+        "agent_error": (
+            row["agent_error"] if "agent_error" in columns else None
+        ),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -292,6 +314,7 @@ def create_comments_router(
     require_ready_user: Callable[[Request], dict[str, Any]],
     verify_csrf: Callable[[dict[str, Any], str | None], None],
     rate_limit: Callable[[str, int, int], bool],
+    cipher: TokenCipher,
 ) -> APIRouter:
     router = APIRouter(prefix="/api")
 
@@ -541,9 +564,13 @@ def create_comments_router(
             ).fetchall()
             rows = connection.execute(
                 """
-                SELECT c.*, u.username, u.github_login
+                SELECT c.*, u.username, u.github_login, u.is_system,
+                       ar.status AS agent_status,
+                       ar.error_message AS agent_error
                 FROM comments c
                 JOIN users u ON u.id = c.author_id
+                LEFT JOIN comment_agent_requests ar
+                    ON ar.trigger_comment_id = c.id
                 WHERE c.path = ? AND c.status = 'active'
                 ORDER BY c.start_line, c.created_at, c.id
                 """,
@@ -589,12 +616,73 @@ def create_comments_router(
             rows = connection.execute(
                 """
                 SELECT id, username, github_login
-                FROM users WHERE status = 'active'
+                FROM users
+                WHERE status = 'active'
+                  AND is_system = 0
+                  AND lower(username) != 'agent'
                 ORDER BY username COLLATE NOCASE
                 LIMIT 1000
                 """
             ).fetchall()
-        return {"items": [dict(row) for row in rows]}
+            agent = connection.execute(
+                """
+                SELECT id FROM users
+                WHERE status = 'active' AND is_system = 1
+                ORDER BY id LIMIT 1
+                """
+            ).fetchone()
+        configuration = load_comment_agent_configuration(db, cipher)
+        items = [
+            {**dict(row), "is_agent": False}
+            for row in rows
+        ]
+        if configuration.configured and agent:
+            items.insert(
+                0,
+                {
+                    "id": agent["id"],
+                    "username": "Agent",
+                    "github_login": None,
+                    "is_agent": True,
+                },
+            )
+        return {"items": items}
+
+    @router.get("/comments/{comment_id}/agent-status")
+    def comment_agent_status(comment_id: int) -> dict[str, Any]:
+        with db.connect() as connection:
+            request_row = connection.execute(
+                """
+                SELECT status, error_message, response_comment_id
+                FROM comment_agent_requests
+                WHERE trigger_comment_id = ?
+                """,
+                (comment_id,),
+            ).fetchone()
+            if not request_row:
+                raise HTTPException(
+                    status_code=404,
+                    detail="该评论没有 Agent 请求",
+                )
+            response = None
+            if request_row["response_comment_id"]:
+                response = connection.execute(
+                    """
+                    SELECT c.*, u.username, u.github_login, u.is_system,
+                           NULL AS agent_status, NULL AS agent_error
+                    FROM comments c
+                    JOIN users u ON u.id = c.author_id
+                    WHERE c.id = ? AND c.status = 'active'
+                    """,
+                    (request_row["response_comment_id"],),
+                ).fetchone()
+        return {
+            "status": request_row["status"],
+            "error": request_row["error_message"],
+            "response_comment": (
+                _public_comment(response, []) if response else None
+            ),
+        }
 
     @router.put("/account/notification-preferences")
     def update_notification_preferences(
@@ -641,8 +729,30 @@ def create_comments_router(
             raise HTTPException(status_code=422, detail="评论行范围无效")
         body = payload.body.strip()
         quote = payload.quote.strip()
+        agent_requested = has_agent_mention(body)
+        agent_configuration = None
+        if agent_requested:
+            agent_configuration = load_comment_agent_configuration(
+                db,
+                cipher,
+            )
+            if not agent_configuration.configured:
+                raise HTTPException(
+                    status_code=409,
+                    detail="评论 Agent 当前未启用或配置不完整",
+                )
+            if not rate_limit(
+                f"comment-agent:{user['id']}",
+                10,
+                3600,
+            ):
+                raise HTTPException(
+                    status_code=429,
+                    detail="Agent 请求过于频繁",
+                )
         now = utc_now()
         recipients: set[str] = set()
+        agent_request_id: int | None = None
 
         with db.connect() as connection:
             revision = connection.execute(
@@ -741,6 +851,24 @@ def create_comments_router(
                 ),
             )
             comment_id = int(cursor.lastrowid)
+            if agent_configuration:
+                agent_cursor = connection.execute(
+                    """
+                    INSERT INTO comment_agent_requests(
+                        trigger_comment_id, status, provider, model,
+                        created_at, updated_at
+                    )
+                    VALUES(?, 'pending', ?, ?, ?, ?)
+                    """,
+                    (
+                        comment_id,
+                        agent_configuration.provider,
+                        agent_configuration.model,
+                        now,
+                        now,
+                    ),
+                )
+                agent_request_id = int(agent_cursor.lastrowid)
 
             mention_ids = sorted(
                 set(payload.mention_user_ids) - {user["id"]}
@@ -826,8 +954,13 @@ def create_comments_router(
 
             created = connection.execute(
                 """
-                SELECT c.*, u.username, u.github_login
-                FROM comments c JOIN users u ON u.id = c.author_id
+                SELECT c.*, u.username, u.github_login, u.is_system,
+                       ar.status AS agent_status,
+                       ar.error_message AS agent_error
+                FROM comments c
+                JOIN users u ON u.id = c.author_id
+                LEFT JOIN comment_agent_requests ar
+                    ON ar.trigger_comment_id = c.id
                 WHERE c.id = ?
                 """,
                 (comment_id,),
@@ -853,6 +986,14 @@ def create_comments_router(
                 ),
                 audience="comment",
                 user_id=user["id"],
+            )
+        if agent_request_id is not None:
+            background_tasks.add_task(
+                process_comment_agent_request,
+                db,
+                settings,
+                cipher,
+                agent_request_id,
             )
         return _public_comment(
             created,

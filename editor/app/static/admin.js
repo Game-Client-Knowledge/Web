@@ -3,6 +3,8 @@ const state = {
   csrf: "",
   smtp: null,
   smtpTemplates: [],
+  commentAgent: null,
+  commentAgentTemplates: [],
   starBrightnessRules: [],
   starBrightnessTiers: [],
   autoCloseDays: 7,
@@ -273,7 +275,8 @@ function renderIntegrations(settings) {
   const values = [
     ["GitHub OAuth", settings.github_oauth_enabled],
     ["GitHub 提交 Bot", settings.github_submission_enabled],
-    ["SMTP 邮件", settings.smtp_enabled]
+    ["SMTP 邮件", settings.smtp_enabled],
+    ["评论 Agent", state.commentAgent?.configured]
   ];
   for (const [label, ready] of values) {
     const chip = document.createElement("span");
@@ -687,6 +690,68 @@ function applySmtpTemplate() {
   }
 }
 
+function commentAgentFeedback(message, kind = "error") {
+  const target = byId("commentAgentFeedback");
+  target.textContent = message;
+  target.className = `feedback${message ? " is-visible" : ""} ${kind}`;
+}
+
+function renderCommentAgentTemplates(templates) {
+  const select = byId("commentAgentProvider");
+  select.replaceChildren();
+  templates.forEach((template) => {
+    const option = document.createElement("option");
+    option.value = template.id;
+    option.textContent = template.label;
+    select.append(option);
+  });
+}
+
+function syncCommentAgentState() {
+  byId("testCommentAgentButton").disabled =
+    !state.commentAgent?.configured;
+}
+
+function renderCommentAgent(configuration, templates) {
+  state.commentAgent = configuration;
+  state.commentAgentTemplates = templates;
+  renderCommentAgentTemplates(templates);
+  const form = byId("commentAgentForm");
+  form.provider.value = configuration.provider;
+  form.protocol.value = configuration.protocol;
+  form.base_url.value = configuration.base_url;
+  form.model.value = configuration.model;
+  form.api_key.value = "";
+  form.timeout_seconds.value = String(configuration.timeout_seconds);
+  form.max_context_chars.value = String(configuration.max_context_chars);
+  form.max_output_tokens.value = String(configuration.max_output_tokens);
+  form.system_prompt.value = configuration.system_prompt;
+  form.enabled.checked = configuration.enabled;
+
+  const status = byId("commentAgentStatus");
+  status.textContent = configuration.configured
+    ? "已启用"
+    : configuration.enabled
+      ? "配置不完整"
+      : "已停用";
+  status.dataset.status = configuration.configured ? "ready" : "idle";
+  byId("commentAgentKeyStatus").textContent = configuration.api_key_set
+    ? "API Key 已加密保存；留空不会覆盖。"
+    : "尚未保存 API Key。";
+  syncCommentAgentState();
+}
+
+function applyCommentAgentTemplate() {
+  const form = byId("commentAgentForm");
+  const template = state.commentAgentTemplates.find(
+    (item) => item.id === form.provider.value
+  );
+  if (!template || template.id === "custom") return;
+  form.protocol.value = template.protocol;
+  form.base_url.value = template.base_url;
+  form.model.value = template.model;
+}
+
 function renderApplications(items) {
   const target = byId("applicationList");
   target.replaceChildren();
@@ -987,7 +1052,6 @@ async function loadOverview() {
     String(data.settings.home_intro_contributor_limit);
   state.autoCloseDays = data.settings.pr_auto_close_days;
   renderAnalytics(data.analytics);
-  renderIntegrations(data.settings);
   renderSiteUpdate(data.site_update);
   renderPendingSubmissions(
     data.submissions,
@@ -995,6 +1059,11 @@ async function loadOverview() {
     data.settings.pr_auto_close_days
   );
   renderSmtp(data.smtp, data.smtp_templates);
+  renderCommentAgent(
+    data.comment_agent,
+    data.comment_agent_templates
+  );
+  renderIntegrations(data.settings);
   renderApplications(data.applications);
   renderSubmissions(data.submissions);
   renderExternalPullRequests(data.external_pull_requests);
@@ -1323,6 +1392,65 @@ byId("testSmtpButton").addEventListener("click", async () => {
     smtpFeedback(error.message);
   } finally {
     button.disabled = !state.smtp?.configured;
+  }
+});
+
+byId("commentAgentProvider").addEventListener(
+  "change",
+  applyCommentAgentTemplate
+);
+
+byId("commentAgentForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = byId("saveCommentAgentButton");
+  button.disabled = true;
+  commentAgentFeedback("");
+  try {
+    const configuration = await api("/admin/comment-agent", {
+      method: "PUT",
+      body: JSON.stringify({
+        enabled: form.enabled.checked,
+        provider: form.provider.value,
+        protocol: form.protocol.value,
+        base_url: form.base_url.value,
+        api_key: form.api_key.value,
+        model: form.model.value,
+        timeout_seconds: Number(form.timeout_seconds.value),
+        max_context_chars: Number(form.max_context_chars.value),
+        max_output_tokens: Number(form.max_output_tokens.value),
+        system_prompt: form.system_prompt.value
+      })
+    });
+    renderCommentAgent(
+      configuration,
+      state.commentAgentTemplates
+    );
+    commentAgentFeedback("评论 Agent 配置已保存。", "success");
+    await loadOverview();
+  } catch (error) {
+    commentAgentFeedback(error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+byId("testCommentAgentButton").addEventListener("click", async () => {
+  const button = byId("testCommentAgentButton");
+  button.disabled = true;
+  commentAgentFeedback("");
+  try {
+    const result = await api("/admin/comment-agent/test", {
+      method: "POST"
+    });
+    commentAgentFeedback(
+      `连接成功：${result.provider} / ${result.model}`,
+      "success"
+    );
+  } catch (error) {
+    commentAgentFeedback(error.message);
+  } finally {
+    button.disabled = !state.commentAgent?.configured;
   }
 });
 

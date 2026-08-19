@@ -1267,6 +1267,7 @@ def test_admin_can_configure_client_visual_effects(
         "home_content_mask_enabled": True,
         "home_content_idle_timeout_seconds": 45,
         "home_star_scope": "full",
+        "home_star_render_mode": "2d",
         "home_star_relation_visibility": "hidden",
         "home_star_strong_relation_style": "glow",
         "home_star_reference_relation_style": "dashed",
@@ -1751,6 +1752,300 @@ def test_admin_smtp_test_uses_saved_configuration(
     assert observed["configuration"].provider == "gmail"
     assert observed["configuration"].smtp_password == "gmail-app-password"
     assert "SMTP 配置测试" in observed["subject"]
+
+
+def test_admin_can_save_and_test_encrypted_comment_agent_configuration(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = login(client, "sourcecode", TEST_BOOTSTRAP_PASSWORD)
+    changed = client.post(
+        "/api/auth/change-password",
+        headers={"X-CSRF-Token": payload["csrf_token"]},
+        json={
+            "current_password": TEST_BOOTSTRAP_PASSWORD,
+            "new_password": "a-new-strong-password",
+        },
+    ).json()
+    csrf = changed["csrf_token"]
+
+    overview = client.get("/api/admin/overview").json()
+    assert {
+        template["id"]
+        for template in overview["comment_agent_templates"]
+    } == {"openai", "deepseek", "anthropic", "kimi", "qwen", "custom"}
+    assert overview["comment_agent"]["configured"] is False
+
+    api_key = "comment-agent-secret-key"
+    saved = client.put(
+        "/api/admin/comment-agent",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "enabled": True,
+            "provider": "deepseek",
+            "protocol": "openai_compatible",
+            "base_url": "https://api.deepseek.com/v1",
+            "api_key": api_key,
+            "model": "deepseek-chat",
+            "timeout_seconds": 35,
+            "max_context_chars": 32000,
+            "max_output_tokens": 1536,
+            "system_prompt": "Answer from the supplied context only.",
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    configuration = saved.json()
+    assert configuration["configured"] is True
+    assert configuration["api_key_set"] is True
+    assert "api_key" not in configuration
+
+    with client.app.state.db.connect() as connection:
+        encrypted = connection.execute(
+            """
+            SELECT value FROM settings
+            WHERE key = 'comment_agent_api_key_encrypted'
+            """
+        ).fetchone()["value"]
+        audit_details = [
+            row["detail"]
+            for row in connection.execute(
+                "SELECT detail FROM audit_log WHERE detail IS NOT NULL"
+            ).fetchall()
+        ]
+    assert encrypted != api_key
+    assert client.app.state.cipher.decrypt(encrypted) == api_key
+    assert all(api_key not in detail for detail in audit_details)
+
+    observed = {}
+
+    def fake_call_agent(configuration, system_prompt, user_prompt):
+        observed.update(
+            {
+                "configuration": configuration,
+                "system_prompt": system_prompt,
+                "user_prompt": user_prompt,
+            }
+        )
+        return "连接成功"
+
+    monkeypatch.setattr("app.main.call_agent_api", fake_call_agent)
+    tested = client.post(
+        "/api/admin/comment-agent/test",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert tested.status_code == 200, tested.text
+    assert tested.json()["provider"] == "deepseek"
+    assert observed["configuration"].api_key == api_key
+
+    switched_without_key = client.put(
+        "/api/admin/comment-agent",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "enabled": True,
+            "provider": "qwen",
+            "protocol": "openai_compatible",
+            "base_url": (
+                "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            ),
+            "api_key": "",
+            "model": "qwen-plus",
+            "timeout_seconds": 45,
+            "max_context_chars": 24000,
+            "max_output_tokens": 1200,
+            "system_prompt": "Answer briefly.",
+        },
+    )
+    assert switched_without_key.status_code == 422
+
+    insecure_endpoint = client.put(
+        "/api/admin/comment-agent",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "enabled": False,
+            "provider": "custom",
+            "protocol": "openai_compatible",
+            "base_url": "http://agent.example.test/v1",
+            "api_key": "new-key",
+            "model": "custom-model",
+            "timeout_seconds": 45,
+            "max_context_chars": 24000,
+            "max_output_tokens": 1200,
+            "system_prompt": "Answer briefly.",
+        },
+    )
+    assert insecure_endpoint.status_code == 422
+
+
+def test_agent_mention_reads_page_and_thread_once(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admin = login(client, "sourcecode", TEST_BOOTSTRAP_PASSWORD)
+    changed = client.post(
+        "/api/auth/change-password",
+        headers={"X-CSRF-Token": admin["csrf_token"]},
+        json={
+            "current_password": TEST_BOOTSTRAP_PASSWORD,
+            "new_password": "a-new-strong-password",
+        },
+    ).json()
+    configured = client.put(
+        "/api/admin/comment-agent",
+        headers={"X-CSRF-Token": changed["csrf_token"]},
+        json={
+            "enabled": True,
+            "provider": "openai",
+            "protocol": "openai_compatible",
+            "base_url": "https://api.openai.com/v1",
+            "api_key": "test-agent-key",
+            "model": "test-model",
+            "timeout_seconds": 30,
+            "max_context_chars": 12000,
+            "max_output_tokens": 512,
+            "system_prompt": "Use only the supplied page and thread.",
+        },
+    )
+    assert configured.status_code == 200, configured.text
+    client.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": changed["csrf_token"]},
+    )
+    reader = client.post(
+        "/api/auth/register",
+        json={
+            "email": "agent-reader@example.test",
+            "username": "agent-reader",
+            "password": "local-password-123",
+        },
+    ).json()
+    synced = client.post(
+        "/api/internal/attribution-sync",
+        headers={"Authorization": "Bearer test-sync-token"},
+        json={
+            "revision": "e" * 40,
+            "files": [
+                {
+                    "path": "knowledge/cpp/agent-example.md",
+                    "commit": "e" * 40,
+                    "line_count": 3,
+                    "lines": [
+                        {
+                            "line": line,
+                            "commit": "e" * 40,
+                            "name": "Agent Reader",
+                            "email": "agent-reader@example.test",
+                        }
+                        for line in range(1, 4)
+                    ],
+                }
+            ],
+        },
+    )
+    assert synced.status_code == 200, synced.text
+
+    members = client.get("/api/comment-members").json()["items"]
+    assert members[0]["username"] == "Agent"
+    assert members[0]["is_agent"] is True
+
+    observed = {"calls": 0}
+
+    def fake_source(settings, path, revision_sha, max_context_chars):
+        observed["source"] = {
+            "path": path,
+            "revision": revision_sha,
+            "limit": max_context_chars,
+        }
+        return "# Agent Example\n\nThe authoritative page answer is 42.\n"
+
+    def fake_agent(configuration, system_prompt, user_prompt):
+        observed["calls"] += 1
+        observed["configuration"] = configuration
+        observed["system_prompt"] = system_prompt
+        observed["user_prompt"] = user_prompt
+        return "根据页面原文，答案是 42。"
+
+    monkeypatch.setattr(
+        "app.comment_agent.fetch_page_source",
+        fake_source,
+    )
+    monkeypatch.setattr("app.comment_agent.call_agent_api", fake_agent)
+
+    created = client.post(
+        "/api/comments",
+        headers={"X-CSRF-Token": reader["csrf_token"]},
+        json={
+            "path": "knowledge/cpp/agent-example.md",
+            "revision_sha": "e" * 40,
+            "start_line": 3,
+            "end_line": 3,
+            "quote": "The authoritative page answer is 42.",
+            "body": "@Agent 这段内容的答案是什么？",
+        },
+    )
+    assert created.status_code == 200, created.text
+    trigger = created.json()
+    assert trigger["agent_status"] == "pending"
+
+    status = client.get(
+        f"/api/comments/{trigger['id']}/agent-status"
+    )
+    assert status.status_code == 200, status.text
+    result = status.json()
+    assert result["status"] == "completed"
+    reply = result["response_comment"]
+    assert reply["body"] == "根据页面原文，答案是 42。"
+    assert reply["author"]["username"] == "Agent"
+    assert reply["author"]["is_agent"] is True
+    assert reply["parent_id"] == trigger["id"]
+    assert reply["reply_to_id"] == trigger["id"]
+    assert observed["calls"] == 1
+    assert "authoritative page answer is 42" in observed["user_prompt"]
+    assert "@agent-reader（本次提及）" in observed["user_prompt"]
+    assert "@Agent 这段内容的答案是什么？" in observed["user_prompt"]
+
+    repeated = client.get(
+        f"/api/comments/{trigger['id']}/agent-status"
+    ).json()
+    assert repeated["response_comment"]["id"] == reply["id"]
+    assert observed["calls"] == 1
+    with client.app.state.db.connect() as connection:
+        connection.execute(
+            """
+            UPDATE settings SET value = '0'
+            WHERE key = 'comment_agent_enabled'
+            """
+        )
+        request_count = connection.execute(
+            "SELECT COUNT(*) AS count FROM comment_agent_requests"
+        ).fetchone()["count"]
+        agent_reply_count = connection.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM comments c
+            JOIN users u ON u.id = c.author_id
+            WHERE u.is_system = 1
+            """
+        ).fetchone()["count"]
+    assert request_count == 1
+    assert agent_reply_count == 1
+
+    disabled = client.post(
+        "/api/comments",
+        headers={"X-CSRF-Token": reader["csrf_token"]},
+        json={
+            "path": "knowledge/cpp/agent-example.md",
+            "revision_sha": "e" * 40,
+            "start_line": 3,
+            "end_line": 3,
+            "quote": "The authoritative page answer is 42.",
+            "body": "@Agent 再回答一次",
+        },
+    )
+    assert disabled.status_code == 409
+    assert all(
+        item["username"] != "Agent"
+        for item in client.get("/api/comment-members").json()["items"]
+    )
 
 
 def test_admin_page_requires_ready_admin(client: TestClient) -> None:

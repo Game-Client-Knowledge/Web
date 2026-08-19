@@ -2186,13 +2186,15 @@ dialog::backdrop {
   gap: 16px;
 }
 
-.smtp-grid {
+.smtp-grid,
+.agent-grid {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.smtp-grid label {
+.smtp-grid label,
+.agent-grid label {
   min-width: 0;
 }
 
@@ -2220,6 +2222,53 @@ dialog::backdrop {
 }
 
 #smtpConfigStatus[data-status="ready"] {
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+  border-color: #c7e1da;
+}
+
+.service-subsection {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.agent-form {
+  display: grid;
+  gap: 16px;
+}
+
+.agent-base-url-field {
+  grid-column: span 2;
+}
+
+.agent-prompt-field {
+  display: grid;
+  gap: 6px;
+}
+
+.agent-prompt-field textarea {
+  width: 100%;
+  min-height: 112px;
+  resize: vertical;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.agent-options,
+.agent-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.agent-form > .feedback {
+  margin-top: -4px;
+}
+
+#commentAgentStatus[data-status="ready"] {
   color: var(--teal-dark);
   background: var(--teal-soft);
   border-color: #c7e1da;
@@ -2572,8 +2621,13 @@ dialog::backdrop {
     flex-direction: column;
   }
 
-  .smtp-grid {
+  .smtp-grid,
+  .agent-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agent-base-url-field {
+    grid-column: auto;
   }
 
   .data-row {

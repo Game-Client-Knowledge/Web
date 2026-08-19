@@ -3449,14 +3449,20 @@ body.has-comments-open .reader-comments {
   box-shadow: 0 0 0 2px rgba(222, 180, 18, 0.13);
 }
 
-.comment-card header {
+.comment-card.is-agent,
+.comment-reply.is-agent {
+  border-color: #9bcfc1;
+}
+
+.comment-card header,
+.comment-reply header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
 }
 
-.comment-card header strong {
+.comment-card header strong,
+.comment-reply header strong {
   min-width: 0;
   font-size: 12px;
   overflow: hidden;
@@ -3464,10 +3470,23 @@ body.has-comments-open .reader-comments {
   white-space: nowrap;
 }
 
-.comment-card time {
+.comment-card time,
+.comment-reply time {
+  margin-left: auto;
   color: var(--ink-faint);
   font-size: 10px;
   white-space: nowrap;
+}
+
+.comment-agent-badge {
+  padding: 1px 4px;
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+  border: 1px solid #b8ddd3;
+  border-radius: 3px;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1.4;
 }
 
 .comment-quote {
@@ -3495,6 +3514,21 @@ body.has-comments-open .reader-comments {
 
 .comment-card.is-focused .comment-body {
   -webkit-line-clamp: var(--comment-lines, 8);
+}
+
+.comment-agent-status {
+  margin: 7px 0 0;
+  color: var(--ink-faint);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.comment-agent-status.is-running {
+  color: var(--teal-dark);
+}
+
+.comment-agent-status.is-failed {
+  color: var(--danger);
 }
 
 .comment-actions {
@@ -3606,6 +3640,11 @@ body.has-comments-open .reader-comments {
 
 .mention-menu button:hover {
   background: var(--teal-soft);
+}
+
+.mention-menu button.is-agent {
+  color: var(--teal-dark);
+  font-weight: 700;
 }
 
 .reader-author-label {

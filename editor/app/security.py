@@ -80,6 +80,8 @@ def normalize_username(value: str) -> str:
     username = value.strip()
     if not USERNAME_RE.fullmatch(username):
         raise ValueError("用户名需为 3-32 位字母、数字、下划线或连字符")
+    if username.casefold() == "agent":
+        raise ValueError("Agent 为系统保留用户名")
     return username
 
 

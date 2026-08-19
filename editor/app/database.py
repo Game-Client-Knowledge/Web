@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS users (
     github_token_encrypted TEXT,
     role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'admin')),
     status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'disabled')),
+    is_system INTEGER NOT NULL DEFAULT 0,
     must_change_password INTEGER NOT NULL DEFAULT 0,
     email_notifications_enabled INTEGER NOT NULL DEFAULT 1,
     onboarding_completed_at TEXT,
@@ -225,6 +226,24 @@ CREATE TABLE IF NOT EXISTS comment_mentions (
     PRIMARY KEY(comment_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS comment_agent_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trigger_comment_id INTEGER NOT NULL UNIQUE
+        REFERENCES comments(id) ON DELETE CASCADE,
+    response_comment_id INTEGER
+        REFERENCES comments(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending', 'running', 'completed', 'failed')),
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT,
+    started_at TEXT,
+    completed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER REFERENCES users(id),
@@ -250,6 +269,8 @@ ON document_contributors(contributor_id, path);
 CREATE INDEX IF NOT EXISTS idx_comments_path
 ON comments(path, start_line, created_at);
 CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_comment_agent_status
+ON comment_agent_requests(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_site_analytics_day
 ON site_analytics_daily(day);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_application_pending
@@ -312,6 +333,13 @@ class Database:
                     ALTER TABLE users
                     ADD COLUMN email_notifications_enabled
                     INTEGER NOT NULL DEFAULT 1
+                    """
+                )
+            if "is_system" not in columns:
+                connection.execute(
+                    """
+                    ALTER TABLE users
+                    ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0
                     """
                 )
             draft_columns = {
@@ -591,6 +619,14 @@ class Database:
                     DEFAULT_STAR_BRIGHTNESS_TIERS,
                     ensure_ascii=False,
                 ),
+                "comment_agent_enabled": "0",
+                "comment_agent_provider": "openai",
+                "comment_agent_protocol": "openai_compatible",
+                "comment_agent_base_url": "https://api.openai.com/v1",
+                "comment_agent_model": "gpt-4o-mini",
+                "comment_agent_timeout_seconds": "45",
+                "comment_agent_max_context_chars": "24000",
+                "comment_agent_max_output_tokens": "1200",
             }.items():
                 connection.execute(
                     """
@@ -602,10 +638,27 @@ class Database:
                 )
 
             count = connection.execute(
-                "SELECT COUNT(*) AS count FROM users"
+                "SELECT COUNT(*) AS count FROM users WHERE is_system = 0"
             ).fetchone()["count"]
             if count == 0:
                 self._bootstrap_admin(connection, settings, now)
+            connection.execute(
+                """
+                INSERT INTO users(
+                    id, email, username, password_hash, email_verified,
+                    role, status, is_system, must_change_password,
+                    email_notifications_enabled, onboarding_completed_at,
+                    created_at, updated_at
+                )
+                SELECT
+                    -1, 'agent@system.invalid', 'gck-agent-service', NULL, 1,
+                    'user', 'active', 1, 0, 0, ?, ?, ?
+                WHERE NOT EXISTS(
+                    SELECT 1 FROM users WHERE is_system = 1
+                )
+                """,
+                (now, now, now),
+            )
 
     @staticmethod
     def _bootstrap_admin(
