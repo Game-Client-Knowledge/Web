@@ -119,6 +119,35 @@ polls only the triggering request status. Configuration, provider adapters,
 security boundaries, and recovery behavior are documented in
 `docs/comment-agent.md`.
 
+## Markdown and Deletion
+
+Comment bodies support CommonMark emphasis, links, inline/fenced code,
+blockquote, lists, strikethrough, and line breaks. The server renders Markdown
+with raw HTML disabled, then applies an allow-list sanitizer. Browsers receive
+both the original Markdown and sanitized `body_html`; only the sanitized HTML
+is inserted into the page.
+
+Users can delete their own comments. Administrators can delete any comment.
+Deleting a root comment also hides every reply in that thread. Deletion is
+soft and emits synchronization tombstones, so another open reader removes the
+same cards without reloading the document.
+
+## Incremental Refresh
+
+The initial comment response includes a monotonic `sync_cursor`. New comments,
+Agent replies, and deletions append small rows to `comment_events`. Readers
+then request only events after that cursor:
+
+```text
+GET /editor/api/comments/updates?path=<path>&after=<cursor>
+```
+
+No changes return HTTP `204` with no JSON body. The browser checks every 12
+seconds while the comment rail is open, every 60 seconds while it is closed,
+and stops completely when the page is hidden. Only changed comment objects and
+deleted IDs are transferred; source text, attribution, and the full thread are
+not downloaded again.
+
 ## Email Notifications
 
 A root comment notifies every distinct cached author in the selected line

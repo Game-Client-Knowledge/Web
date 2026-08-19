@@ -29,6 +29,9 @@
     expandedReplies: new Set(),
     mentionIds: new Set(),
     agentPolls: new Map(),
+    syncCursor: 0,
+    syncTimer: 0,
+    syncing: false,
     selectionButton: null,
     pressTimer: 0
   };
@@ -79,6 +82,7 @@
       });
       throw new Error(payload.detail || "请求失败");
     }
+    if (response.status === 204) return null;
     return response.json();
   }
 
@@ -347,6 +351,7 @@
     if (toggle) toggle.setAttribute("aria-expanded", "true");
     positionGroups();
     window.requestAnimationFrame(positionGroups);
+    scheduleCommentSync(0);
   }
 
   function closePanel() {
@@ -354,11 +359,22 @@
     panel.hidden = true;
     const toggle = document.querySelector("[data-comments-toggle]");
     if (toggle) toggle.setAttribute("aria-expanded", "false");
+    scheduleCommentSync(60000);
   }
 
   function rootComments() {
     return (state.payload.comments || []).filter(function (comment) {
       return !comment.parent_id;
+    });
+  }
+
+  function sortComments(items) {
+    return items.sort(function (left, right) {
+      return (
+        left.start_line - right.start_line ||
+        String(left.created_at).localeCompare(String(right.created_at)) ||
+        left.id - right.id
+      );
     });
   }
 
@@ -451,9 +467,10 @@
       wrapper.appendChild(reference);
     }
 
-    const body = document.createElement("p");
+    const body = document.createElement("div");
     body.className = "comment-body";
-    body.textContent = comment.body;
+    if (comment.body_html) body.innerHTML = comment.body_html;
+    else body.textContent = comment.body;
     if (state.focusedId === comment.id) {
       body.style.setProperty("--comment-lines", "8");
     }
@@ -503,6 +520,39 @@
       );
     });
     actions.appendChild(reply);
+
+    if (comment.can_delete) {
+      const remove = button("", "comment-delete");
+      remove.title = "删除评论";
+      remove.setAttribute("aria-label", "删除评论");
+      remove.innerHTML =
+        '<i data-lucide="trash-2" aria-hidden="true"></i>';
+      remove.addEventListener("click", async function (event) {
+        event.stopPropagation();
+        if (!window.confirm("确定删除这条评论？")) return;
+        remove.disabled = true;
+        try {
+          await api("/comments/" + comment.id, { method: "DELETE" });
+          const removedIds = new Set([comment.id]);
+          if (!comment.parent_id) {
+            state.payload.comments.forEach(function (item) {
+              if (item.parent_id === comment.id) removedIds.add(item.id);
+            });
+          }
+          state.payload.comments = state.payload.comments.filter(
+            function (item) {
+              return !removedIds.has(item.id);
+            }
+          );
+          renderComments();
+          applyHighlights();
+        } catch (error) {
+          remove.disabled = false;
+          remove.title = error.message;
+        }
+      });
+      actions.appendChild(remove);
+    }
 
     if (comment.body.length > 220) {
       const more = button("继续展开", "comment-more");
@@ -608,6 +658,56 @@
     if (state.members.length) return;
     const payload = await api("/comment-members");
     state.members = payload.items;
+  }
+
+  function mergeCommentUpdates(payload) {
+    const deleted = new Set(payload.deleted_ids || []);
+    const comments = new Map(
+      state.payload.comments
+        .filter(function (comment) {
+          return !deleted.has(comment.id);
+        })
+        .map(function (comment) {
+          return [comment.id, comment];
+        })
+    );
+    (payload.comments || []).forEach(function (comment) {
+      comments.set(comment.id, comment);
+    });
+    state.payload.comments = sortComments(Array.from(comments.values()));
+    state.syncCursor = Math.max(
+      state.syncCursor,
+      Number(payload.cursor) || 0
+    );
+    renderComments();
+    applyHighlights();
+  }
+
+  function scheduleCommentSync(delay) {
+    window.clearTimeout(state.syncTimer);
+    if (document.hidden) return;
+    state.syncTimer = window.setTimeout(syncComments, delay);
+  }
+
+  async function syncComments() {
+    if (state.syncing || document.hidden || !state.payload) return;
+    state.syncing = true;
+    try {
+      const payload = await api(
+        "/comments/updates?path=" +
+          encodeURIComponent(context.sourcePath) +
+          "&after=" +
+          state.syncCursor
+      );
+      if (payload) mergeCommentUpdates(payload);
+      scheduleCommentSync(
+        payload && payload.has_more ? 0 : panel.hidden ? 60000 : 12000
+      );
+    } catch {
+      scheduleCommentSync(panel.hidden ? 60000 : 20000);
+    } finally {
+      state.syncing = false;
+    }
   }
 
   function pollAgent(commentId) {
@@ -768,6 +868,7 @@
           })
         });
         state.payload.comments.push(created);
+        sortComments(state.payload.comments);
         composer.hidden = true;
         state.focusedId = created.id;
         renderComments();
@@ -976,6 +1077,7 @@
       state.bootstrap = values[0];
       state.source = values[1];
       state.payload = values[2];
+      state.syncCursor = Number(state.payload.sync_cursor) || 0;
       mapSourceBlocks();
       showAuthors();
       applyHighlights();
@@ -999,10 +1101,19 @@
         openPanel();
         focusComment(requested);
       }
+      scheduleCommentSync(panel.hidden ? 60000 : 12000);
     } catch (error) {
       console.error("Reader comments failed to initialize", error);
     }
   }
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) {
+      window.clearTimeout(state.syncTimer);
+      return;
+    }
+    scheduleCommentSync(0);
+  });
 
   initialize();
 })();

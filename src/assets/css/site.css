@@ -3512,6 +3512,45 @@ body.has-comments-open .reader-comments {
   -webkit-line-clamp: var(--comment-lines, 4);
 }
 
+.comment-body > :first-child {
+  margin-top: 0;
+}
+
+.comment-body > :last-child {
+  margin-bottom: 0;
+}
+
+.comment-body p,
+.comment-body blockquote,
+.comment-body ul,
+.comment-body ol,
+.comment-body pre {
+  margin: 5px 0;
+}
+
+.comment-body ul,
+.comment-body ol {
+  padding-left: 18px;
+}
+
+.comment-body pre {
+  padding: 7px;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow-x: auto;
+}
+
+.comment-body code {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.92em;
+}
+
+.comment-body a {
+  color: var(--teal-dark);
+  text-decoration: underline;
+}
+
 .comment-card.is-focused .comment-body {
   -webkit-line-clamp: var(--comment-lines, 8);
 }
@@ -3546,6 +3585,19 @@ body.has-comments-open .reader-comments {
   background: transparent;
   border: 0;
   font-size: 11px;
+}
+
+.comment-actions .comment-delete {
+  display: inline-grid;
+  width: 20px;
+  min-height: 20px;
+  margin-left: auto;
+  place-items: center;
+}
+
+.comment-delete svg {
+  width: 13px;
+  height: 13px;
 }
 
 .comment-replies {

@@ -62,6 +62,7 @@ async function inspect(browser, name, viewport) {
             quote: "C++ 98 基础",
             render_segments: [],
             body: "@Agent 请解释这段内容。",
+            body_html: "<p><strong>@Agent</strong> 请解释这段内容。</p>",
             parent_id: null,
             reply_to_id: null,
             author: {
@@ -73,6 +74,7 @@ async function inspect(browser, name, viewport) {
             mentions: [],
             agent_status: "completed",
             agent_error: null,
+            can_delete: true,
             created_at: "2026-08-19T08:00:00+00:00",
             updated_at: "2026-08-19T08:00:00+00:00"
           },
@@ -87,6 +89,7 @@ async function inspect(browser, name, viewport) {
             quote: "C++ 98 基础",
             render_segments: [],
             body: "这段内容介绍了 C++ 98 的核心语言基础。",
+            body_html: "<p>这段内容介绍了 <code>C++ 98</code> 的核心语言基础。</p>",
             parent_id: 1,
             reply_to_id: 1,
             author: {
@@ -98,13 +101,18 @@ async function inspect(browser, name, viewport) {
             mentions: [],
             agent_status: null,
             agent_error: null,
+            can_delete: false,
             created_at: "2026-08-19T08:00:01+00:00",
             updated_at: "2026-08-19T08:00:01+00:00"
           }
         ],
+        sync_cursor: 2,
         can_comment: false
       })
     });
+  });
+  await context.route("**/api/comments/updates?**", (route) => {
+    route.fulfill({ status: 204, headers: corsHeaders });
   });
   const page = await context.newPage();
   await page.goto(`${baseUrl}/knowledge/cpp/01-cpp98/`, {
@@ -130,6 +138,12 @@ async function inspect(browser, name, viewport) {
       ).length,
       agentStatuses: document.querySelectorAll(
         ".comment-agent-status"
+      ).length,
+      markdownStrong: document.querySelectorAll(
+        ".comment-body strong"
+      ).length,
+      deleteButtons: document.querySelectorAll(
+        ".comment-delete"
       ).length
     };
   });
@@ -154,7 +168,9 @@ async function inspect(browser, name, viewport) {
   if (
     layout.agentBadges !== 1 ||
     layout.agentReplies !== 1 ||
-    layout.agentStatuses !== 1
+    layout.agentStatuses !== 1 ||
+    layout.markdownStrong !== 1 ||
+    layout.deleteButtons !== 1
   ) {
     throw new Error(`${name}: Agent thread is incomplete`);
   }

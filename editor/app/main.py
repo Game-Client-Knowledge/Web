@@ -43,10 +43,12 @@ from .analytics import (
 from .comment_agent import (
     CommentAgentError,
     call_agent_api,
+    normalize_agent_completion,
     process_comment_agent_request,
     recover_comment_agent_requests,
 )
 from .comment_agent_config import (
+    COMMENT_AGENT_ACCESS_MODES,
     COMMENT_AGENT_PROTOCOLS,
     COMMENT_AGENT_TEMPLATE_IDS,
     COMMENT_AGENT_TEMPLATES,
@@ -407,6 +409,11 @@ class CommentAgentSettingsRequest(BaseModel):
         default=DEFAULT_COMMENT_AGENT_SYSTEM_PROMPT,
         min_length=1,
         max_length=4000,
+    )
+    access_mode: str = "all"
+    whitelist_user_ids: list[int] = Field(
+        default_factory=list,
+        max_length=1000,
     )
 
 
@@ -3117,6 +3124,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     """
                 ).fetchall()
             ]
+            comment_agent_usage = [
+                dict(row)
+                for row in connection.execute(
+                    """
+                    SELECT u.id AS user_id, u.username, u.email,
+                           COUNT(ar.id) AS request_count,
+                           COALESCE(SUM(ar.input_tokens), 0) AS input_tokens,
+                           COALESCE(SUM(ar.output_tokens), 0) AS output_tokens,
+                           COALESCE(SUM(ar.total_tokens), 0) AS total_tokens
+                    FROM users u
+                    LEFT JOIN comment_agent_requests ar
+                        ON ar.requested_by = u.id
+                    WHERE u.is_system = 0
+                    GROUP BY u.id
+                    ORDER BY total_tokens DESC, u.username COLLATE NOCASE
+                    """
+                ).fetchall()
+            ]
         smtp = smtp_configuration()
         comment_agent = comment_agent_configuration()
         intro_mode = resolved_home_intro_mode()
@@ -3187,6 +3212,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "smtp_templates": SMTP_TEMPLATES,
             "comment_agent": comment_agent_public_payload(comment_agent),
             "comment_agent_templates": COMMENT_AGENT_TEMPLATES,
+            "comment_agent_usage": comment_agent_usage,
         }
 
     @app.post("/api/admin/applications/{application_id}")
@@ -3694,6 +3720,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail="Agent 供应商无效")
         if payload.protocol not in COMMENT_AGENT_PROTOCOLS:
             raise HTTPException(status_code=422, detail="Agent API 协议无效")
+        if payload.access_mode not in COMMENT_AGENT_ACCESS_MODES:
+            raise HTTPException(status_code=422, detail="Agent 使用范围无效")
         try:
             base_url = validate_agent_base_url(payload.base_url)
         except ValueError as exc:
@@ -3719,6 +3747,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=422,
                 detail="启用评论 Agent 前必须配置 API Key",
             )
+        whitelist_user_ids = sorted(set(payload.whitelist_user_ids))
+        if whitelist_user_ids:
+            placeholders = ",".join("?" for _ in whitelist_user_ids)
+            with db.connect() as connection:
+                valid_ids = {
+                    row["id"]
+                    for row in connection.execute(
+                        f"""
+                        SELECT id FROM users
+                        WHERE status = 'active'
+                          AND is_system = 0
+                          AND id IN ({placeholders})
+                        """,
+                        whitelist_user_ids,
+                    ).fetchall()
+                }
+            if valid_ids != set(whitelist_user_ids):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Agent 白名单包含无效用户",
+                )
         try:
             save_comment_agent_configuration(
                 db,
@@ -3734,6 +3783,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 max_context_chars=payload.max_context_chars,
                 max_output_tokens=payload.max_output_tokens,
                 system_prompt=system_prompt,
+                access_mode=payload.access_mode,
+                whitelist_user_ids=whitelist_user_ids,
             )
         except RuntimeError as exc:
             raise HTTPException(
@@ -3754,6 +3805,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "timeout_seconds": payload.timeout_seconds,
                     "max_context_chars": payload.max_context_chars,
                     "max_output_tokens": payload.max_output_tokens,
+                    "access_mode": payload.access_mode,
+                    "whitelist_user_count": len(whitelist_user_ids),
                     "api_key_changed": bool(payload.api_key),
                 },
                 ensure_ascii=False,
@@ -3777,13 +3830,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="请先保存并启用评论 Agent",
             )
         try:
-            reply = call_agent_api(
-                configuration,
-                (
-                    "Reply with a short confirmation that the API is "
-                    "available. Do not include secrets."
-                ),
-                "请回复：连接成功",
+            completion = normalize_agent_completion(
+                call_agent_api(
+                    configuration,
+                    (
+                        "Reply with a short confirmation that the API is "
+                        "available. Do not include secrets."
+                    ),
+                    "请回复：连接成功",
+                )
             )
         except CommentAgentError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -3795,7 +3850,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             detail=json.dumps(
                 {
                     "model": configuration.model,
-                    "reply_length": len(reply),
+                    "reply_length": len(completion.text),
+                    "total_tokens": completion.total_tokens,
                 },
                 ensure_ascii=False,
             ),

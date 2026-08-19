@@ -2268,6 +2268,69 @@ dialog::backdrop {
   margin-top: -4px;
 }
 
+.agent-whitelist,
+.agent-usage {
+  display: grid;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  gap: 10px;
+}
+
+.agent-whitelist[hidden] {
+  display: none;
+}
+
+.agent-whitelist-list {
+  display: grid;
+  max-height: 260px;
+  border: 1px solid var(--line);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow-y: auto;
+}
+
+.agent-whitelist-user {
+  display: flex;
+  min-width: 0;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-whitelist-user:nth-child(odd) {
+  border-right: 1px solid var(--line);
+}
+
+.agent-whitelist-user input {
+  width: 16px;
+  min-height: 16px;
+}
+
+.agent-whitelist-user span {
+  display: grid;
+  min-width: 0;
+}
+
+.agent-whitelist-user strong,
+.agent-whitelist-user small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-whitelist-user small {
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+
+.agent-usage {
+  margin-top: 22px;
+}
+
+.agent-usage-list {
+  display: grid;
+}
+
 #commentAgentStatus[data-status="ready"] {
   color: var(--teal-dark);
   background: var(--teal-soft);
@@ -2628,6 +2691,14 @@ dialog::backdrop {
 
   .agent-base-url-field {
     grid-column: auto;
+  }
+
+  .agent-whitelist-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agent-whitelist-user:nth-child(odd) {
+    border-right: 0;
   }
 
   .data-row {

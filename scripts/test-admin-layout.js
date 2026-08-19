@@ -104,6 +104,7 @@ for (const field of [
   "max_context_chars",
   "max_output_tokens",
   "system_prompt",
+  "access_mode",
   "enabled"
 ]) {
   assert.match(
@@ -113,6 +114,8 @@ for (const field of [
     )
   );
 }
+assert.match(html, /id="commentAgentWhitelist"/);
+assert.match(html, /id="commentAgentUsage"/);
 for (const provider of [
   "ChatGPT",
   "DeepSeek",
@@ -131,6 +134,7 @@ assert.match(css, /\.admin-panel\[hidden\][\s\S]*display:\s*none/);
 assert.match(css, /\.visual-settings-tabs\s*\{/);
 assert.match(css, /\.star-variable-reference\s*\{/);
 assert.match(css, /\.agent-grid\s*\{/);
+assert.match(css, /\.agent-whitelist-list\s*\{/);
 assert.match(
   css,
   /@media \(max-width: 900px\)[\s\S]*\.admin-layout\s*\{[\s\S]*display:\s*block/
@@ -144,6 +148,8 @@ assert.match(javascript, /function setupVisualSettingsNavigation\(\)/);
 assert.match(javascript, /function renderStarFormulaReference\(\)/);
 assert.match(javascript, /starFormulaEngine\.validateFormula/);
 assert.match(javascript, /home_star_brightness_tiers/);
+assert.match(javascript, /whitelist_user_ids/);
+assert.match(javascript, /comment_agent_usage/);
 assert.match(javascript, /aria-current.*page/);
 
 console.log("Admin layout checks passed");

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import quote, urlsplit
@@ -27,6 +28,14 @@ AGENT_MENTION_RE = re.compile(
 
 class CommentAgentError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class AgentCompletion:
+    text: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
 
 
 def has_agent_mention(body: str) -> bool:
@@ -93,7 +102,7 @@ def call_agent_api(
     configuration: CommentAgentConfiguration,
     system_prompt: str,
     user_prompt: str,
-) -> str:
+) -> AgentCompletion:
     endpoint = _completion_endpoint(configuration)
     if configuration.protocol == "anthropic":
         headers = {
@@ -148,7 +157,39 @@ def call_agent_api(
     ).strip()
     if not text:
         raise CommentAgentError("Agent API 未返回文本内容")
-    return text[:8000]
+    usage = response_payload.get("usage")
+    if not isinstance(usage, dict):
+        usage = {}
+
+    def usage_int(*keys: str) -> int:
+        for key in keys:
+            if key not in usage:
+                continue
+            try:
+                return max(0, int(usage[key]))
+            except (TypeError, ValueError):
+                continue
+        return 0
+
+    input_tokens = usage_int("prompt_tokens", "input_tokens")
+    output_tokens = usage_int("completion_tokens", "output_tokens")
+    total_tokens = usage_int("total_tokens")
+    if not total_tokens:
+        total_tokens = input_tokens + output_tokens
+    return AgentCompletion(
+        text=text[:8000],
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=total_tokens,
+    )
+
+
+def normalize_agent_completion(
+    value: AgentCompletion | str,
+) -> AgentCompletion:
+    if isinstance(value, AgentCompletion):
+        return value
+    return AgentCompletion(text=str(value)[:8000])
 
 
 def fetch_page_source(
@@ -340,7 +381,7 @@ def _comment_url(settings: Settings, path: str, comment_id: int) -> str:
 def _save_reply(
     db: Database,
     request_row: dict[str, Any],
-    body: str,
+    completion: AgentCompletion,
 ) -> tuple[int, dict[str, Any] | None]:
     now = utc_now()
     with db.connect() as connection:
@@ -404,7 +445,7 @@ def _save_reply(
                 agent["id"],
                 root_id,
                 trigger["id"],
-                body[:8000],
+                completion.text,
                 now,
                 now,
             ),
@@ -412,12 +453,28 @@ def _save_reply(
         response_comment_id = int(cursor.lastrowid)
         connection.execute(
             """
+            INSERT INTO comment_events(path, comment_id, action, created_at)
+            VALUES(?, ?, 'created', ?)
+            """,
+            (root["path"], response_comment_id, now),
+        )
+        connection.execute(
+            """
             UPDATE comment_agent_requests
             SET status = 'completed', response_comment_id = ?,
+                input_tokens = ?, output_tokens = ?, total_tokens = ?,
                 error_message = NULL, completed_at = ?, updated_at = ?
             WHERE id = ?
             """,
-            (response_comment_id, now, now, request["id"]),
+            (
+                response_comment_id,
+                completion.input_tokens,
+                completion.output_tokens,
+                completion.total_tokens,
+                now,
+                now,
+                request["id"],
+            ),
         )
         recipient = (
             {
@@ -475,12 +532,18 @@ def process_comment_agent_request(
             trigger_id=request_row["trigger_comment_id"],
             max_context_chars=configuration.max_context_chars,
         )
-        body = call_agent_api(
-            configuration,
-            configuration.system_prompt,
-            prompt,
+        completion = normalize_agent_completion(
+            call_agent_api(
+                configuration,
+                configuration.system_prompt,
+                prompt,
+            )
         )
-        response_comment_id, recipient = _save_reply(db, request_row, body)
+        response_comment_id, recipient = _save_reply(
+            db,
+            request_row,
+            completion,
+        )
         db.audit(
             "comment_agent.completed",
             "system",
@@ -490,6 +553,9 @@ def process_comment_agent_request(
                     "provider": configuration.provider,
                     "model": configuration.model,
                     "response_comment_id": response_comment_id,
+                    "input_tokens": completion.input_tokens,
+                    "output_tokens": completion.output_tokens,
+                    "total_tokens": completion.total_tokens,
                 },
                 ensure_ascii=False,
             ),
@@ -504,7 +570,7 @@ def process_comment_agent_request(
                 (
                     f"Agent 回复了 {recipient['username']} 的评论。\n\n"
                     f"文件：{recipient['path']}\n"
-                    f"回复：{body}\n\n"
+                    f"回复：{completion.text}\n\n"
                     f"查看：{_comment_url(settings, recipient['path'], response_comment_id)}\n"
                 ),
                 audience="comment",

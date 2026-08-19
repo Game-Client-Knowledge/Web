@@ -300,7 +300,7 @@ and published code files.
 | `src/assets/js/editor-buffer.js` | Legacy local-buffer format used only for one-time migration into the dual-tree store. |
 | `src/assets/js/markdown-preserve.js` | Markdown-preserving reader editor transformations. |
 | `src/assets/js/reader-diff.js` | Reader-side line diff rendering. |
-| `src/assets/js/reader-comments.js` | Source-anchored reader comments, Agent request polling, and author highlighting. |
+| `src/assets/js/reader-comments.js` | Source-anchored Markdown comments, deletion, incremental event polling, Agent request polling, and author highlighting. |
 | `src/assets/js/code-reader.js` | IDE-style code workspace. |
 
 ## Editor Service
@@ -317,6 +317,7 @@ The editor is a FastAPI application under `editor/app/`.
 | `editor/app/comments.py` | Reader comments API. |
 | `editor/app/comment_agent.py` | Durable Agent requests, bounded page/thread context, provider calls, and replies. |
 | `editor/app/comment_agent_config.py` | Encrypted Agent API configuration and provider templates. |
+| `editor/app/comment_markdown.py` | CommonMark rendering and comment-specific HTML sanitization. |
 | `editor/app/pr_lifecycle.py` | PR sync, timeout, restore/urge URLs. |
 | `editor/app/site_updates.py` | Admin-triggered site update request/status helpers. |
 | `editor/app/mailer.py`, `notifications.py`, `smtp_config.py` | Email delivery and SMTP configuration. |

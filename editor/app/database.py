@@ -236,12 +236,30 @@ CREATE TABLE IF NOT EXISTS comment_agent_requests (
         CHECK(status IN ('pending', 'running', 'completed', 'failed')),
     provider TEXT NOT NULL,
     model TEXT NOT NULL,
+    requested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
     attempts INTEGER NOT NULL DEFAULT 0,
     error_message TEXT,
     started_at TEXT,
     completed_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS comment_agent_whitelist (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    added_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS comment_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL,
+    comment_id INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('created', 'deleted')),
+    created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -271,6 +289,8 @@ ON comments(path, start_line, created_at);
 CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_comment_agent_status
 ON comment_agent_requests(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_comment_events_path
+ON comment_events(path, id);
 CREATE INDEX IF NOT EXISTS idx_site_analytics_day
 ON site_analytics_daily(day);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_application_pending
@@ -472,6 +492,44 @@ class Database:
             ]:
                 if name not in notification_columns:
                     connection.execute(statement)
+            agent_request_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(comment_agent_requests)"
+                ).fetchall()
+            }
+            for name, statement in [
+                (
+                    "requested_by",
+                    """
+                    ALTER TABLE comment_agent_requests
+                    ADD COLUMN requested_by INTEGER REFERENCES users(id)
+                    """,
+                ),
+                (
+                    "input_tokens",
+                    """
+                    ALTER TABLE comment_agent_requests
+                    ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0
+                    """,
+                ),
+                (
+                    "output_tokens",
+                    """
+                    ALTER TABLE comment_agent_requests
+                    ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0
+                    """,
+                ),
+                (
+                    "total_tokens",
+                    """
+                    ALTER TABLE comment_agent_requests
+                    ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0
+                    """,
+                ),
+            ]:
+                if name not in agent_request_columns:
+                    connection.execute(statement)
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_submissions_status
@@ -627,6 +685,7 @@ class Database:
                 "comment_agent_timeout_seconds": "45",
                 "comment_agent_max_context_chars": "24000",
                 "comment_agent_max_output_tokens": "1200",
+                "comment_agent_access_mode": "all",
             }.items():
                 connection.execute(
                     """

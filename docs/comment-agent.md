@@ -39,6 +39,8 @@ server API.
 - `Context characters`: combined page and thread input ceiling.
 - `Output tokens`: provider-side reply limit.
 - `System prompt`: reply policy and domain guidance.
+- `Access mode`: allow every authenticated user or only selected users.
+- `Whitelist`: active non-system users allowed in restricted mode.
 
 The API key is never returned by admin APIs, included in audit details, sent
 to browsers, or added to model context. Changing provider, protocol, or base
@@ -64,6 +66,19 @@ development addresses.
 Pending and running requests survive a service restart. Startup changes stale
 `running` rows back to `pending`, and the application worker resumes them.
 The unique trigger constraint and conditional claim prevent duplicate replies.
+
+Each request stores its initiating user and the provider-reported input,
+output, and total token counts. The admin page aggregates those counters by
+user. Providers that omit usage metadata are recorded as zero rather than
+estimated locally.
+
+When whitelist mode is active, authorization is enforced twice:
+
+1. `@Agent` is omitted from that user's mention suggestions.
+2. A manually submitted `@Agent` body is rejected with HTTP `403`.
+
+Switching back to all-users mode preserves the whitelist selection for later
+reuse but does not apply it.
 
 The reader polls only:
 

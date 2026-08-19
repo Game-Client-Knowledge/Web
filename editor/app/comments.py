@@ -10,7 +10,15 @@ from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import quote
 
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Request
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+)
 from pydantic import BaseModel, Field
 
 from .comment_agent import (
@@ -18,6 +26,8 @@ from .comment_agent import (
     process_comment_agent_request,
 )
 from .comment_agent_config import load_comment_agent_configuration
+from .comment_agent_config import comment_agent_user_allowed
+from .comment_markdown import render_comment_markdown
 from .config import Settings
 from .database import Database, utc_now
 from .notifications import deliver_email
@@ -185,6 +195,7 @@ def _canonical_contributor_names(
 def _public_comment(
     row: sqlite3.Row,
     mentions: list[dict[str, Any]],
+    viewer: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     columns = set(row.keys())
     return {
@@ -198,6 +209,7 @@ def _public_comment(
         "quote": row["quote"],
         "render_segments": json.loads(row["render_segments"]),
         "body": row["body"],
+        "body_html": render_comment_markdown(row["body"]),
         "parent_id": row["parent_id"],
         "reply_to_id": row["reply_to_id"],
         "author": {
@@ -218,6 +230,18 @@ def _public_comment(
         ),
         "agent_error": (
             row["agent_error"] if "agent_error" in columns else None
+        ),
+        "can_delete": bool(
+            viewer
+            and (
+                viewer["role"] == "admin"
+                or (
+                    viewer["id"] == row["author_id"]
+                    and not (
+                        "is_system" in columns and row["is_system"]
+                    )
+                )
+            )
         ),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
@@ -587,6 +611,13 @@ def create_comments_router(
                 """,
                 (normalized,),
             ).fetchall()
+            cursor = connection.execute(
+                """
+                SELECT COALESCE(MAX(id), 0) AS id
+                FROM comment_events WHERE path = ?
+                """,
+                (normalized,),
+            ).fetchone()["id"]
         mentions: dict[int, list[dict[str, Any]]] = {}
         for row in mention_rows:
             mentions.setdefault(row["comment_id"], []).append(
@@ -601,17 +632,125 @@ def create_comments_router(
             "revision": dict(revision) if revision else None,
             "authors": _author_ranges(author_rows),
             "comments": [
-                _public_comment(row, mentions.get(row["id"], []))
+                _public_comment(
+                    row,
+                    mentions.get(row["id"], []),
+                    session,
+                )
                 for row in rows
             ],
+            "sync_cursor": cursor,
             "can_comment": bool(
                 session and not session["must_change_password"]
             ),
         }
 
+    @router.get("/comments/updates", response_model=None)
+    def comment_updates(
+        request: Request,
+        path: str,
+        after: int = Query(default=0, ge=0),
+    ) -> Any:
+        try:
+            normalized = validate_content_path(path)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        session = read_session(request)
+        with db.connect() as connection:
+            events = connection.execute(
+                """
+                SELECT id, comment_id, action
+                FROM comment_events
+                WHERE path = ? AND id > ?
+                ORDER BY id
+                LIMIT 200
+                """,
+                (normalized, after),
+            ).fetchall()
+            if not events:
+                return Response(
+                    status_code=204,
+                    headers={"X-Comment-Cursor": str(after)},
+                )
+            cursor = events[-1]["id"]
+            latest_actions: dict[int, str] = {}
+            for event in events:
+                latest_actions[event["comment_id"]] = event["action"]
+            created_ids = [
+                comment_id
+                for comment_id, action in latest_actions.items()
+                if action == "created"
+            ]
+            deleted_ids = [
+                comment_id
+                for comment_id, action in latest_actions.items()
+                if action == "deleted"
+            ]
+            rows: list[sqlite3.Row] = []
+            mention_rows: list[sqlite3.Row] = []
+            if created_ids:
+                placeholders = ",".join("?" for _ in created_ids)
+                rows = connection.execute(
+                    f"""
+                    SELECT c.*, u.username, u.github_login, u.is_system,
+                           ar.status AS agent_status,
+                           ar.error_message AS agent_error
+                    FROM comments c
+                    JOIN users u ON u.id = c.author_id
+                    LEFT JOIN comment_agent_requests ar
+                        ON ar.trigger_comment_id = c.id
+                    WHERE c.status = 'active'
+                      AND c.id IN ({placeholders})
+                    ORDER BY c.created_at, c.id
+                    """,
+                    created_ids,
+                ).fetchall()
+                mention_rows = connection.execute(
+                    f"""
+                    SELECT cm.comment_id, u.id, u.username, u.github_login
+                    FROM comment_mentions cm
+                    JOIN users u ON u.id = cm.user_id
+                    WHERE cm.comment_id IN ({placeholders})
+                    ORDER BY u.username
+                    """,
+                    created_ids,
+                ).fetchall()
+            has_more = bool(
+                connection.execute(
+                    """
+                    SELECT 1 FROM comment_events
+                    WHERE path = ? AND id > ?
+                    LIMIT 1
+                    """,
+                    (normalized, cursor),
+                ).fetchone()
+            )
+        mentions: dict[int, list[dict[str, Any]]] = {}
+        for row in mention_rows:
+            mentions.setdefault(row["comment_id"], []).append(
+                {
+                    "id": row["id"],
+                    "username": row["username"],
+                    "github_login": row["github_login"],
+                }
+            )
+        return {
+            "cursor": cursor,
+            "has_more": has_more,
+            "deleted_ids": deleted_ids,
+            "comments": [
+                _public_comment(
+                    row,
+                    mentions.get(row["id"], []),
+                    session,
+                )
+                for row in rows
+            ],
+        }
+
     @router.get("/comment-members")
     def comment_members(request: Request) -> dict[str, Any]:
-        require_ready_user(request)
+        user = require_ready_user(request)
         with db.connect() as connection:
             rows = connection.execute(
                 """
@@ -636,7 +775,11 @@ def create_comments_router(
             {**dict(row), "is_agent": False}
             for row in rows
         ]
-        if configuration.configured and agent:
+        if (
+            configuration.configured
+            and agent
+            and comment_agent_user_allowed(configuration, user["id"])
+        ):
             items.insert(
                 0,
                 {
@@ -649,7 +792,11 @@ def create_comments_router(
         return {"items": items}
 
     @router.get("/comments/{comment_id}/agent-status")
-    def comment_agent_status(comment_id: int) -> dict[str, Any]:
+    def comment_agent_status(
+        comment_id: int,
+        request: Request,
+    ) -> dict[str, Any]:
+        session = read_session(request)
         with db.connect() as connection:
             request_row = connection.execute(
                 """
@@ -680,7 +827,7 @@ def create_comments_router(
             "status": request_row["status"],
             "error": request_row["error_message"],
             "response_comment": (
-                _public_comment(response, []) if response else None
+                _public_comment(response, [], session) if response else None
             ),
         }
 
@@ -740,6 +887,14 @@ def create_comments_router(
                 raise HTTPException(
                     status_code=409,
                     detail="评论 Agent 当前未启用或配置不完整",
+                )
+            if not comment_agent_user_allowed(
+                agent_configuration,
+                user["id"],
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="当前账号不在评论 Agent 使用白名单中",
                 )
             if not rate_limit(
                 f"comment-agent:{user['id']}",
@@ -851,19 +1006,27 @@ def create_comments_router(
                 ),
             )
             comment_id = int(cursor.lastrowid)
+            connection.execute(
+                """
+                INSERT INTO comment_events(path, comment_id, action, created_at)
+                VALUES(?, ?, 'created', ?)
+                """,
+                (path, comment_id, now),
+            )
             if agent_configuration:
                 agent_cursor = connection.execute(
                     """
                     INSERT INTO comment_agent_requests(
-                        trigger_comment_id, status, provider, model,
+                        trigger_comment_id, status, provider, model, requested_by,
                         created_at, updated_at
                     )
-                    VALUES(?, 'pending', ?, ?, ?, ?)
+                    VALUES(?, 'pending', ?, ?, ?, ?, ?)
                     """,
                     (
                         comment_id,
                         agent_configuration.provider,
                         agent_configuration.model,
+                        user["id"],
                         now,
                         now,
                     ),
@@ -1005,6 +1168,95 @@ def create_comments_router(
                 }
                 for row in mentioned
             ],
+            user,
         )
+
+    @router.delete("/comments/{comment_id}", status_code=204)
+    def delete_comment(
+        comment_id: int,
+        request: Request,
+        x_csrf_token: str | None = Header(default=None),
+    ) -> Response:
+        user = require_ready_user(request)
+        verify_csrf(user, x_csrf_token)
+        now = utc_now()
+        with db.connect() as connection:
+            comment = connection.execute(
+                """
+                SELECT c.*, u.is_system
+                FROM comments c
+                JOIN users u ON u.id = c.author_id
+                WHERE c.id = ? AND c.status = 'active'
+                """,
+                (comment_id,),
+            ).fetchone()
+            if not comment:
+                raise HTTPException(status_code=404, detail="评论不存在")
+            if (
+                user["role"] != "admin"
+                and (
+                    comment["author_id"] != user["id"]
+                    or comment["is_system"]
+                )
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="只能删除自己的评论",
+                )
+            if comment["parent_id"] is None:
+                affected = connection.execute(
+                    """
+                    SELECT id FROM comments
+                    WHERE status = 'active'
+                      AND (id = ? OR parent_id = ?)
+                    ORDER BY id
+                    """,
+                    (comment_id, comment_id),
+                ).fetchall()
+            else:
+                affected = [{"id": comment_id}]
+            affected_ids = [row["id"] for row in affected]
+            placeholders = ",".join("?" for _ in affected_ids)
+            connection.execute(
+                f"""
+                UPDATE comments
+                SET status = 'deleted', updated_at = ?
+                WHERE id IN ({placeholders})
+                """,
+                (now, *affected_ids),
+            )
+            connection.executemany(
+                """
+                INSERT INTO comment_events(path, comment_id, action, created_at)
+                VALUES(?, ?, 'deleted', ?)
+                """,
+                [
+                    (comment["path"], affected_id, now)
+                    for affected_id in affected_ids
+                ],
+            )
+            connection.execute(
+                f"""
+                UPDATE comment_agent_requests
+                SET status = 'failed',
+                    error_message = '触发评论已删除',
+                    completed_at = ?,
+                    updated_at = ?
+                WHERE trigger_comment_id IN ({placeholders})
+                  AND status IN ('pending', 'running')
+                """,
+                (now, now, *affected_ids),
+            )
+        db.audit(
+            "comment.deleted",
+            request.client.host if request.client else "unknown",
+            user_id=user["id"],
+            target=str(comment_id),
+            detail=json.dumps(
+                {"deleted_comment_ids": affected_ids},
+                ensure_ascii=False,
+            ),
+        )
+        return Response(status_code=204)
 
     return router

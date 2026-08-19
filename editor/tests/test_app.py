@@ -13,6 +13,7 @@ from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
 from app.analytics import DEVICE_COOKIE
+from app.comment_agent import AgentCompletion
 from app.config import Settings
 from app.github import BranchConflictError, GitHubError, SubmissionResult
 from app.main import create_app
@@ -674,6 +675,157 @@ def test_line_attribution_and_comment_threads(client: TestClient) -> None:
     assert nested_reply["reply_to_id"] == first_reply["id"]
     assert nested_reply["quote"] == root["quote"]
     assert nested_reply["start_line"] == root["start_line"]
+
+
+def test_comment_markdown_delete_and_incremental_updates(
+    client: TestClient,
+) -> None:
+    owner = client.post(
+        "/api/auth/register",
+        json={
+            "email": "markdown-owner@example.test",
+            "username": "markdown-owner",
+            "password": "local-password-123",
+        },
+    ).json()
+    sync = client.post(
+        "/api/internal/attribution-sync",
+        headers={"Authorization": "Bearer test-sync-token"},
+        json={
+            "revision": "f" * 40,
+            "files": [
+                {
+                    "path": "knowledge/cpp/markdown-comment.md",
+                    "commit": "f" * 40,
+                    "line_count": 1,
+                    "lines": [
+                        {
+                            "line": 1,
+                            "commit": "f" * 40,
+                            "name": "Markdown Owner",
+                            "email": "markdown-owner@example.test",
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    assert sync.status_code == 200, sync.text
+    created = client.post(
+        "/api/comments",
+        headers={"X-CSRF-Token": owner["csrf_token"]},
+        json={
+            "path": "knowledge/cpp/markdown-comment.md",
+            "revision_sha": "f" * 40,
+            "start_line": 1,
+            "end_line": 1,
+            "quote": "Selected",
+            "body": "**Bold** and `code` <script>alert(1)</script>",
+        },
+    )
+    assert created.status_code == 200, created.text
+    root = created.json()
+    assert "<strong>Bold</strong>" in root["body_html"]
+    assert "<code>code</code>" in root["body_html"]
+    assert "<script" not in root["body_html"]
+    assert root["can_delete"] is True
+
+    listing = client.get(
+        "/api/comments",
+        params={"path": "knowledge/cpp/markdown-comment.md"},
+    ).json()
+    initial_cursor = listing["sync_cursor"]
+    assert initial_cursor > 0
+
+    client.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": owner["csrf_token"]},
+    )
+    other = client.post(
+        "/api/auth/register",
+        json={
+            "email": "markdown-other@example.test",
+            "username": "markdown-other",
+            "password": "local-password-123",
+        },
+    ).json()
+    forbidden = client.delete(
+        f"/api/comments/{root['id']}",
+        headers={"X-CSRF-Token": other["csrf_token"]},
+    )
+    assert forbidden.status_code == 403
+    assert client.get(
+        "/api/comments",
+        params={"path": "knowledge/cpp/markdown-comment.md"},
+    ).json()["comments"][0]["can_delete"] is False
+
+    reply = client.post(
+        "/api/comments",
+        headers={"X-CSRF-Token": other["csrf_token"]},
+        json={
+            "path": "knowledge/cpp/markdown-comment.md",
+            "revision_sha": "f" * 40,
+            "start_line": 1,
+            "end_line": 1,
+            "quote": "Selected",
+            "body": "_Reply_",
+            "parent_id": root["id"],
+            "reply_to_id": root["id"],
+        },
+    ).json()
+    delta = client.get(
+        "/api/comments/updates",
+        params={
+            "path": "knowledge/cpp/markdown-comment.md",
+            "after": initial_cursor,
+        },
+    )
+    assert delta.status_code == 200, delta.text
+    delta_payload = delta.json()
+    assert [item["id"] for item in delta_payload["comments"]] == [
+        reply["id"]
+    ]
+    assert delta_payload["deleted_ids"] == []
+
+    client.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": other["csrf_token"]},
+    )
+    owner = login(
+        client,
+        "markdown-owner",
+        "local-password-123",
+    )
+    deleted = client.delete(
+        f"/api/comments/{root['id']}",
+        headers={"X-CSRF-Token": owner["csrf_token"]},
+    )
+    assert deleted.status_code == 204, deleted.text
+    deletion_delta = client.get(
+        "/api/comments/updates",
+        params={
+            "path": "knowledge/cpp/markdown-comment.md",
+            "after": delta_payload["cursor"],
+        },
+    ).json()
+    assert set(deletion_delta["deleted_ids"]) == {
+        root["id"],
+        reply["id"],
+    }
+    final_listing = client.get(
+        "/api/comments",
+        params={"path": "knowledge/cpp/markdown-comment.md"},
+    ).json()
+    assert final_listing["comments"] == []
+    no_changes = client.get(
+        "/api/comments/updates",
+        params={
+            "path": "knowledge/cpp/markdown-comment.md",
+            "after": deletion_delta["cursor"],
+        },
+    )
+    assert no_changes.status_code == 204
+    assert no_changes.content == b""
 
 
 def test_comment_email_preference_disables_author_mail(
@@ -1816,6 +1968,30 @@ def test_admin_can_save_and_test_encrypted_comment_agent_configuration(
     assert client.app.state.cipher.decrypt(encrypted) == api_key
     assert all(api_key not in detail for detail in audit_details)
 
+    whitelist_saved = client.put(
+        "/api/admin/comment-agent",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "enabled": True,
+            "provider": "deepseek",
+            "protocol": "openai_compatible",
+            "base_url": "https://api.deepseek.com/v1",
+            "api_key": "",
+            "model": "deepseek-chat",
+            "timeout_seconds": 35,
+            "max_context_chars": 32000,
+            "max_output_tokens": 1536,
+            "system_prompt": "Answer from the supplied context only.",
+            "access_mode": "whitelist",
+            "whitelist_user_ids": [payload["user"]["id"]],
+        },
+    )
+    assert whitelist_saved.status_code == 200, whitelist_saved.text
+    assert whitelist_saved.json()["access_mode"] == "whitelist"
+    assert whitelist_saved.json()["whitelist_user_ids"] == [
+        payload["user"]["id"]
+    ]
+
     observed = {}
 
     def fake_call_agent(configuration, system_prompt, user_prompt):
@@ -1968,7 +2144,12 @@ def test_agent_mention_reads_page_and_thread_once(
         observed["configuration"] = configuration
         observed["system_prompt"] = system_prompt
         observed["user_prompt"] = user_prompt
-        return "根据页面原文，答案是 42。"
+        return AgentCompletion(
+            text="根据页面原文，答案是 42。",
+            input_tokens=120,
+            output_tokens=18,
+            total_tokens=138,
+        )
 
     monkeypatch.setattr(
         "app.comment_agent.fetch_page_source",
@@ -2032,8 +2213,20 @@ def test_agent_mention_reads_page_and_thread_once(
             WHERE u.is_system = 1
             """
         ).fetchone()["count"]
+        usage = connection.execute(
+            """
+            SELECT requested_by, input_tokens, output_tokens, total_tokens
+            FROM comment_agent_requests
+            """
+        ).fetchone()
     assert request_count == 1
     assert agent_reply_count == 1
+    assert dict(usage) == {
+        "requested_by": reader["user"]["id"],
+        "input_tokens": 120,
+        "output_tokens": 18,
+        "total_tokens": 138,
+    }
 
     disabled = client.post(
         "/api/comments",
@@ -2052,6 +2245,173 @@ def test_agent_mention_reads_page_and_thread_once(
         item["username"] != "Agent"
         for item in client.get("/api/comment-members").json()["items"]
     )
+    client.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": reader["csrf_token"]},
+    )
+    admin_session = login(
+        client,
+        "sourcecode",
+        "a-new-strong-password",
+    )
+    overview = client.get("/api/admin/overview").json()
+    reader_usage = next(
+        item
+        for item in overview["comment_agent_usage"]
+        if item["user_id"] == reader["user"]["id"]
+    )
+    assert reader_usage["request_count"] == 1
+    assert reader_usage["total_tokens"] == 138
+    client.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": admin_session["csrf_token"]},
+    )
+
+
+def test_comment_agent_whitelist_controls_menu_and_server(
+    client: TestClient,
+) -> None:
+    admin = login(client, "sourcecode", TEST_BOOTSTRAP_PASSWORD)
+    changed = client.post(
+        "/api/auth/change-password",
+        headers={"X-CSRF-Token": admin["csrf_token"]},
+        json={
+            "current_password": TEST_BOOTSTRAP_PASSWORD,
+            "new_password": "a-new-strong-password",
+        },
+    ).json()
+    client.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": changed["csrf_token"]},
+    )
+    allowed = client.post(
+        "/api/auth/register",
+        json={
+            "email": "allowed-agent@example.test",
+            "username": "allowed-agent",
+            "password": "local-password-123",
+        },
+    ).json()
+    client.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": allowed["csrf_token"]},
+    )
+    blocked = client.post(
+        "/api/auth/register",
+        json={
+            "email": "blocked-agent@example.test",
+            "username": "blocked-agent",
+            "password": "local-password-123",
+        },
+    ).json()
+    synced = client.post(
+        "/api/internal/attribution-sync",
+        headers={"Authorization": "Bearer test-sync-token"},
+        json={
+            "revision": "1" * 40,
+            "files": [
+                {
+                    "path": "knowledge/cpp/agent-access.md",
+                    "commit": "1" * 40,
+                    "line_count": 1,
+                    "lines": [
+                        {
+                            "line": 1,
+                            "commit": "1" * 40,
+                            "name": "Blocked Agent",
+                            "email": "blocked-agent@example.test",
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    assert synced.status_code == 200, synced.text
+    client.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": blocked["csrf_token"]},
+    )
+    admin = login(client, "sourcecode", "a-new-strong-password")
+    settings_payload = {
+        "enabled": True,
+        "provider": "openai",
+        "protocol": "openai_compatible",
+        "base_url": "https://api.openai.com/v1",
+        "api_key": "whitelist-test-key",
+        "model": "test-model",
+        "timeout_seconds": 30,
+        "max_context_chars": 12000,
+        "max_output_tokens": 512,
+        "system_prompt": "Answer briefly.",
+        "access_mode": "whitelist",
+        "whitelist_user_ids": [allowed["user"]["id"]],
+    }
+    configured = client.put(
+        "/api/admin/comment-agent",
+        headers={"X-CSRF-Token": admin["csrf_token"]},
+        json=settings_payload,
+    )
+    assert configured.status_code == 200, configured.text
+    client.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": admin["csrf_token"]},
+    )
+
+    blocked = login(client, "blocked-agent", "local-password-123")
+    assert all(
+        item["username"] != "Agent"
+        for item in client.get("/api/comment-members").json()["items"]
+    )
+    denied = client.post(
+        "/api/comments",
+        headers={"X-CSRF-Token": blocked["csrf_token"]},
+        json={
+            "path": "knowledge/cpp/agent-access.md",
+            "revision_sha": "1" * 40,
+            "start_line": 1,
+            "end_line": 1,
+            "quote": "Access",
+            "body": "@Agent answer",
+        },
+    )
+    assert denied.status_code == 403
+    client.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": blocked["csrf_token"]},
+    )
+
+    allowed = login(client, "allowed-agent", "local-password-123")
+    assert client.get("/api/comment-members").json()["items"][0][
+        "username"
+    ] == "Agent"
+    client.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": allowed["csrf_token"]},
+    )
+
+    admin = login(client, "sourcecode", "a-new-strong-password")
+    settings_payload.update(
+        {
+            "api_key": "",
+            "access_mode": "all",
+            "whitelist_user_ids": [],
+        }
+    )
+    all_users = client.put(
+        "/api/admin/comment-agent",
+        headers={"X-CSRF-Token": admin["csrf_token"]},
+        json=settings_payload,
+    )
+    assert all_users.status_code == 200, all_users.text
+    assert all_users.json()["access_mode"] == "all"
+    client.post(
+        "/api/auth/logout",
+        headers={"X-CSRF-Token": admin["csrf_token"]},
+    )
+    login(client, "blocked-agent", "local-password-123")
+    assert client.get("/api/comment-members").json()["items"][0][
+        "username"
+    ] == "Agent"
 
 
 def test_admin_page_requires_ready_admin(client: TestClient) -> None:

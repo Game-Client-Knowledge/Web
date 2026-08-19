@@ -55,6 +55,7 @@ COMMENT_AGENT_TEMPLATE_IDS = {
     template["id"] for template in COMMENT_AGENT_TEMPLATES
 }
 COMMENT_AGENT_PROTOCOLS = {"openai_compatible", "anthropic"}
+COMMENT_AGENT_ACCESS_MODES = {"all", "whitelist"}
 DEFAULT_COMMENT_AGENT_SYSTEM_PROMPT = (
     "你是 Game Client Knowledge 的评论 Agent。"
     "请基于提供的页面原文和当前评论线程，直接、准确地回答被 @Agent 提及的问题。"
@@ -76,6 +77,8 @@ class CommentAgentConfiguration:
     max_context_chars: int
     max_output_tokens: int
     system_prompt: str
+    access_mode: str = "all"
+    whitelist_user_ids: tuple[int, ...] = ()
 
     @property
     def configured(self) -> bool:
@@ -124,6 +127,15 @@ def load_comment_agent_configuration(
                 """
             ).fetchall()
         }
+        whitelist_user_ids = tuple(
+            row["user_id"]
+            for row in connection.execute(
+                """
+                SELECT user_id FROM comment_agent_whitelist
+                ORDER BY user_id
+                """
+            ).fetchall()
+        )
     encrypted_key = values.get("comment_agent_api_key_encrypted", "")
     api_key = cipher.decrypt(encrypted_key) if encrypted_key else ""
 
@@ -176,6 +188,13 @@ def load_comment_agent_configuration(
             DEFAULT_COMMENT_AGENT_SYSTEM_PROMPT,
         ).strip()
         or DEFAULT_COMMENT_AGENT_SYSTEM_PROMPT,
+        access_mode=(
+            values.get("comment_agent_access_mode", "all")
+            if values.get("comment_agent_access_mode", "all")
+            in COMMENT_AGENT_ACCESS_MODES
+            else "all"
+        ),
+        whitelist_user_ids=whitelist_user_ids,
     )
 
 
@@ -194,6 +213,8 @@ def comment_agent_public_payload(
         "max_output_tokens": configuration.max_output_tokens,
         "system_prompt": configuration.system_prompt,
         "api_key_set": bool(configuration.api_key),
+        "access_mode": configuration.access_mode,
+        "whitelist_user_ids": list(configuration.whitelist_user_ids),
     }
 
 
@@ -212,6 +233,8 @@ def save_comment_agent_configuration(
     max_context_chars: int,
     max_output_tokens: int,
     system_prompt: str,
+    access_mode: str,
+    whitelist_user_ids: list[int],
 ) -> None:
     values = {
         "comment_agent_enabled": "1" if enabled else "0",
@@ -223,6 +246,7 @@ def save_comment_agent_configuration(
         "comment_agent_max_context_chars": str(max_context_chars),
         "comment_agent_max_output_tokens": str(max_output_tokens),
         "comment_agent_system_prompt": system_prompt,
+        "comment_agent_access_mode": access_mode,
     }
     if api_key:
         values["comment_agent_api_key_encrypted"] = cipher.encrypt(api_key)
@@ -241,3 +265,25 @@ def save_comment_agent_configuration(
                 """,
                 (key, value, admin_id, now),
             )
+        connection.execute("DELETE FROM comment_agent_whitelist")
+        connection.executemany(
+            """
+            INSERT INTO comment_agent_whitelist(user_id, added_by, created_at)
+            SELECT id, ?, ? FROM users
+            WHERE id = ? AND status = 'active' AND is_system = 0
+            """,
+            [
+                (admin_id, now, user_id)
+                for user_id in sorted(set(whitelist_user_ids))
+            ],
+        )
+
+
+def comment_agent_user_allowed(
+    configuration: CommentAgentConfiguration,
+    user_id: int,
+) -> bool:
+    return (
+        configuration.access_mode == "all"
+        or user_id in configuration.whitelist_user_ids
+    )

@@ -872,7 +872,35 @@
               >
               <small class="field-help">限制 Agent 单次回复长度和调用成本。</small>
             </label>
+            <label>
+              使用范围
+              <select name="access_mode">
+                <option value="all">所有已登录用户</option>
+                <option value="whitelist">仅白名单用户</option>
+              </select>
+              <small class="field-help">限制哪些账号可以在评论中选择 @Agent。</small>
+            </label>
           </div>
+          <section
+            id="commentAgentWhitelistSection"
+            class="agent-whitelist"
+            aria-labelledby="commentAgentWhitelistTitle"
+          >
+            <div class="subsection-heading">
+              <h3 id="commentAgentWhitelistTitle">Agent 使用白名单</h3>
+              <p>仅在“仅白名单用户”模式下生效。</p>
+            </div>
+            <input
+              id="commentAgentWhitelistSearch"
+              type="search"
+              placeholder="搜索用户名、邮箱或 GitHub"
+              aria-label="搜索 Agent 白名单用户"
+            >
+            <div
+              id="commentAgentWhitelist"
+              class="agent-whitelist-list"
+            ></div>
+          </section>
           <label class="agent-prompt-field">
             系统提示词
             <textarea
@@ -906,6 +934,13 @@
             aria-live="polite"
           ></div>
         </form>
+        <section class="agent-usage" aria-labelledby="commentAgentUsageTitle">
+          <div class="subsection-heading">
+            <h3 id="commentAgentUsageTitle">用户 Token 消耗</h3>
+            <p>按 Agent 请求发起账号累计供应商返回的 Token 用量。</p>
+          </div>
+          <div id="commentAgentUsage" class="agent-usage-list"></div>
+        </section>
       </section>
     </section>
 

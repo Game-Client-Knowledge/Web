@@ -5,6 +5,8 @@ const state = {
   smtpTemplates: [],
   commentAgent: null,
   commentAgentTemplates: [],
+  commentAgentUsers: [],
+  commentAgentWhitelist: new Set(),
   starBrightnessRules: [],
   starBrightnessTiers: [],
   autoCloseDays: 7,
@@ -710,11 +712,75 @@ function renderCommentAgentTemplates(templates) {
 function syncCommentAgentState() {
   byId("testCommentAgentButton").disabled =
     !state.commentAgent?.configured;
+  const form = byId("commentAgentForm");
+  byId("commentAgentWhitelistSection").hidden =
+    form.access_mode.value !== "whitelist";
 }
 
-function renderCommentAgent(configuration, templates) {
+function renderCommentAgentWhitelist(keyword = "") {
+  const target = byId("commentAgentWhitelist");
+  const normalized = keyword.trim().toLowerCase();
+  target.replaceChildren();
+  const users = state.commentAgentUsers.filter((user) => {
+    return !normalized || [
+      user.username,
+      user.email,
+      user.github_login || ""
+    ].some((value) => value.toLowerCase().includes(normalized));
+  });
+  users.forEach((user) => {
+    const label = document.createElement("label");
+    label.className = "agent-whitelist-user";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.value = String(user.id);
+    input.checked = state.commentAgentWhitelist.has(user.id);
+    input.addEventListener("change", () => {
+      if (input.checked) state.commentAgentWhitelist.add(user.id);
+      else state.commentAgentWhitelist.delete(user.id);
+    });
+    const identity = document.createElement("span");
+    const name = document.createElement("strong");
+    const detail = document.createElement("small");
+    name.textContent = user.username;
+    detail.textContent =
+      user.email +
+      (user.github_login ? ` · @${user.github_login}` : "");
+    identity.append(name, detail);
+    label.append(input, identity);
+    target.append(label);
+  });
+  if (!users.length) target.textContent = "没有匹配用户";
+}
+
+function renderCommentAgentUsage(items) {
+  const target = byId("commentAgentUsage");
+  target.replaceChildren();
+  items.forEach((item) => {
+    target.append(
+      makeRow(
+        item.username,
+        `${formatNumber(item.request_count)} 次请求` +
+          ` · 输入 ${formatNumber(item.input_tokens)}` +
+          ` · 输出 ${formatNumber(item.output_tokens)}`,
+        [
+          Object.assign(document.createElement("strong"), {
+            textContent: formatNumber(item.total_tokens)
+          })
+        ]
+      )
+    );
+  });
+  if (!items.length) target.textContent = "暂无用户 Token 记录";
+}
+
+function renderCommentAgent(configuration, templates, users, usage) {
   state.commentAgent = configuration;
   state.commentAgentTemplates = templates;
+  state.commentAgentUsers = users;
+  state.commentAgentWhitelist = new Set(
+    configuration.whitelist_user_ids || []
+  );
   renderCommentAgentTemplates(templates);
   const form = byId("commentAgentForm");
   form.provider.value = configuration.provider;
@@ -727,6 +793,7 @@ function renderCommentAgent(configuration, templates) {
   form.max_output_tokens.value = String(configuration.max_output_tokens);
   form.system_prompt.value = configuration.system_prompt;
   form.enabled.checked = configuration.enabled;
+  form.access_mode.value = configuration.access_mode || "all";
 
   const status = byId("commentAgentStatus");
   status.textContent = configuration.configured
@@ -738,6 +805,9 @@ function renderCommentAgent(configuration, templates) {
   byId("commentAgentKeyStatus").textContent = configuration.api_key_set
     ? "API Key 已加密保存；留空不会覆盖。"
     : "尚未保存 API Key。";
+  byId("commentAgentWhitelistSearch").value = "";
+  renderCommentAgentWhitelist();
+  renderCommentAgentUsage(usage || []);
   syncCommentAgentState();
 }
 
@@ -1061,7 +1131,9 @@ async function loadOverview() {
   renderSmtp(data.smtp, data.smtp_templates);
   renderCommentAgent(
     data.comment_agent,
-    data.comment_agent_templates
+    data.comment_agent_templates,
+    data.users,
+    data.comment_agent_usage
   );
   renderIntegrations(data.settings);
   renderApplications(data.applications);
@@ -1419,12 +1491,16 @@ byId("commentAgentForm").addEventListener("submit", async (event) => {
         timeout_seconds: Number(form.timeout_seconds.value),
         max_context_chars: Number(form.max_context_chars.value),
         max_output_tokens: Number(form.max_output_tokens.value),
-        system_prompt: form.system_prompt.value
+        system_prompt: form.system_prompt.value,
+        access_mode: form.access_mode.value,
+        whitelist_user_ids: Array.from(state.commentAgentWhitelist)
       })
     });
     renderCommentAgent(
       configuration,
-      state.commentAgentTemplates
+      state.commentAgentTemplates,
+      state.commentAgentUsers,
+      []
     );
     commentAgentFeedback("评论 Agent 配置已保存。", "success");
     await loadOverview();
@@ -1434,6 +1510,15 @@ byId("commentAgentForm").addEventListener("submit", async (event) => {
     button.disabled = false;
   }
 });
+
+byId("commentAgentForm").access_mode.addEventListener(
+  "change",
+  syncCommentAgentState
+);
+byId("commentAgentWhitelistSearch").addEventListener(
+  "input",
+  (event) => renderCommentAgentWhitelist(event.currentTarget.value)
+);
 
 byId("testCommentAgentButton").addEventListener("click", async () => {
   const button = byId("testCommentAgentButton");

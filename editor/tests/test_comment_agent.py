@@ -78,7 +78,12 @@ def test_openai_compatible_request_and_response(
         {
             "choices": [
                 {"message": {"content": "OpenAI-compatible reply"}}
-            ]
+            ],
+            "usage": {
+                "prompt_tokens": 12,
+                "completion_tokens": 5,
+                "total_tokens": 17,
+            },
         }
     )
     monkeypatch.setattr(
@@ -95,7 +100,10 @@ def test_openai_compatible_request_and_response(
         "Reader question",
     )
 
-    assert result == "OpenAI-compatible reply"
+    assert result.text == "OpenAI-compatible reply"
+    assert result.input_tokens == 12
+    assert result.output_tokens == 5
+    assert result.total_tokens == 17
     assert observed["url"].endswith("/v1/chat/completions")
     assert observed["headers"]["Authorization"] == "Bearer provider-secret"
     assert observed["payload"]["model"] == "provider-model"
@@ -114,7 +122,8 @@ def test_anthropic_request_and_response(
         {
             "content": [
                 {"type": "text", "text": "Claude reply"},
-            ]
+            ],
+            "usage": {"input_tokens": 9, "output_tokens": 4},
         }
     )
     monkeypatch.setattr(
@@ -131,7 +140,10 @@ def test_anthropic_request_and_response(
         "Reader question",
     )
 
-    assert result == "Claude reply"
+    assert result.text == "Claude reply"
+    assert result.input_tokens == 9
+    assert result.output_tokens == 4
+    assert result.total_tokens == 13
     assert observed["url"].endswith("/v1/messages")
     assert observed["headers"]["x-api-key"] == "provider-secret"
     assert observed["headers"]["anthropic-version"] == "2023-06-01"
