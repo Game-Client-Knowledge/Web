@@ -110,7 +110,7 @@ svg {
 
 .skip-link {
   position: fixed;
-  z-index: 200;
+  z-index: 400;
   top: 8px;
   left: 8px;
   padding: 8px 12px;
@@ -125,7 +125,7 @@ svg {
 
 .site-header {
   position: sticky;
-  z-index: 100;
+  z-index: 300;
   top: 0;
   height: var(--header-height);
   color: #f7fbf9;

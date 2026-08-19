@@ -121,6 +121,14 @@ assert.match(indexSource, /data-contribution-space-return/);
 assert.match(cssSource, /\.contribution-space-portal/);
 assert.match(cssSource, /\.contribution-space-interaction-lock/);
 assert.match(cssSource, /\.home-contribution-space-expanded/);
+assert.match(
+  cssSource,
+  /\.site-header\s*\{[\s\S]*?z-index:\s*300;/
+);
+assert.match(
+  cssSource,
+  /\.home-star-experience-portal \.library-intro-overlay\s*\{[\s\S]*?z-index:\s*130;/
+);
 for (const layer of [10000, 10001, 10002, 10003, 10004]) {
   assert.match(cssSource, new RegExp(`z-index:\\s*${layer}`));
 }
