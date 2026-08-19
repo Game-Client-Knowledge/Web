@@ -24,16 +24,12 @@
     releaseHomeIntro = resolve;
   });
 
-  function signalHomeIntroReady(status) {
+  function markHomeIntroReady(status) {
+    document.body.dataset.homeIntro = status;
     if (!homeIntroReleased) {
       homeIntroReleased = true;
       releaseHomeIntro(status);
     }
-  }
-
-  function markHomeIntroReady(status) {
-    document.body.dataset.homeIntro = status;
-    signalHomeIntroReady(status);
   }
 
   function normalizeHomeIntroSettings(settings) {
@@ -640,14 +636,13 @@
     let started = performance.now();
     let frame = 0;
     let finished = false;
-    let scatterStarted = 0;
-    let scatterDuration = 690;
-    let naturalScatterDuration = 690;
-    let scatterReleased = false;
+    let scrollStarted = 0;
+    let scrollDuration = 690;
+    let naturalScrollDuration = 690;
+    let scrollFrom = 0;
     let previousScrollBehavior = "";
     let assembleDuration = 1680;
     let holdDuration = 630;
-    let particleSprites = null;
 
     document.body.classList.add("has-entry-sequence");
     document.body.dataset.homeIntro = "playing";
@@ -658,8 +653,6 @@
     stage.dataset.gameHud = "active";
     stage.dataset.typographyOffset = "0.00,0.00";
     stage.dataset.hudSweep = "0.0000";
-    stage.dataset.exitMotion = "scatter";
-    particleSprites = createParticleSprites();
 
     function clamp(value, minimum = 0, maximum = 1) {
       return Math.max(minimum, Math.min(maximum, value));
@@ -695,121 +688,22 @@
       return minimum;
     }
 
-    function createParticleSprites() {
-      const tones = {
-        white: [237, 247, 243],
-        teal: [139, 211, 189],
-        gold: [238, 184, 76]
-      };
-      const shapes = { glow: 12, spark: 8, star: 16 };
-      const sprites = {};
-      Object.entries(shapes).forEach(([shape, size]) => {
-        sprites[shape] = {};
-        Object.entries(tones).forEach(([tone, rgb]) => {
-          const sprite = document.createElement("canvas");
-          sprite.width = size;
-          sprite.height = size;
-          const spriteContext = sprite.getContext("2d");
-          const center = size / 2;
-          const toneColor = `rgba(${rgb[0]},${rgb[1]},${rgb[2]}`;
-          const halo = spriteContext.createRadialGradient(
-            center,
-            center,
-            0,
-            center,
-            center,
-            center
-          );
-          halo.addColorStop(0, `${toneColor},0.85)`);
-          halo.addColorStop(0.32, `${toneColor},0.38)`);
-          halo.addColorStop(1, `${toneColor},0)`);
-          spriteContext.fillStyle = halo;
-          spriteContext.fillRect(0, 0, size, size);
-          if (shape !== "glow") {
-            const rayWidth = Math.max(0.6, size * 0.055);
-            spriteContext.fillStyle = "rgba(255,252,244,0.92)";
-            spriteContext.beginPath();
-            spriteContext.moveTo(center, 0);
-            spriteContext.quadraticCurveTo(
-              center + rayWidth,
-              center,
-              center,
-              size
-            );
-            spriteContext.quadraticCurveTo(
-              center - rayWidth,
-              center,
-              center,
-              0
-            );
-            spriteContext.moveTo(0, center);
-            spriteContext.quadraticCurveTo(
-              center,
-              center - rayWidth,
-              size,
-              center
-            );
-            spriteContext.quadraticCurveTo(
-              center,
-              center + rayWidth,
-              0,
-              center
-            );
-            spriteContext.fill();
-          }
-          const core = spriteContext.createRadialGradient(
-            center,
-            center,
-            0,
-            center,
-            center,
-            Math.max(1.2, size * 0.16)
-          );
-          core.addColorStop(0, "rgba(255,255,255,0.95)");
-          core.addColorStop(1, `${toneColor},0)`);
-          spriteContext.fillStyle = core;
-          spriteContext.fillRect(0, 0, size, size);
-          sprites[shape][tone] = sprite;
-        });
-      });
-      return sprites;
-    }
-
-    function particleSpriteFor(color, size, index) {
-      const parsed =
-        /rgba\((\d+),(\d+),(\d+),([\d.]+)\)/.exec(color || "") || [];
-      const red = Number(parsed[1] || 237);
-      const green = Number(parsed[2] || 247);
-      const blue = Number(parsed[3] || 243);
-      let tone = "white";
-      if (red > blue + 24 && green > blue + 8) {
-        tone = "gold";
-      } else if (green > red + 12 && blue > red + 4) {
-        tone = "teal";
-      }
-      const shape = size > 2 ? "star" : index % 6 === 0 ? "spark" : "glow";
-      return {
-        sprite: particleSprites[shape][tone],
-        alpha: clamp(Number(parsed[4] || 1), 0.1, 1)
-      };
-    }
-
     function setDurations() {
       const total = runtimeSettings.home_intro_duration_ms;
       assembleDuration =
         runtimeSettings.home_intro_assembly_duration_ms;
       holdDuration = runtimeSettings.home_intro_hold_duration_ms;
-      naturalScatterDuration = Math.max(
+      naturalScrollDuration = Math.max(
         320,
         total - assembleDuration - holdDuration
       );
-      if (!scatterStarted) {
-        scatterDuration = naturalScatterDuration;
+      if (!scrollStarted) {
+        scrollDuration = naturalScrollDuration;
       }
       stage.dataset.entryDuration = String(total);
       stage.dataset.assemblyDuration = String(assembleDuration);
       stage.dataset.holdDuration = String(holdDuration);
-      stage.dataset.scrollDuration = String(naturalScatterDuration);
+      stage.dataset.scrollDuration = String(naturalScrollDuration);
       stage.dataset.scrollLocked =
         runtimeSettings.home_intro_lock_scroll ? "true" : "false";
     }
@@ -1147,8 +1041,6 @@
           if (edge === 2) startY = -margin;
           if (edge === 3) startY = height + margin;
         }
-        const size = index % 17 === 0 ? 2.2 : 1.1 + random() * 0.9;
-        const sprite = particleSpriteFor(targetPoint.color, size, index);
         return {
           ...targetPoint,
           startX,
@@ -1156,14 +1048,9 @@
           delay: random() * assembleDuration * 0.18,
           orbit: (random() - 0.5) * (mobile ? 46 : 76),
           phase: random() * Math.PI * 2,
-          size,
-          sprite: sprite.sprite,
-          alpha: sprite.alpha
+          size: index % 17 === 0 ? 2.2 : 1.1 + random() * 0.9
         };
       });
-      if (scatterStarted) {
-        seedScatterMotion(performance.now() - started);
-      }
       stage.dataset.particleCount = String(particles.length);
       stage.dataset.contributorParticleCount = String(contributorParticles);
     }
@@ -1558,20 +1445,10 @@
           particle.startY +
           (target.y - particle.startY) * eased +
           Math.sin(particle.phase + local * Math.PI * 2.4) * orbit;
+        context.fillStyle = particle.color;
         const size = particle.size * (0.58 + eased * 0.42);
-        const drawSize = size * 3.2;
-        context.globalAlpha = particle.alpha;
-        context.drawImage(
-          particle.sprite,
-          x - drawSize / 2,
-          y - drawSize / 2,
-          drawSize,
-          drawSize
-        );
-        particle.renderX = x;
-        particle.renderY = y;
+        context.fillRect(x - size / 2, y - size / 2, size, size);
       });
-      context.globalAlpha = 1;
       const imageOpacity = clamp((progressValue - 0.82) / 0.18);
       if (artwork && imageOpacity > 0) {
         context.save();
@@ -1594,110 +1471,17 @@
       stage.classList.toggle("is-holding", progressValue >= 1);
     }
 
-    function seedScatterMotion(elapsed) {
-      const centerX = width / 2;
-      const centerY = height / 2;
-      const travelBase = Math.max(width, height);
-      particles.forEach((particle) => {
-        const target = particleTarget(particle, elapsed);
-        const originX = particle.renderX ?? target.x;
-        const originY = particle.renderY ?? target.y;
-        const dx = originX - centerX;
-        const dy = originY - centerY;
-        const distance = Math.hypot(dx, dy);
-        const angle =
-          distance < 24
-            ? random() * Math.PI * 2
-            : Math.atan2(dy, dx) + (random() - 0.5) * 0.9;
-        const travel = travelBase * (0.3 + random() * 0.55);
-        particle.scatterX = originX;
-        particle.scatterY = originY;
-        particle.scatterVX = Math.cos(angle) * travel;
-        particle.scatterVY =
-          Math.sin(angle) * travel - height * (0.05 + random() * 0.12);
-        particle.scatterDelay = random() * scatterDuration * 0.22;
-        particle.scatterScalePhase = random() * 0.18;
-        particle.scatterScaleRate = 1 + random() * 0.5;
-        particle.scatterScaleAmp = 0.9 + random() * 1.2;
-        particle.scatterFadeStart = 0.3 + random() * 0.38;
-        particle.scatterFadeEnd = Math.min(
-          0.99,
-          particle.scatterFadeStart + 0.24 + random() * 0.3
-        );
-      });
-    }
-
-    function beginScatter(now, accelerated) {
-      if (scatterStarted || finished) return;
-      scatterStarted = now;
-      scatterDuration = accelerated
-        ? Math.min(420, naturalScatterDuration)
-        : naturalScatterDuration;
-      scatterReleased = false;
+    function beginScroll(now, accelerated) {
+      if (scrollStarted || finished) return;
+      scrollStarted = now;
+      scrollDuration = accelerated
+        ? Math.min(420, naturalScrollDuration)
+        : naturalScrollDuration;
+      scrollFrom = window.scrollY;
       previousScrollBehavior = document.documentElement.style.scrollBehavior;
       document.documentElement.style.scrollBehavior = "auto";
-      seedScatterMotion(now - started);
-      stage.dataset.entryPhase = "scattering";
+      stage.dataset.entryPhase = "scrolling";
       stage.classList.remove("is-holding");
-    }
-
-    function drawScatter(now) {
-      const elapsed = now - started;
-      const scatterElapsed = now - scatterStarted;
-      const progressValue = clamp(scatterElapsed / scatterDuration);
-      const backdropFade =
-        1 - easeInOutCubic(clamp(progressValue / 0.55));
-      if (backdropFade > 0.001) {
-        context.save();
-        context.globalAlpha = backdropFade;
-        drawArenaBackground(elapsed, 1);
-        context.restore();
-        drawEnergyTrails(elapsed, 0.74 * backdropFade);
-        drawRotatingFrames(elapsed, backdropFade);
-        drawDynamicTypography(elapsed, backdropFade);
-        drawGameHud(elapsed, backdropFade);
-        drawContributorLabels(elapsed, backdropFade);
-      }
-      particles.forEach((particle) => {
-        const local = clamp(
-          (scatterElapsed - particle.scatterDelay) /
-            Math.max(1, scatterDuration - particle.scatterDelay)
-        );
-        const fade = clamp(
-          (progressValue - particle.scatterFadeStart) /
-            Math.max(
-              0.01,
-              particle.scatterFadeEnd - particle.scatterFadeStart
-            )
-        );
-        const alpha = particle.alpha * (1 - fade);
-        if (alpha <= 0.01) return;
-        const eased = easeOutQuart(local);
-        const x = particle.scatterX + particle.scatterVX * eased;
-        const y = particle.scatterY + particle.scatterVY * eased;
-        const envelope = clamp(
-          (local - particle.scatterScalePhase) *
-            particle.scatterScaleRate,
-          0,
-          1.2
-        );
-        const scale = Math.max(
-          0.08,
-          1 + particle.scatterScaleAmp * Math.sin(Math.PI * envelope)
-        );
-        const drawSize = particle.size * 3.2 * scale;
-        context.globalAlpha = alpha;
-        context.drawImage(
-          particle.sprite,
-          x - drawSize / 2,
-          y - drawSize / 2,
-          drawSize,
-          drawSize
-        );
-        particle.renderX = x;
-        particle.renderY = y;
-      });
-      context.globalAlpha = 1;
     }
 
     function releaseListeners() {
@@ -1715,20 +1499,16 @@
         frame = 0;
       }
       releaseListeners();
+      document.documentElement.style.scrollBehavior = previousScrollBehavior;
       stage.classList.add("is-complete");
       stage.dataset.entryPhase = "complete";
       document.body.classList.remove("has-entry-sequence");
-      document.body.classList.add("home-intro-content-fade");
       document.body.dataset.homeIntroLocked =
         runtimeSettings.home_intro_lock_scroll ? "true" : "false";
       if (runtimeSettings.home_intro_lock_scroll) {
         stage.remove();
         window.scrollTo(0, 0);
-      } else {
-        window.scrollTo(0, stage.offsetTop + stage.offsetHeight);
       }
-      document.documentElement.style.scrollBehavior =
-        previousScrollBehavior;
       cancelHomeIntro = null;
       markHomeIntroReady("complete");
     }
@@ -1750,7 +1530,7 @@
 
     function skip(event) {
       if (event.type === "keydown" && event.key !== "Escape") return;
-      beginScatter(performance.now(), true);
+      beginScroll(performance.now(), true);
     }
 
     function applyRuntimeSettings(nextSettings) {
@@ -1779,29 +1559,32 @@
     function render(now) {
       const elapsed = now - started;
       context.clearRect(0, 0, width, height);
-      if (!scatterStarted) {
-        drawAssembly(elapsed);
-        if (elapsed >= assembleDuration + holdDuration) {
-          beginScatter(now, false);
-        }
+      drawAssembly(elapsed);
+      if (
+        !scrollStarted &&
+        elapsed >= assembleDuration + holdDuration
+      ) {
+        beginScroll(now, false);
       }
-      if (scatterStarted) {
-        drawScatter(now);
-        const scatterProgress = clamp(
-          (now - scatterStarted) / scatterDuration
+      if (scrollStarted) {
+        stage.dataset.entryPhase = "scrolling";
+        const scrollProgress = clamp(
+          (now - scrollStarted) / scrollDuration
         );
-        const scatterStartProgress =
+        const target = stage.offsetTop + stage.offsetHeight;
+        window.scrollTo(
+          0,
+          scrollFrom +
+            (target - scrollFrom) * easeInOutCubic(scrollProgress)
+        );
+        const scrollStartProgress =
           (assembleDuration + holdDuration) /
           runtimeSettings.home_intro_duration_ms;
         progress.style.transform =
-          `scaleX(${scatterStartProgress + scatterProgress * (
-            1 - scatterStartProgress
+          `scaleX(${scrollStartProgress + scrollProgress * (
+            1 - scrollStartProgress
           )})`;
-        if (!scatterReleased && scatterProgress >= 0.6) {
-          scatterReleased = true;
-          signalHomeIntroReady("complete");
-        }
-        if (scatterProgress >= 1) {
+        if (scrollProgress >= 1) {
           finish();
           return;
         }
