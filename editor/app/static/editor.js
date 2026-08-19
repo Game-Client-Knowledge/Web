@@ -1,3 +1,6 @@
+const IDENTITY_CACHE_KEY = "gck-editor-identity:v1";
+const IDENTITY_CACHE_TTL = 5 * 60 * 1000;
+
 const state = {
   config: null,
   session: null,
@@ -15,10 +18,54 @@ const state = {
   localSaveFrame: 0,
   remoteContent: new Map(),
   onboardingStep: 0,
-  onboardingSaving: false
+  onboardingSaving: false,
+  cachedSessionApplied: false
 };
 
 const byId = (id) => document.getElementById(id);
+
+function readIdentityCache() {
+  try {
+    const cached = JSON.parse(
+      window.localStorage.getItem(IDENTITY_CACHE_KEY) || "null"
+    );
+    if (
+      !cached ||
+      Date.now() - Number(cached.cachedAt || 0) > IDENTITY_CACHE_TTL
+    ) {
+      return null;
+    }
+    return cached.payload || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeIdentityCache(config, session, drafts = []) {
+  try {
+    window.localStorage.setItem(
+      IDENTITY_CACHE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        payload: {
+          config: config || null,
+          session: session || { authenticated: false },
+          draft_count: drafts.length
+        }
+      })
+    );
+  } catch {
+    // The server bootstrap remains authoritative without local storage.
+  }
+}
+
+function clearIdentityCache() {
+  try {
+    window.localStorage.removeItem(IDENTITY_CACHE_KEY);
+  } catch {
+    // Nothing to clear when local storage is unavailable.
+  }
+}
 
 async function api(path, options = {}) {
   const headers = new Headers(options.headers || {});
@@ -172,10 +219,29 @@ function setAuthTab(name) {
 }
 
 function showView(name) {
+  byId("bootView").hidden = true;
   byId("authView").hidden = name !== "auth";
   byId("passwordView").hidden = name !== "password";
   byId("workspaceView").hidden = name !== "workspace";
   byId("logoutButton").hidden = name === "auth";
+}
+
+function applyCachedSession() {
+  const cached = readIdentityCache();
+  const session = cached?.session;
+  if (!session?.authenticated) return false;
+  state.config = cached.config || {};
+  state.session = session;
+  state.csrf = session.csrf_token || "";
+  state.cachedSessionApplied = true;
+  if (session.user?.must_change_password) {
+    showView("password");
+    return true;
+  }
+  showView("workspace");
+  renderWorkspaceIdentity();
+  applyWorkspaceState(readLocalWorkspace());
+  return true;
 }
 
 function applyConfig() {
@@ -275,11 +341,14 @@ async function loadSession() {
   applyConfig();
   const session = bootstrap.session;
   state.session = session;
+  writeIdentityCache(state.config, session, bootstrap.drafts || []);
   if (!session.authenticated) {
+    state.cachedSessionApplied = false;
     showView("auth");
     if (githubAuthError) feedback(byId("authFeedback"), githubAuthError);
     return;
   }
+  state.cachedSessionApplied = false;
   state.csrf = session.csrf_token;
   state.legacyDrafts = bootstrap.drafts || [];
   if (session.user.must_change_password) {
@@ -292,7 +361,7 @@ async function loadSession() {
   if (githubAuthError) feedback(byId("editorFeedback"), githubAuthError);
 }
 
-async function initializeWorkspace() {
+function renderWorkspaceIdentity() {
   const { user, can_edit: canEdit, edit_policy: policy } = state.session;
   byId("accountSummary").textContent =
     `${user.username} · ${user.email}` +
@@ -327,6 +396,10 @@ async function initializeWorkspace() {
     .forEach((element) => {
       element.disabled = !canEdit;
     });
+}
+
+async function initializeWorkspace() {
+  renderWorkspaceIdentity();
   applyWorkspaceState(readLocalWorkspace());
   await Promise.all([
     syncRemoteWorkspace({ quiet: Boolean(state.baseTree) }),
@@ -1729,6 +1802,7 @@ async function logout() {
   try {
     await api("/auth/logout", { method: "POST" });
   } finally {
+    clearIdentityCache();
     location.href = "./";
   }
 }
@@ -1783,6 +1857,7 @@ byId("loginForm").addEventListener("submit", async (event) => {
     });
     state.session = { authenticated: true, ...payload };
     state.csrf = payload.csrf_token;
+    writeIdentityCache(state.config, state.session);
     if (payload.user.must_change_password) {
       showView("password");
     } else {
@@ -1805,6 +1880,7 @@ byId("registerForm").addEventListener("submit", async (event) => {
     });
     state.session = { authenticated: true, ...payload };
     state.csrf = payload.csrf_token;
+    writeIdentityCache(state.config, state.session);
     showView("workspace");
     await initializeWorkspace();
     openOnboardingIfNeeded();
@@ -2235,7 +2311,16 @@ byId("adminApplicationForm").addEventListener("submit", async (event) => {
   }
 });
 
+applyCachedSession();
 loadSession().catch((error) => {
+  if (state.cachedSessionApplied) {
+    feedback(
+      byId("editorFeedback"),
+      "登录状态刷新失败，当前显示上次缓存的工作区。",
+      "warning"
+    );
+    return;
+  }
   showView("auth");
   feedback(byId("authFeedback"), error.message);
 });

@@ -167,6 +167,34 @@ button {
   text-transform: uppercase;
 }
 
+.workspace-boot {
+  display: grid;
+  min-height: calc(100vh - var(--header-height));
+  color: var(--ink-soft);
+  place-items: center;
+}
+
+.workspace-boot > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.workspace-boot-mark {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--teal);
+  border-radius: 50%;
+  animation: workspace-boot-spin 700ms linear infinite;
+}
+
+@keyframes workspace-boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 h1,
 h2,
 h3,

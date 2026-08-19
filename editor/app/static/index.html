@@ -33,7 +33,14 @@
   </header>
 
   <main>
-    <section id="authView" class="auth-shell">
+    <section id="bootView" class="workspace-boot" aria-live="polite">
+      <div>
+        <span class="workspace-boot-mark" aria-hidden="true"></span>
+        <strong>正在恢复内容工作区</strong>
+      </div>
+    </section>
+
+    <section id="authView" class="auth-shell" hidden>
       <div class="auth-context">
         <p class="eyebrow">Authenticated workspace</p>
         <h1>登录后编辑知识库</h1>

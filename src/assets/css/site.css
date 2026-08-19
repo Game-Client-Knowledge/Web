@@ -52,6 +52,11 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.page-home {
+  color: #edf7f3;
+  background: #07110f;
+}
+
 body.has-sidebar-open {
   overflow: hidden;
 }

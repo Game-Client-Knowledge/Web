@@ -16,6 +16,19 @@ const javascript = fs.readFileSync(
   "utf8"
 );
 
+assert.match(html, /id="bootView" class="workspace-boot"/);
+assert.match(html, /id="authView" class="auth-shell" hidden/);
+assert.match(css, /\.workspace-boot\s*\{/);
+assert.match(javascript, /function readIdentityCache\(\)/);
+assert.match(javascript, /function applyCachedSession\(\)/);
+assert.match(
+  javascript,
+  /applyCachedSession\(\);\s*loadSession\(\)\.catch/
+);
+assert.match(
+  javascript,
+  /function showView\(name\) \{\s*byId\("bootView"\)\.hidden = true/
+);
 assert.match(html, /id="diffModeLabel"[^>]*>完整文件差异</);
 assert.match(html, /id="diffSnapshotSummary"/);
 assert.match(css, /\.diff-snapshot-summary\s*\{/);
