@@ -320,6 +320,14 @@ async function inspectPortal(
   assert.ok(expanded.counts.gold > 20, `${name}: reference color missing`);
   assert.ok(expanded.counts.coral > 20, `${name}: contribution color missing`);
   assert.deepEqual(errors, [], `${name}: browser errors`);
+  const expandedScrollY = await page.evaluate(() => scrollY);
+  await page.mouse.wheel(0, 640);
+  await page.waitForTimeout(60);
+  assert.equal(
+    await page.evaluate(() => scrollY),
+    expandedScrollY,
+    `${name}: expanded contribution space did not lock page scrolling`
+  );
 
   const selectedScreenshot = path.join(
     outputDirectory,
@@ -420,6 +428,80 @@ async function inspectRelationFlow(browser) {
   return screenshot;
 }
 
+async function inspectScrolledPortalOpening(browser, name, viewport) {
+  const { context, page, errors } = await openPage(browser, {
+    viewport,
+    reducedMotion: "no-preference",
+    settings: {
+      home_star_scope: "hero",
+      home_star_experience_mode: "contribution_portal",
+      home_star_portal_collapsed_structure: "3d-galaxy",
+      home_star_portal_expanded_structure: "3d-spiral"
+    }
+  });
+  await page.locator(".catalog-overview").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(100);
+  const metrics = await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => true
+    });
+    const debug = window.__GCK_STAR3D_DEBUG;
+    const before = {
+      scrollY,
+      scrollHeight: document.documentElement.scrollHeight,
+      bodyHeight: document.body.getBoundingClientRect().height
+    };
+    debug.openContributionSpace("scrolled-visual-test");
+    debug.portalState.startedAt = performance.now() - 26;
+    debug.draw(performance.now());
+    const catalog = document
+      .querySelector(".catalog-overview")
+      .getBoundingClientRect();
+    return {
+      before,
+      phase: debug.portalState.phase,
+      progress: debug.portalState.progress,
+      scrollY,
+      scrollHeight: document.documentElement.scrollHeight,
+      bodyHeight: document.body.getBoundingClientRect().height,
+      portalClip: document.querySelector(
+        ".contribution-space-backdrop"
+      ).style.clipPath,
+      catalogBackground: getComputedStyle(
+        document.querySelector(".catalog-overview")
+      ).backgroundColor,
+      pageBackground: getComputedStyle(document.body).backgroundColor,
+      catalogTop: catalog.top
+    };
+  });
+  assert.equal(metrics.phase, "opening");
+  assert.ok(metrics.progress > 0 && metrics.progress < 0.1);
+  assert.ok(Math.abs(metrics.scrollY - metrics.before.scrollY) <= 1);
+  assert.equal(metrics.scrollHeight, metrics.before.scrollHeight);
+  assert.ok(
+    metrics.bodyHeight >= metrics.scrollY + viewport.height - 1,
+    `${name}: opening truncated the page under the fixed overlay`
+  );
+  assert.ok(
+    metrics.bodyHeight >= metrics.before.bodyHeight - 1,
+    `${name}: opening reduced the body height`
+  );
+  assert.equal(metrics.catalogBackground, "rgb(255, 255, 255)");
+  assert.equal(metrics.pageBackground, "rgb(255, 255, 255)");
+  assert.equal(metrics.portalClip, "inset(100%)");
+  assert.deepEqual(errors, [], `${name}: browser errors`);
+  const screenshot = path.join(outputDirectory, `${name}.png`);
+  await page.screenshot({ path: screenshot, fullPage: false });
+  await context.close();
+  console.log(
+    `${name}: progress=${metrics.progress.toFixed(3)}, ` +
+      `bodyHeight=${metrics.bodyHeight.toFixed(1)}, ` +
+      `scrollY=${metrics.scrollY.toFixed(1)}`
+  );
+  return screenshot;
+}
+
 (async () => {
   const browser = await chromium.launch({
     executablePath,
@@ -468,6 +550,20 @@ async function inspectRelationFlow(browser) {
       )
     );
     screenshots.push(await inspectRelationFlow(browser));
+    screenshots.push(
+      await inspectScrolledPortalOpening(
+        browser,
+        "portal-scrolled-opening-desktop",
+        { width: 1440, height: 1000 }
+      )
+    );
+    screenshots.push(
+      await inspectScrolledPortalOpening(
+        browser,
+        "portal-scrolled-opening-mobile",
+        { width: 390, height: 844 }
+      )
+    );
   } finally {
     await browser.close();
   }

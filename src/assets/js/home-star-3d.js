@@ -1623,16 +1623,45 @@
         };
       }
       const eased = easePortal(progress);
-      const left = Math.max(0, rectangle.left * (1 - eased));
-      const top = Math.max(0, rectangle.top * (1 - eased));
-      const right = Math.min(
-        width,
-        rectangle.right + (width - rectangle.right) * eased
+      const left = Math.max(
+        0,
+        Math.min(
+          width,
+          rectangle.left * (1 - eased)
+        )
       );
-      const bottom = Math.min(
-        height,
-        rectangle.bottom + (height - rectangle.bottom) * eased
+      const top = Math.max(
+        0,
+        Math.min(
+          height,
+          rectangle.top * (1 - eased)
+        )
       );
+      const right = Math.max(
+        0,
+        Math.min(
+          width,
+          rectangle.right +
+            (width - rectangle.right) * eased
+        )
+      );
+      const bottom = Math.max(
+        0,
+        Math.min(
+          height,
+          rectangle.bottom +
+            (height - rectangle.bottom) * eased
+        )
+      );
+      if (
+        right - left < 0.5 ||
+        bottom - top < 0.5
+      ) {
+        return {
+          clip: "inset(100%)",
+          expansion: null
+        };
+      }
       const heroTop = Math.max(
         0,
         Math.min(height, heroRectangle.top)
