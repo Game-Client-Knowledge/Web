@@ -134,6 +134,25 @@ def _contributor_display_name(
     return local or "未命名贡献者"
 
 
+def _git_contributor_id(name: str, email: str) -> str:
+    normalized_email = email.strip().lower()
+    github_login = _github_login(normalized_email)
+    normalized_name = " ".join(name.strip().lower().split())
+    identity = (
+        f"github:{github_login.lower()}"
+        if github_login
+        else f"email:{normalized_email}"
+        if normalized_email
+        else f"name:{normalized_name}"
+    )
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12]
+
+
+def _github_contributor_id(login: str) -> str:
+    identity = f"github:{login.strip().lower()}"
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12]
+
+
 def _matching_user(
     connection: sqlite3.Connection,
     email: str,
@@ -307,6 +326,28 @@ def contribution_graph_payload(db: Database) -> dict[str, Any]:
             ORDER BY path, contributor_name COLLATE NOCASE
             """
         ).fetchall()
+        alias_rows = connection.execute(
+            """
+            SELECT identity_id, contributor_id
+            FROM contributor_identity_aliases
+            ORDER BY contributor_id, identity_id
+            """
+        ).fetchall()
+        user_rows = connection.execute(
+            """
+            SELECT id, email, github_email, github_login
+            FROM users
+            WHERE status = 'active'
+            """
+        ).fetchall()
+        line_alias_rows = connection.execute(
+            """
+            SELECT DISTINCT user_id, author_name, author_email,
+                            github_login
+            FROM line_authors
+            WHERE user_id IS NOT NULL
+            """
+        ).fetchall()
         canonical_names = _canonical_contributor_names(connection)
     graph_settings = {row["key"]: row["value"] for row in settings_rows}
     try:
@@ -315,9 +356,48 @@ def contribution_graph_payload(db: Database) -> dict[str, Any]:
         )
     except (TypeError, ValueError):
         graph_version = 1
+    contributor_ids = {row["contributor_id"] for row in rows}
+    identity_alias_sets: dict[str, set[str]] = {}
+    for row in alias_rows:
+        contributor_id = row["contributor_id"]
+        identity_id = row["identity_id"]
+        identity_alias_sets.setdefault(contributor_id, set()).add(identity_id)
+    for row in user_rows:
+        contributor_id = f"user:{row['id']}"
+        for email in (row["email"], row["github_email"]):
+            if email:
+                identity_alias_sets.setdefault(
+                    contributor_id,
+                    set(),
+                ).add(_git_contributor_id("", email))
+        if row["github_login"]:
+            identity_alias_sets.setdefault(contributor_id, set()).add(
+                _github_contributor_id(row["github_login"])
+            )
+    for row in line_alias_rows:
+        contributor_id = f"user:{row['user_id']}"
+        email = str(row["author_email"] or "")
+        if email:
+            identity_alias_sets.setdefault(contributor_id, set()).add(
+                _git_contributor_id(row["author_name"], email)
+            )
+        if row["github_login"]:
+            identity_alias_sets.setdefault(contributor_id, set()).add(
+                _github_contributor_id(row["github_login"])
+            )
+    identity_aliases = {
+        contributor_id: sorted(
+            identity_id
+            for identity_id in identity_ids
+            if identity_id != contributor_id
+        )
+        for contributor_id, identity_ids in identity_alias_sets.items()
+        if contributor_id in contributor_ids
+    }
     return {
         "version": graph_version,
         "revision": graph_settings.get("contribution_graph_revision", ""),
+        "identity_aliases": identity_aliases,
         "links": [
             {
                 **dict(row),
@@ -465,8 +545,23 @@ def create_comments_router(
                     email = contributor.email.strip().lower()
                     login = _github_login(email)
                     user = _matching_user(connection, email, login)
+                    identity_id = _git_contributor_id(
+                        contributor.name,
+                        email,
+                    )
                     canonical_id = (
-                        f"user:{user['id']}" if user else contributor.id
+                        f"user:{user['id']}" if user else identity_id
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO contributor_identity_aliases(
+                            identity_id, contributor_id
+                        )
+                        VALUES(?, ?)
+                        ON CONFLICT(identity_id) DO UPDATE SET
+                            contributor_id = excluded.contributor_id
+                        """,
+                        (identity_id, canonical_id),
                     )
                     canonical_name = (
                         user["username"]

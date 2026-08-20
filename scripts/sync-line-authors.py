@@ -54,7 +54,7 @@ def contributor_id(name: str, email: str) -> str:
     normalized_name = normalized_identity(name)
     normalized_email = normalized_identity(email)
     github_match = re.fullmatch(
-        r"\d+\+([^@]+)@users\.noreply\.github\.com",
+        r"(?:\d+\+)?([^@]+)@users\.noreply\.github\.com",
         normalized_email,
     )
     identity = (

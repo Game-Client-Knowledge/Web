@@ -89,7 +89,7 @@
     reference: "238, 190, 111",
     contribution: "239, 142, 120"
   };
-  const cachePrefix = "gck-contribution-graph:v1:";
+  const cachePrefix = "gck-contribution-graph:v2:";
   let settings = { ...defaults };
   let cleanup = function () {};
   let ready = false;
@@ -461,7 +461,15 @@
 
   function graphWithCachedContributions(source, cached) {
     if (!cached || !Array.isArray(cached.links)) return source;
-    const sourceContributorMetrics = new Map(
+    const sourceContributorMetricsById = new Map(
+      source.stars
+        .filter((star) => star.kind === "contributor")
+        .map((star) => [
+          String(star.contributorId || ""),
+          { ...(star.metrics || {}) }
+        ])
+    );
+    const sourceContributorMetricsByName = new Map(
       source.stars
         .filter((star) => star.kind === "contributor")
         .map((star) => [
@@ -469,6 +477,37 @@
           { ...(star.metrics || {}) }
         ])
     );
+    function sourceMetricsFor(contributorId, name) {
+      const identityIds = new Set([
+        contributorId,
+        ...(
+          cached.identity_aliases?.[contributorId] || []
+        )
+      ]);
+      const matched = Array.from(identityIds)
+        .map((identityId) => {
+          return sourceContributorMetricsById.get(String(identityId));
+        })
+        .filter(Boolean);
+      if (!matched.length) {
+        return sourceContributorMetricsByName.get(normalizeName(name));
+      }
+      return matched.reduce((combined, metrics) => {
+        for (const [key, value] of Object.entries(metrics)) {
+          if (key === "lastActiveAt") {
+            combined[key] =
+              String(value || "") > String(combined[key] || "")
+                ? value
+                : combined[key] || "";
+          } else if (typeof value === "number") {
+            combined[key] = Number(combined[key] || 0) + value;
+          } else if (!(key in combined)) {
+            combined[key] = value;
+          }
+        }
+        return combined;
+      }, {});
+    }
     const result = {
       ...source,
       stars: source.stars
@@ -513,9 +552,7 @@
       );
       let contributorStar = contributors.get(contributorId);
       if (!contributorStar) {
-        const staticMetrics = sourceContributorMetrics.get(
-          normalizeName(name)
-        );
+        const staticMetrics = sourceMetricsFor(contributorId, name);
         const sourceMetrics = staticMetrics || {};
         contributorStar = {
           id: `contributor:server:${contributorId}`,
@@ -528,18 +565,18 @@
             contributionCount: Number(
               sourceMetrics.contributionCount || 0
             ),
-            commitCount: 0,
-            lastActiveAt: ""
+            commitCount: Number(sourceMetrics.commitCount || 0),
+            lastActiveAt: String(sourceMetrics.lastActiveAt || "")
           },
-          hasStaticContributionCount: Boolean(staticMetrics)
+          hasStaticMetrics: Boolean(staticMetrics)
         };
         result.stars.push(contributorStar);
         contributors.set(contributorId, contributorStar);
       }
-      contributorStar.metrics.commitCount += Number(
-        link.commit_count || 0
-      );
-      if (!contributorStar.hasStaticContributionCount) {
+      if (!contributorStar.hasStaticMetrics) {
+        contributorStar.metrics.commitCount += Number(
+          link.commit_count || 0
+        );
         contributorStar.metrics.contributionCount += Number(
           link.commit_count || 0
         );
@@ -585,7 +622,7 @@
     }
     result.edges.push(...contributionEdges.values());
     result.stars.forEach((star) => {
-      delete star.hasStaticContributionCount;
+      delete star.hasStaticMetrics;
     });
     for (const documentStar of documents.values()) {
       documentStar.metrics.contributorCount =

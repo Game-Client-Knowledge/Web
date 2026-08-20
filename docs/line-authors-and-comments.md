@@ -61,8 +61,13 @@ ranges, and commit SHAs.
 
 ## Display Identity
 
-Line labels describe Git history, not comment-account identity. The display
-value is selected in this order:
+Line labels describe Git history, while the contribution graph may show the
+matching website username. Both use the same stable Git identity derived from
+normalized author email or GitHub noreply login; author name is only a fallback
+when no email exists. This means changing `author.name` with the same email does
+not split contribution totals, and unregistered Git authors remain visible.
+
+For an unmatched line author, the display value is selected in this order:
 
 1. GitHub login parsed from a GitHub noreply author email.
 2. The commit's exact Git `author.name`.

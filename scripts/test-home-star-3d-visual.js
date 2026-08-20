@@ -171,6 +171,126 @@ async function inspectStructure(browser, structure) {
   return screenshot;
 }
 
+async function inspectContributorIdentityMerge(browser) {
+  const { context, page, errors } = await openPage(browser, {
+    viewport: { width: 1440, height: 1000 },
+    settings: {
+      home_star_render_mode: "3d",
+      home_star_experience_mode: "immersive",
+      home_star_relation_visibility: "hidden"
+    }
+  });
+  const metrics = await page.evaluate(() => {
+    const contributorIdsWithEdges = new Set(
+      window.GCK_HOME_STAR_GRAPH.edges
+        .filter((edge) => edge.type === "contribution")
+        .map((edge) => edge.source)
+    );
+    const staticContributors = window.GCK_HOME_STAR_GRAPH.stars
+      .filter((star) => {
+        return (
+          star.kind === "contributor" &&
+          contributorIdsWithEdges.has(star.id)
+        );
+      })
+      .sort((left, right) => {
+        return (
+          Number(right.metrics?.contributionCount || 0) -
+          Number(left.metrics?.contributionCount || 0)
+        );
+      })
+      .slice(0, 2);
+    const staticStars = new Map(
+      window.GCK_HOME_STAR_GRAPH.stars.map((star) => [star.id, star])
+    );
+    const registeredId = "user:visual-fixture";
+    const links = staticContributors.map((contributor, index) => {
+      const edge = window.GCK_HOME_STAR_GRAPH.edges.find((item) => {
+        return (
+          item.type === "contribution" &&
+          item.source === contributor.id
+        );
+      });
+      const documentStar = staticStars.get(edge.target);
+      return {
+        path:
+          documentStar.sourcePaths?.[0] ||
+          documentStar.sourcePath,
+        contributor_id:
+          index === 0 ? registeredId : contributor.contributorId,
+        contributor_name:
+          index === 0 ? "Registered Alias" : "External Alias",
+        commit_count: 1,
+        last_contributed_at: "2026-08-20T00:00:00Z"
+      };
+    });
+    window.dispatchEvent(
+      new CustomEvent("gck:visual-settings", {
+        detail: {
+          contribution_graph: {
+            version: 2,
+            revision: window.GCK_CONFIG.contentVersion,
+            identity_aliases: {
+              [registeredId]: [staticContributors[0].contributorId]
+            },
+            links
+          }
+        }
+      })
+    );
+    const runtimeContributors = window.__GCK_STAR3D_DEBUG.stars.filter(
+      (star) => star.kind === "contributor"
+    );
+    return {
+      source: staticContributors.map((star) => ({
+        id:
+          star === staticContributors[0]
+            ? registeredId
+            : star.contributorId,
+        metrics: star.metrics
+      })),
+      runtime: runtimeContributors.map((star) => ({
+        id: star.contributorId,
+        name: star.name,
+        metrics: star.metrics
+      }))
+    };
+  });
+  assert.equal(metrics.runtime.length, 2);
+  for (let index = 0; index < 2; index += 1) {
+    const source = metrics.source[index];
+    const runtime = metrics.runtime.find((item) => item.id === source.id);
+    assert.ok(runtime, `contributor identity ${source.id} was lost`);
+    assert.equal(
+      runtime.metrics.contributionCount,
+      source.metrics.contributionCount
+    );
+    assert.equal(
+      runtime.metrics.activity7Count,
+      source.metrics.activity7Count
+    );
+    assert.equal(
+      runtime.metrics.activity30Count,
+      source.metrics.activity30Count
+    );
+    assert.equal(
+      runtime.metrics.commitCount,
+      source.metrics.commitCount
+    );
+  }
+  assert.ok(
+    metrics.runtime.some((item) => item.name === "Registered Alias")
+  );
+  assert.ok(
+    metrics.runtime.some((item) => item.name === "External Alias")
+  );
+  assert.deepEqual(errors, [], "contributor identity merge: browser errors");
+  await context.close();
+  console.log(
+    "contributor-identity: registered alias and external Git author preserved"
+  );
+}
+
 async function inspectPortal(
   browser,
   name,
@@ -518,6 +638,7 @@ async function inspectScrolledPortalOpening(browser, name, viewport) {
     ]) {
       screenshots.push(await inspectStructure(browser, structure));
     }
+    await inspectContributorIdentityMerge(browser);
     screenshots.push(
       ...await inspectPortal(
         browser,

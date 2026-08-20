@@ -4,6 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const {
+  buildContributorIdentities,
   getContentStatistics,
   lineStatsFromNumstat,
   trackForHistoryPath
@@ -14,6 +15,31 @@ const cachePath = path.join(root, "cache", "statistics.json");
 const previousGitDirectory = process.env.CONTENT_GIT_DIR;
 const previousGitRevision = process.env.CONTENT_GIT_REVISION;
 const previousCommit = process.env.CONTENT_COMMIT;
+
+const aliasIdentities = buildContributorIdentities([
+  {
+    authorName: "Original Name",
+    authorEmail: "shared@example.com",
+    timestamp: "2026-08-10T00:00:00Z"
+  },
+  {
+    authorName: "Renamed Author",
+    authorEmail: "shared@example.com",
+    timestamp: "2026-08-11T00:00:00Z"
+  },
+  {
+    authorName: "Renamed Author",
+    authorEmail: "other@example.com",
+    timestamp: "2026-08-12T00:00:00Z"
+  }
+]);
+assert.equal(aliasIdentities[0].contributorId, aliasIdentities[1].contributorId);
+assert.equal(aliasIdentities[1].contributorName, "Renamed Author");
+assert.notEqual(
+  aliasIdentities[1].contributorId,
+  aliasIdentities[2].contributorId,
+  "equal display names with different emails must stay independent"
+);
 
 function git(args, environment = {}) {
   return execFileSync("git", args, {
@@ -79,8 +105,8 @@ try {
   write("planning/cases/case.md", "# Case\n\nplan\n");
   commit(
     "docs: add planning case",
-    "Alice",
-    "123+alice@users.noreply.github.com",
+    "Alice Renamed",
+    "alice@example.com",
     "2026-08-14T10:00:00+08:00"
   );
 
@@ -105,12 +131,25 @@ try {
     overall.lineCount === program.lineCount + planning.lineCount,
     "overall line count must equal both tracks"
   );
-  const alice = overall.contributors.find((item) => item.name === "Alice");
-  assert(alice, "normal and GitHub noreply identities must be merged");
+  const alice = overall.contributors.find(
+    (item) => item.name === "Alice Renamed"
+  );
+  assert(alice, "the latest name for one email must be used");
   assert(alice.added > 0);
   assert.equal(alice.activity7Count, 2);
   assert.equal(alice.activity30Count, 2);
   assert(alice.modification7Count > 0);
+  const renamedIdentities = getContentStatistics(root, {
+    cachePath,
+    referenceDate: "2026-08-19T10:00:00+08:00"
+  }).scopes.find((scope) => scope.key === "all").contributors;
+  assert.equal(
+    renamedIdentities.filter((item) => {
+      return item.name === "Alice" || item.name === "Alice Renamed";
+    }).length,
+    1,
+    "different names with one email must remain one contributor"
+  );
   const bob = program.contributors.find((item) => item.name === "Bob");
   assert.equal(bob.modified, 1);
   assert.equal(bob.activity7Count, 1);
@@ -129,7 +168,7 @@ try {
     statistics.documentContributions.some(
       (item) =>
         item.path === "program/knowledge/topic.md" &&
-        item.contributorName === "Alice" &&
+        item.contributorName === "Alice Renamed" &&
         item.commitCount === 1
     ),
     "document contribution links must share normalized identities"

@@ -191,6 +191,11 @@ CREATE TABLE IF NOT EXISTS document_contributors (
     PRIMARY KEY(path, contributor_id)
 );
 
+CREATE TABLE IF NOT EXISTS contributor_identity_aliases (
+    identity_id TEXT PRIMARY KEY,
+    contributor_id TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS comments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     path TEXT NOT NULL,
@@ -284,6 +289,8 @@ CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_line_authors_user ON line_authors(user_id);
 CREATE INDEX IF NOT EXISTS idx_document_contributors_id
 ON document_contributors(contributor_id, path);
+CREATE INDEX IF NOT EXISTS idx_contributor_aliases_id
+ON contributor_identity_aliases(contributor_id, identity_id);
 CREATE INDEX IF NOT EXISTS idx_comments_path
 ON comments(path, start_line, created_at);
 CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id, created_at);

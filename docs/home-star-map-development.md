@@ -201,13 +201,25 @@ below `code`.
 
 Contributor IDs must remain stable across Git aliases:
 
-1. a matching website account uses `user:<database-id>`;
-2. a GitHub noreply identity uses its normalized GitHub login;
-3. another identity uses normalized email;
-4. name is only a final fallback.
+1. a GitHub noreply identity uses its normalized GitHub login;
+2. another identity uses normalized author email;
+3. name is only a final fallback when Git has no author email.
 
-One canonical ID has one display name. Website usernames win. Otherwise, the
-most recent valid Git name in the target revision wins.
+The stable ID never includes the display name. Commits with the same email and
+different author names therefore remain one contributor, while equal names
+with different emails remain independent. This also keeps contributors who do
+not have website accounts.
+
+One Git identity has one current display name. A website username wins when
+the Git email or noreply login matches an active account. Otherwise, the most
+recent valid Git name in the target revision wins.
+
+The editor contribution graph may aggregate several verified Git identity IDs
+under one `user:<database-id>` node. It publishes only the hashed identity IDs
+in `identity_aliases`; author emails remain server-side. The browser uses those
+aliases to sum embedded Git metrics before evaluating brightness. Unmatched
+identity IDs remain independent contributor nodes, so website registration is
+not required for contribution accounting.
 
 The browser accepts the editor graph only when:
 

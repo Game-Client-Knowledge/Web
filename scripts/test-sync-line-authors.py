@@ -142,5 +142,9 @@ assert (
         "456+example@users.noreply.github.com",
     )
 )
+assert (
+    MODULE.contributor_id("Shared Name", "first@example.com")
+    != MODULE.contributor_id("Shared Name", "second@example.com")
+)
 
 print("Line attribution path checks passed")

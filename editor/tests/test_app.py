@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from dataclasses import replace
@@ -591,9 +592,26 @@ def test_line_attribution_and_comment_threads(client: TestClient) -> None:
         },
     )
     assert sync.status_code == 200, sync.text
+    author_identity = hashlib.sha256(
+        b"email:author@example.test"
+    ).hexdigest()[:12]
+    with client.app.state.db.connect() as connection:
+        alias = connection.execute(
+            """
+            SELECT contributor_id
+            FROM contributor_identity_aliases
+            WHERE identity_id = ?
+            """,
+            (author_identity,),
+        ).fetchone()
+        assert alias["contributor_id"] == f"user:{author['user']['id']}"
+        connection.execute("DELETE FROM contributor_identity_aliases")
     graph = client.get("/api/config").json()["contribution_graph"]
     assert graph["version"] == 2
     assert graph["revision"] == "a" * 40
+    external_identity = hashlib.sha256(
+        b"email:external@example.test"
+    ).hexdigest()[:12]
     assert graph["links"] == [
         {
             "path": "knowledge/cpp/example.md",
@@ -604,19 +622,22 @@ def test_line_attribution_and_comment_threads(client: TestClient) -> None:
         },
         {
             "path": "planning/README.md",
-            "contributor_id": "external-author",
+            "contributor_id": external_identity,
             "contributor_name": "Preferred External",
             "commit_count": 2,
             "last_contributed_at": "2026-08-19T00:00:00Z",
         },
         {
             "path": "program/README.md",
-            "contributor_id": "external-author",
+            "contributor_id": external_identity,
             "contributor_name": "Preferred External",
             "commit_count": 1,
             "last_contributed_at": "2026-08-17T00:00:00Z",
         },
     ]
+    assert graph["identity_aliases"] == {
+        f"user:{author['user']['id']}": [author_identity]
+    }
 
     created = client.post(
         "/api/comments",

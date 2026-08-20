@@ -454,6 +454,7 @@ expected_source="$(mktemp)"
 printf 'web=%s\ncontent=%s\n' "$web_commit" "$content_commit" >"$expected_source"
 
 editor_is_current=1
+editor_release_published=0
 if [[ "$update_mode" != "content" ]]; then
   editor_is_current=0
   if [[
@@ -572,7 +573,7 @@ CONTENT_COMMIT="$content_commit" \
 CONTENT_UPDATED_AT="$content_updated_at" \
 CONTENT_GIT_DIR="$CONTENT_GIT_MIRROR" \
 CONTENT_GIT_REVISION="$mirror_revision" \
-CONTENT_STATS_CACHE_PATH="${BUILDER_ROOT}/content-statistics-v3.json" \
+CONTENT_STATS_CACHE_PATH="${BUILDER_ROOT}/content-statistics-v4.json" \
 PLAYWRIGHT_BROWSERS_PATH="$BROWSER_ROOT" \
 WEB_COMMIT="$web_commit" \
   npm run check
@@ -710,6 +711,7 @@ if [[ "$update_mode" != "content" && "$editor_is_current" != "1" ]]; then
     fi
     fail_update "Editor failed to restart from ${editor_release_dir}."
   fi
+  editor_release_published=1
 
   find "${EDITOR_RELEASE_ROOT}/releases" \
     -mindepth 1 \
@@ -722,7 +724,10 @@ if [[ "$update_mode" != "content" && "$editor_is_current" != "1" ]]; then
     xargs -r rm -rf
 fi
 
-if [[ "$contribution_graph_initialized" != "1" ]]; then
+if [[
+  "$contribution_graph_initialized" != "1"
+  || "$editor_release_published" == "1"
+]]; then
   update_stage="backfill-contribution-graph"
   python3 scripts/sync-line-authors.py \
     --repo "$CONTENT_GIT_MIRROR" \
