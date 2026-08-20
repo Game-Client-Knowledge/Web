@@ -439,6 +439,8 @@ The 3D renderer keeps all visual enrichment client-generated:
 - optional random color produces deterministic per-star warm/cool temperature
   shifts without creating extra atlas textures;
 - drift modes use bounded low-frequency curves instead of box collisions;
+  their shared 2.4x frequency multiplier keeps a full curve calm at roughly
+  1.3 to 3.6 minutes without increasing its spatial range;
 - 240 non-interactive distant stars are generated from the content revision
   seed in one additional draw call;
 - bright graph stars are softly attenuated behind the hero copy, statistics,

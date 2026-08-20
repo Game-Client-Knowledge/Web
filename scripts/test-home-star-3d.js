@@ -54,6 +54,12 @@ assert.match(
 );
 assert.match(source, /const SECONDARY_SPIKE_FRACTION = 0\.06;/);
 assert.match(source, /const BACKGROUND_STAR_COUNT = 240;/);
+assert.match(source, /const DRIFT_SPEED_MULTIPLIER = 2\.4;/);
+assert.equal(
+  (source.match(/\* DRIFT_SPEED_MULTIPLIER;/g) || []).length,
+  3,
+  "all smooth drift axes must use the tuned speed multiplier"
+);
 assert.match(source, /const SPIKE_ART_SCALE = 2\.1;/);
 assert.match(source, /const CONTENT_EXPOSURE = 0\.28;/);
 assert.match(source, /initializeSmoothDrift/);

@@ -63,6 +63,7 @@
   const POINT_SIZE_SOFT_KNEE = 0.62;
   const SECONDARY_SPIKE_FRACTION = 0.06;
   const BACKGROUND_STAR_COUNT = 240;
+  const DRIFT_SPEED_MULTIPLIER = 2.4;
   const SPIKE_ART_SCALE = 2.1;
   const CONTENT_EXPOSURE = 0.28;
   const CONTRIBUTION_SPACE_DURATION = 1300;
@@ -185,9 +186,12 @@
     star.driftPhaseX = random() * Math.PI * 2;
     star.driftPhaseY = random() * Math.PI * 2;
     star.driftPhaseZ = random() * Math.PI * 2;
-    star.driftSpeedX = 0.000015 + random() * 0.00002;
-    star.driftSpeedY = 0.000012 + random() * 0.000016;
-    star.driftSpeedZ = 0.000014 + random() * 0.000019;
+    star.driftSpeedX =
+      (0.000015 + random() * 0.00002) * DRIFT_SPEED_MULTIPLIER;
+    star.driftSpeedY =
+      (0.000012 + random() * 0.000016) * DRIFT_SPEED_MULTIPLIER;
+    star.driftSpeedZ =
+      (0.000014 + random() * 0.000019) * DRIFT_SPEED_MULTIPLIER;
     moveSmoothDrift(star, 0);
   }
 
