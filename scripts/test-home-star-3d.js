@@ -158,6 +158,8 @@ assert.match(visualSource, /home_star_portal_expanded_structure/);
 assert.match(indexSource, /data-contribution-space-portal/);
 assert.match(indexSource, /data-contribution-space-return/);
 assert.match(indexSource, /data-contribution-space-structure/);
+assert.match(indexSource, /data-lucide="orbit"/);
+assert.match(indexSource, /data-lucide="chevron-down"/);
 for (const structure of [
   "3d",
   "3d-drift",
@@ -176,6 +178,10 @@ for (const structure of [
 }
 assert.match(cssSource, /\.contribution-space-portal/);
 assert.match(cssSource, /\.contribution-space-structure-control/);
+assert.match(
+  cssSource,
+  /\.contribution-space-structure-select select option\s*\{[\s\S]*?color:\s*#12231e;[\s\S]*?background:\s*#f4fbf8;/
+);
 assert.match(cssSource, /\.contribution-space-interaction-lock/);
 assert.match(cssSource, /\.home-contribution-space-expanded/);
 assert.match(

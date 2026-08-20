@@ -1058,20 +1058,29 @@ body[data-editor-state="loading"] [data-account-label] {
   top: 20px;
   left: 20px;
   display: inline-flex;
-  min-height: 40px;
-  padding: 0 14px;
+  min-height: 44px;
+  padding: 0 15px;
   color: #edf7f3;
-  background: rgba(7, 17, 15, 0.82);
-  border: 1px solid rgba(156, 224, 205, 0.38);
-  border-radius: 4px;
+  background: rgba(6, 18, 15, 0.92);
+  border: 1px solid rgba(156, 224, 205, 0.34);
+  border-radius: 6px;
   align-items: center;
   gap: 8px;
-  backdrop-filter: blur(4px);
+  font-size: 13px;
+  font-weight: 650;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.24),
+    inset 0 1px rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(10px);
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease;
 }
 
 .home-contribution-space-expanded .contribution-space-return:hover {
   color: #ffffff;
-  background: rgba(18, 52, 43, 0.94);
+  background: rgba(13, 42, 34, 0.96);
   border-color: rgba(156, 224, 205, 0.68);
 }
 
@@ -1081,51 +1090,93 @@ body[data-editor-state="loading"] [data-account-label] {
   z-index: 10003;
   top: 20px;
   right: 20px;
-  display: grid;
-  min-width: 190px;
-  padding: 8px 10px;
-  color: #9ce0cd;
-  background: rgba(7, 17, 15, 0.82);
-  border: 1px solid rgba(156, 224, 205, 0.38);
-  border-radius: 4px;
-  gap: 4px;
-  backdrop-filter: blur(4px);
+  display: flex;
+  min-width: 246px;
+  min-height: 44px;
+  padding: 4px 5px 4px 12px;
+  color: #dff8f0;
+  background: rgba(6, 18, 15, 0.92);
+  border: 1px solid rgba(156, 224, 205, 0.34);
+  border-radius: 6px;
+  align-items: center;
+  gap: 8px;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.24),
+    inset 0 1px rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(10px);
 }
 
-.contribution-space-structure-control > span {
-  font-size: 10px;
-  font-weight: 760;
-  line-height: 1;
+.contribution-space-structure-control > svg,
+.contribution-space-structure-control > i {
+  width: 17px;
+  height: 17px;
+  color: #8edbc7;
+  flex: 0 0 auto;
 }
 
-.contribution-space-structure-control select {
+.contribution-space-structure-label {
+  color: #9db7b0;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.contribution-space-structure-select {
+  position: relative;
+  display: flex;
+  min-width: 128px;
+  margin-left: auto;
+  align-items: center;
+}
+
+.contribution-space-structure-select select {
   width: 100%;
-  min-height: 28px;
-  padding: 0 28px 0 0;
-  color: #ffffff;
-  background-color: transparent;
-  border: 0;
-  border-radius: 0;
+  min-height: 34px;
+  padding: 0 34px 0 12px;
+  color: #12231e;
+  color-scheme: light;
+  background: #e8f6f1;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  border-radius: 4px;
   outline: 0;
+  appearance: none;
   font: inherit;
   font-size: 13px;
+  font-weight: 680;
   cursor: pointer;
+}
+
+.contribution-space-structure-select select option {
+  color: #12231e;
+  background: #f4fbf8;
+}
+
+.contribution-space-structure-select > svg,
+.contribution-space-structure-select > i {
+  position: absolute;
+  right: 10px;
+  width: 15px;
+  height: 15px;
+  color: #285e50;
+  pointer-events: none;
 }
 
 .contribution-space-structure-control:focus-within {
   border-color: rgba(156, 224, 205, 0.78);
-  box-shadow: 0 0 0 2px rgba(132, 220, 196, 0.14);
+  box-shadow:
+    0 0 0 2px rgba(132, 220, 196, 0.18),
+    0 10px 30px rgba(0, 0, 0, 0.24);
 }
 
-.contribution-space-structure-control select:disabled {
+.contribution-space-structure-select select:disabled {
   cursor: wait;
-  opacity: 0.68;
+  opacity: 0.72;
 }
 
-.home-contribution-space-return svg,
-.home-contribution-space-return i {
-  width: 18px;
-  height: 18px;
+.contribution-space-return svg,
+.contribution-space-return i {
+  width: 17px;
+  height: 17px;
 }
 
 .page-home.home-star-experience-portal .home-content-toggle {
@@ -5784,16 +5835,21 @@ body.has-comments-open .reader-comments {
     .contribution-space-structure-control {
     top: 12px;
     right: 12px;
-    min-width: 150px;
-    padding: 7px 9px;
+    min-width: 188px;
+    padding-left: 10px;
+    gap: 7px;
   }
 
-  .contribution-space-structure-control > span {
+  .contribution-space-structure-label {
     position: absolute;
     width: 1px;
     height: 1px;
     clip: rect(0 0 0 0);
     overflow: hidden;
+  }
+
+  .contribution-space-structure-select {
+    min-width: 148px;
   }
 
   .brand {

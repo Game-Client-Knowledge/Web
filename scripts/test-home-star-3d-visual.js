@@ -580,6 +580,10 @@ async function inspectStructureTransition(
     const controlRectangle = select
       .closest("[data-contribution-space-structure-control]")
       .getBoundingClientRect();
+    const selectStyle = getComputedStyle(select);
+    const optionStyle = getComputedStyle(
+      select.options[select.selectedIndex]
+    );
     const finished = {
       active: debug.structureTransition.active,
       progress: debug.structureTransition.progress,
@@ -608,6 +612,11 @@ async function inspectStructureTransition(
         controlRectangle.left >= 0 &&
         controlRectangle.top >= 0 &&
         controlRectangle.right <= window.innerWidth + 1,
+      controlHeight: controlRectangle.height,
+      selectColor: selectStyle.color,
+      selectBackground: selectStyle.backgroundColor,
+      optionColor: optionStyle.color,
+      optionBackground: optionStyle.backgroundColor,
       overflow:
         document.documentElement.scrollWidth -
         document.documentElement.clientWidth
@@ -656,6 +665,14 @@ async function inspectStructureTransition(
   );
   assert.equal(finished.calls, 4, `${name}: WebGL draw calls changed`);
   assert.equal(finished.controlInside, true, `${name}: control overflow`);
+  assert.ok(
+    finished.controlHeight >= 42 && finished.controlHeight <= 48,
+    `${name}: invalid control height ${finished.controlHeight}`
+  );
+  assert.equal(finished.selectColor, "rgb(18, 35, 30)");
+  assert.equal(finished.selectBackground, "rgb(232, 246, 241)");
+  assert.equal(finished.optionColor, "rgb(18, 35, 30)");
+  assert.equal(finished.optionBackground, "rgb(244, 251, 248)");
   assert.ok(finished.overflow <= 1, `${name}: horizontal overflow`);
   assert.deepEqual(errors, [], `${name}: browser errors`);
 
