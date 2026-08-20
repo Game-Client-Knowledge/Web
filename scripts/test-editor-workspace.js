@@ -15,6 +15,10 @@ const javascript = fs.readFileSync(
   path.join(root, "editor/app/static/editor.js"),
   "utf8"
 );
+const siteIntegration = fs.readFileSync(
+  path.join(root, "src/assets/js/editor-integration.js"),
+  "utf8"
+);
 
 assert.match(html, /id="bootView" class="workspace-boot"/);
 assert.match(html, /id="authView" class="auth-shell" hidden/);
@@ -77,4 +81,43 @@ assert.match(
 );
 assert.doesNotMatch(submitBlock, /repository_merge_conflict/);
 
-process.stdout.write("Editor workspace snapshot checks passed\n");
+const normalizeParentStart = siteIntegration.indexOf(
+  "  function normalizeParent(root, value) {"
+);
+const normalizeParentEnd = siteIntegration.indexOf(
+  "\n\n  function currentSourceParent",
+  normalizeParentStart
+);
+assert(normalizeParentStart >= 0 && normalizeParentEnd > normalizeParentStart);
+const normalizeParent = Function(
+  siteIntegration.slice(normalizeParentStart, normalizeParentEnd) +
+    "\nreturn normalizeParent;"
+)();
+
+assert.equal(
+  normalizeParent("program/knowledge", "program/knowledge/ecs"),
+  "ecs"
+);
+assert.equal(
+  normalizeParent("program/knowledge", "program/knowledge"),
+  ""
+);
+assert.equal(
+  normalizeParent("program/knowledge", "ecs/rendering"),
+  "ecs/rendering"
+);
+assert.equal(
+  normalizeParent("program/knowledge", "program/knowledge-base/ecs"),
+  "program/knowledge-base/ecs"
+);
+assert.equal(
+  [
+    "program/knowledge",
+    normalizeParent("program/knowledge", "program/knowledge/ecs"),
+    "rendering",
+    "README.md"
+  ].join("/"),
+  "program/knowledge/ecs/rendering/README.md"
+);
+
+process.stdout.write("Editor workspace checks passed\n");

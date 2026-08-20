@@ -2922,9 +2922,15 @@
   }
 
   function normalizeParent(root, value) {
+    const rootParts = (root || "").split("/").filter(Boolean);
     const parts = (value || "").split("/").filter(Boolean);
-    if (parts[0] === root) {
-      parts.shift();
+    const includesRoot =
+      rootParts.length > 0 &&
+      rootParts.every(function (part, index) {
+        return parts[index] === part;
+      });
+    if (includesRoot) {
+      parts.splice(0, rootParts.length);
     }
     return parts.join("/");
   }
@@ -2988,10 +2994,11 @@
       }
       let path;
       let content;
+      const parent = normalizeParent(values.root, values.parent);
       if (values.kind === "module") {
         path = [
           values.root,
-          values.parent,
+          parent,
           slug,
           "README.md"
         ].filter(Boolean).join("/");
@@ -3006,7 +3013,7 @@
         if (!filename.includes(".")) {
           filename += ".md";
         }
-        path = [values.root, values.parent, filename]
+        path = [values.root, parent, filename]
           .filter(Boolean)
           .join("/");
         const markdown = filename.toLowerCase().endsWith(".md");
