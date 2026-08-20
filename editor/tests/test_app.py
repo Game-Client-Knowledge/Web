@@ -1024,17 +1024,47 @@ def test_preview_uses_reader_content_without_frontmatter(
                 "| Item | Value |\n"
                 "|---|---|\n"
                 "| A | B |\n"
+                "\n"
+                "- First\n"
+                "- Second\n"
+                "\n"
+                "```cpp\n"
+                "int value = 1;\n"
+                "```\n"
             )
         },
     )
     assert response.status_code == 200
     html = response.json()["html"]
     assert "shortTitle" not in html
-    assert "<h1>Preview title</h1>" in html
+    assert "<h1" in html
+    assert ">Preview title</h1>" in html
     assert "Rendered body." in html
-    assert "<table>" in html
+    assert "<table" in html
     assert "<th>Item</th>" in html
     assert "<td>B</td>" in html
+    assert html.count('data-md-block=""') == 5
+    assert (
+        'data-source-start="4" data-source-end="5" '
+        'data-source-kind="heading"'
+    ) in html
+    assert (
+        'data-source-start="6" data-source-end="7" '
+        'data-source-kind="paragraph"'
+    ) in html
+    assert (
+        'data-source-start="8" data-source-end="11" '
+        'data-source-kind="table"'
+    ) in html
+    assert (
+        'data-source-start="12" data-source-end="15" '
+        'data-source-kind="list"'
+    ) in html
+    assert (
+        'data-source-start="15" data-source-end="18" '
+        'data-source-kind="code"'
+    ) in html
+    assert 'class="language-cpp"' in html
 
 
 def test_file_delete_and_discard_change(client: TestClient) -> None:

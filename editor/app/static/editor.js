@@ -15,6 +15,7 @@ const state = {
   workspaceView: "resources",
   resourceFilter: "",
   visualEditor: null,
+  livePreview: null,
   localSaveFrame: 0,
   remoteContent: new Map(),
   onboardingStep: 0,
@@ -1132,6 +1133,10 @@ async function showChangeDiff(draft) {
 }
 
 function destroyVisualEditor() {
+  if (state.livePreview) {
+    state.livePreview.destroy();
+    state.livePreview = null;
+  }
   if (state.visualEditor) {
     state.visualEditor.destroy();
     state.visualEditor = null;
@@ -1694,6 +1699,7 @@ async function markActiveFileDeleted() {
 async function togglePreview() {
   if (!state.active) return;
   if (state.previewing) {
+    state.livePreview?.close(false);
     state.previewing = false;
     byId("contentEditor").hidden = false;
     byId("previewPane").hidden = true;
@@ -1701,11 +1707,7 @@ async function togglePreview() {
     return;
   }
   try {
-    const result = await api("/preview", {
-      method: "POST",
-      body: JSON.stringify({ content: editorContent() })
-    });
-    byId("previewPane").innerHTML = result.html;
+    await renderWorkspacePreview();
     state.previewing = true;
     byId("contentEditor").hidden = true;
     byId("previewPane").hidden = false;
@@ -1713,6 +1715,39 @@ async function togglePreview() {
   } catch (error) {
     feedback(byId("editorFeedback"), error.message);
   }
+}
+
+async function renderWorkspacePreview() {
+  const result = await api("/preview", {
+    method: "POST",
+    body: JSON.stringify({ content: editorContent() })
+  });
+  const pane = byId("previewPane");
+  const template = document.createElement("template");
+  template.innerHTML = result.html;
+  pane.replaceChildren(template.content);
+  if (!state.livePreview && window.GCKMarkdownLivePreview) {
+    state.livePreview = window.GCKMarkdownLivePreview.create(
+      pane,
+      {
+        getSource: function () {
+          return byId("contentEditor").value;
+        },
+        setSource: function (source) {
+          const textarea = byId("contentEditor");
+          textarea.value = source;
+          textarea.dispatchEvent(
+            new Event("input", { bubbles: true })
+          );
+        },
+        render: renderWorkspacePreview,
+        onError: function (error) {
+          feedback(byId("editorFeedback"), error.message);
+        }
+      }
+    );
+  }
+  state.livePreview?.refresh();
 }
 
 async function loadSubmissions() {

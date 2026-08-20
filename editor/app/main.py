@@ -489,6 +489,7 @@ ALLOWED_TAGS = set(bleach.sanitizer.ALLOWED_TAGS) | {
     "h4",
     "h5",
     "h6",
+    "p",
     "pre",
     "code",
     "table",
@@ -498,6 +499,17 @@ ALLOWED_TAGS = set(bleach.sanitizer.ALLOWED_TAGS) | {
     "th",
     "td",
     "hr",
+}
+MARKDOWN_PREVIEW_BLOCKS = {
+    "blockquote_open": "blockquote",
+    "bullet_list_open": "list",
+    "code_block": "code",
+    "fence": "code",
+    "heading_open": "heading",
+    "hr": "separator",
+    "ordered_list_open": "list",
+    "paragraph_open": "paragraph",
+    "table_open": "table",
 }
 
 
@@ -582,18 +594,59 @@ def validate_markdown(path: str, content: str) -> list[str]:
 
 
 def render_markdown_preview(content: str) -> str:
-    preview_content = re.sub(
+    frontmatter = re.match(
         r"\A---\r?\n.*?\r?\n---(?:\r?\n|$)",
-        "",
         content,
-        count=1,
         flags=re.DOTALL,
     )
-    rendered = MARKDOWN.render(preview_content)
+    source_offset = (
+        frontmatter.group(0).count("\n")
+        if frontmatter
+        else 0
+    )
+    preview_content = (
+        content[frontmatter.end():]
+        if frontmatter
+        else content
+    )
+    tokens = MARKDOWN.parse(preview_content)
+    for token in tokens:
+        source_map = token.map
+        block_kind = MARKDOWN_PREVIEW_BLOCKS.get(token.type)
+        if (
+            token.level != 0
+            or not source_map
+            or not block_kind
+        ):
+            continue
+        token.attrSet("data-md-block", "")
+        token.attrSet(
+            "data-source-start",
+            str(source_map[0] + source_offset),
+        )
+        token.attrSet(
+            "data-source-end",
+            str(source_map[1] + source_offset),
+        )
+        token.attrSet("data-source-kind", block_kind)
+    rendered = MARKDOWN.renderer.render(
+        tokens,
+        MARKDOWN.options,
+        {},
+    )
     return bleach.clean(
         rendered,
         tags=ALLOWED_TAGS,
-        attributes={"a": ["href", "title", "rel"]},
+        attributes={
+            "*": [
+                "data-md-block",
+                "data-source-start",
+                "data-source-end",
+                "data-source-kind",
+            ],
+            "a": ["href", "title", "rel"],
+            "code": ["class"],
+        },
         protocols={"https", "http", "mailto"},
         strip=True,
     )

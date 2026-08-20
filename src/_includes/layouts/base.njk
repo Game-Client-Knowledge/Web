@@ -56,6 +56,12 @@
       >
     {% endif %}
     <link rel="stylesheet" href="{{ '/assets/css/site.css' | assetUrl }}">
+    {% if pageKind == "document" or pageKind == "module" %}
+      <link
+        rel="stylesheet"
+        href="{{ '/assets/css/markdown-live-preview.css' | assetUrl }}"
+      >
+    {% endif %}
     {% if pageKind == "code-workspace" or activeModule == "code" %}
       <link rel="stylesheet" href="{{ '/assets/css/code-reader.css' | assetUrl }}">
     {% endif %}
@@ -716,6 +722,7 @@
       <script src="{{ '/assets/js/workspace-store.js' | assetUrl }}"></script>
       <script src="{{ '/assets/js/workspace-tree.js' | assetUrl }}"></script>
       <script src="{{ '/assets/js/reader-diff.js' | assetUrl }}"></script>
+      <script src="{{ '/assets/js/markdown-live-preview.js' | assetUrl }}"></script>
     {% endif %}
     {% if pageHasMermaid %}
       <script

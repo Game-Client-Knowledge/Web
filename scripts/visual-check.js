@@ -39,6 +39,56 @@ function assert(condition, message) {
   }
 }
 
+function escapePreviewHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function previewBlockAttributes(start, kind) {
+  return (
+    ' data-md-block=""' +
+    ` data-source-start="${start}"` +
+    ` data-source-end="${start + 1}"` +
+    ` data-source-kind="${kind}"`
+  );
+}
+
+function mockedMarkdownPreview(content) {
+  const lines = String(content || "").split(/\r?\n/);
+  const h1 = lines.findIndex((line) => /^#\s+/.test(line));
+  const h2 = lines.findIndex((line) => /^##\s+/.test(line));
+  const linkLine = lines.findIndex((line) => {
+    return line.includes("./06-component-query-implementation.md");
+  });
+  const fragments = [];
+  if (h1 >= 0) {
+    fragments.push(
+      `<h1${previewBlockAttributes(h1, "heading")}>` +
+        escapePreviewHtml(lines[h1].replace(/^#\s+/, "")) +
+        "</h1>"
+    );
+  }
+  if (h2 >= 0) {
+    fragments.push(
+      `<h2${previewBlockAttributes(h2, "heading")}>` +
+        escapePreviewHtml(lines[h2].replace(/^##\s+/, "")) +
+        "</h2>"
+    );
+  }
+  fragments.push("<p>Preview content</p>");
+  if (linkLine >= 0) {
+    fragments.push(
+      `<p${previewBlockAttributes(linkLine, "paragraph")}>` +
+        '<a href="./06-component-query-implementation.md">' +
+        "组件存储与查询实现</a></p>"
+    );
+  }
+  return fragments.join("");
+}
+
 async function canvasMetrics(page, selector) {
   return page.locator(selector).evaluate((canvas) => {
     const context = canvas.getContext("2d", { willReadFrequently: true });
@@ -227,20 +277,10 @@ async function inspectPage(browser, scenario) {
   await context.route("**/editor/api/preview", (route) => {
     previewAttempts += 1;
     const content = JSON.parse(route.request().postData() || "{}").content || "";
-    const linked = content.includes(
-      "./06-component-query-implementation.md"
-    );
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        html:
-          "<h1>Preview</h1><p>Preview content</p>" +
-          (
-            linked
-              ? '<p><a href="./06-component-query-implementation.md">' +
-                "组件存储与查询实现</a></p>"
-              : ""
-          )
+        html: mockedMarkdownPreview(content)
       })
     });
   });
@@ -931,7 +971,7 @@ async function inspectPage(browser, scenario) {
     });
     await page.locator("[data-edit-mode-trigger]").click();
     await page
-      .locator(".inline-editor.is-modern [data-inline-input]")
+      .locator(".inline-editor.is-modern [data-md-live-preview]")
       .waitFor({ state: "visible" });
     const editing = await page.evaluate(() => {
       const panel = document.querySelector(".inline-editor.is-modern");
@@ -940,8 +980,8 @@ async function inspectPage(browser, scenario) {
       return {
         markdown: source.value,
         sourceMode: panel.dataset.editorMode || "source",
-        sourceHeight: source.getBoundingClientRect().height,
-        sourceScrollHeight: source.scrollHeight,
+        sourceVisible: !source.hidden,
+        liveBlocks: panel.querySelectorAll("[data-md-block]").length,
         inlineToolbar: panel.querySelectorAll(".inline-editor-toolbar").length,
         saveButtons: panel.querySelectorAll("[data-inline-save]").length,
         previewToolbar: document.querySelectorAll(".reader-preview-controls")
@@ -962,10 +1002,10 @@ async function inspectPage(browser, scenario) {
     if (preview && editing) {
       assert(
         /^##\s+/m.test(editing.markdown) &&
-          editing.sourceMode === "source" &&
-          editing.sourceHeight >= 420 &&
-          editing.sourceHeight + 2 >= editing.sourceScrollHeight,
-        `${scenario.name}: Markdown source editor is incomplete`
+          editing.sourceMode === "preview" &&
+          editing.sourceVisible === false &&
+          editing.liveBlocks > 0,
+        `${scenario.name}: editable Markdown preview is incomplete`
       );
       assert(
         editing.inlineToolbar === 0 &&
@@ -982,6 +1022,25 @@ async function inspectPage(browser, scenario) {
         `${scenario.name}: editor caused horizontal overflow`
       );
     }
+    await page.locator('[data-inline-mode="source"]').click();
+    await page
+      .locator(".inline-editor.is-modern [data-inline-input]")
+      .waitFor({ state: "visible" });
+    const sourceLayout = await page
+      .locator(".inline-editor.is-modern [data-inline-input]")
+      .evaluate((source) => ({
+        height: source.getBoundingClientRect().height,
+        scrollHeight: source.scrollHeight
+      }));
+    assert(
+      sourceLayout.height >= 420 &&
+        sourceLayout.height + 2 >= sourceLayout.scrollHeight,
+      `${scenario.name}: full Markdown source mode is incomplete`
+    );
+    await page.locator('[data-inline-mode="preview"]').click();
+    await page
+      .locator(".inline-editor.is-modern [data-md-live-preview]")
+      .waitFor({ state: "visible" });
     await page.screenshot({
       path: path.join(outputDirectory, `${scenario.name}-editing.png`),
       fullPage: false
@@ -1005,14 +1064,16 @@ async function inspectPage(browser, scenario) {
         roundTrip.html === preview.html &&
           roundTrip.draftOverlay === preview.draftOverlay &&
           roundTrip.localBuffers === 0 &&
-          previewAttempts === 0 &&
+          previewAttempts === 2 &&
           draftAttempts === 0,
         `${scenario.name}: unchanged edit round trip mutated the document`
       );
     }
     if (scenario.readerLinkNavigation) {
       await page.locator("[data-edit-mode-trigger]").click();
-      await page.locator('[data-inline-mode="preview"]').click();
+      await page
+        .locator(".inline-editor.is-modern [data-md-live-preview]")
+        .waitFor({ state: "visible" });
       const editorLink = page
         .locator("[data-visual-editor] .inline-editor-source-preview a")
         .filter({ hasText: "组件存储与查询实现" })
@@ -1034,13 +1095,48 @@ async function inspectPage(browser, scenario) {
       );
     }
     if (scenario.readerAutosave) {
-      await page.locator("[data-inline-input]").evaluate((textarea) => {
-        textarea.value = textarea.value.replace(
-          /^##\s+.+$/m,
-          "## 1.autosave-check"
-        );
-        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      const editableHeading = page
+        .locator(
+          '[data-visual-editor] [data-md-block]' +
+            '[data-source-kind="heading"]'
+        )
+        .first();
+      await editableHeading.dblclick();
+      const blockEditor = page.locator(
+        ".md-live-preview-editor textarea"
+      );
+      await blockEditor.waitFor({ state: "visible" });
+      await blockEditor.fill("## 1.autosave-check");
+      const liveLayout = await blockEditor.evaluate((textarea) => {
+        return {
+          height: textarea.getBoundingClientRect().height,
+          overflow:
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth
+        };
       });
+      assert(
+        liveLayout.height >= 72 &&
+          liveLayout.height <= 180 &&
+          liveLayout.overflow === 0,
+        `${scenario.name}: live preview block layout is invalid ` +
+          JSON.stringify(liveLayout)
+      );
+      await page.screenshot({
+        path: path.join(
+          outputDirectory,
+          `${scenario.name}-live-preview.png`
+        ),
+        fullPage: false
+      });
+      await blockEditor.press("Control+Enter");
+      await page
+        .locator(
+          '[data-visual-editor] [data-md-block]' +
+            '[data-source-kind="heading"]'
+        )
+        .filter({ hasText: "1.autosave-check" })
+        .waitFor({ state: "visible" });
       await page.waitForTimeout(250);
       const local = await page.evaluate(() => {
         const item = Object.entries(localStorage).find(([key]) => {
@@ -1084,7 +1180,7 @@ async function inspectPage(browser, scenario) {
       allowDraftWrites = false;
       await page.reload({ waitUntil: "networkidle" });
       await page
-        .locator(".inline-editor.is-modern [data-inline-input]")
+        .locator(".inline-editor.is-modern [data-md-live-preview]")
         .waitFor({ state: "visible" });
       const restored = await page.evaluate(() => {
         return {
@@ -1578,6 +1674,7 @@ async function inspectPage(browser, scenario) {
       route: "/program/knowledge/ecs/01-fundamentals/",
       viewport: { width: 390, height: 844 },
       readerEditor: true,
+      readerAutosave: true,
       visualSettings: { pointer_effect_enabled: false }
     },
     {

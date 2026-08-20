@@ -1,0 +1,53 @@
+[data-md-live-preview] [data-md-block] {
+  cursor: text;
+  transition:
+    outline-color 120ms ease,
+    background-color 120ms ease;
+}
+
+@media (hover: hover) {
+  [data-md-live-preview] [data-md-block]:hover {
+    background-color: rgba(28, 132, 108, 0.045);
+    outline: 1px solid rgba(28, 132, 108, 0.28);
+    outline-offset: 5px;
+  }
+}
+
+.md-live-preview-editor {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.md-live-preview-editor textarea,
+.inline-editor.is-modern .md-live-preview-editor textarea {
+  display: block;
+  width: 100%;
+  min-height: 72px;
+  padding: 14px 16px;
+  color: #1f2926;
+  background: #fbfdfc;
+  border: 1px solid #4f9f8a;
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px rgba(28, 132, 108, 0.1);
+  outline: 0;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.65;
+  overflow: hidden;
+  resize: vertical;
+  tab-size: 2;
+}
+
+.md-live-preview-editor.is-invalid textarea {
+  border-color: #cf4b4b;
+  box-shadow: 0 0 0 2px rgba(207, 75, 75, 0.1);
+}
+
+@media (max-width: 760px) {
+  .md-live-preview-editor textarea,
+  .inline-editor.is-modern .md-live-preview-editor textarea {
+    padding: 12px;
+    font-size: 12px;
+  }
+}

@@ -2038,6 +2038,10 @@
       state.inlineEditor.destroy();
       state.inlineEditor = null;
     }
+    if (panel.livePreview) {
+      panel.livePreview.destroy();
+      panel.livePreview = null;
+    }
     panel.remove();
     state.inlinePanel = null;
     document.body.classList.remove("has-inline-editor");
@@ -2208,6 +2212,54 @@
     }
   }
 
+  function updateInlinePreviewSource(panel, source) {
+    const textarea = query("[data-inline-input]", panel);
+    const parts = splitMarkdownDocument(source);
+    panel.documentParts = parts;
+    textarea.value = parts.body;
+    if (
+      panel.titleElement &&
+      panel.titleElement.textContent !== parts.title
+    ) {
+      panel.titleElement.textContent = parts.title;
+    }
+    resizeInlineSource(textarea);
+    const cached = cacheInlineEditor(panel);
+    if (!cached) {
+      throw new Error(
+        query("[data-inline-feedback]", panel)?.textContent ||
+          "当前 Markdown 块无法写入完整文档"
+      );
+    }
+  }
+
+  function initializeInlineLivePreview(panel, mount) {
+    if (
+      panel.livePreview ||
+      !window.GCKMarkdownLivePreview
+    ) {
+      panel.livePreview?.refresh();
+      return;
+    }
+    panel.livePreview = window.GCKMarkdownLivePreview.create(
+      mount,
+      {
+        getSource: function () {
+          return serializedInlineContent(panel).serialized;
+        },
+        setSource: function (source) {
+          updateInlinePreviewSource(panel, source);
+        },
+        render: function () {
+          return renderInlineMarkdownPreview(panel);
+        },
+        onError: function (error) {
+          setInlineFeedback(panel, error.message, "error");
+        }
+      }
+    );
+  }
+
   async function renderInlineMarkdownPreview(panel) {
     const previewMode = query('[data-inline-mode="preview"]', panel);
     if (previewMode) previewMode.disabled = true;
@@ -2233,6 +2285,8 @@
         wrapper.append(table);
       });
       mount.replaceChildren(prose);
+      initializeInlineLivePreview(panel, mount);
+      panel.livePreview?.refresh();
       if (window.GCKMermaid) {
         window.GCKMermaid.render(prose);
       }
@@ -2274,6 +2328,7 @@
       query('[data-inline-mode="source"]', panel)?.addEventListener(
         "click",
         function () {
+          panel.livePreview?.close(false);
           setInlineEditorMode(panel, "source");
         }
       );
@@ -2672,11 +2727,19 @@
           "success"
         );
       }
+      const startsInPreview =
+        markdownDocument &&
+        panel.classList.contains("is-modern");
+      if (startsInPreview) {
+        await renderInlineMarkdownPreview(panel);
+      }
       activateInlinePanel(panel, host);
       if (panel.classList.contains("is-modern")) {
         beginInlineAutoSync(panel);
       }
-      textarea.focus();
+      if (panel.dataset.editorMode !== "preview") {
+        textarea.focus();
+      }
     } catch (error) {
       panel.hidden = false;
       setInlineFeedback(panel, error.message, "error");

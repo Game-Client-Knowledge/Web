@@ -23,6 +23,9 @@ const siteIntegration = fs.readFileSync(
   path.join(root, "src/assets/js/editor-integration.js"),
   "utf8"
 );
+const livePreview = require(
+  path.join(root, "src/assets/js/markdown-live-preview.js")
+);
 
 assert.match(html, /id="bootView" class="workspace-boot"/);
 assert.match(html, /id="authView" class="auth-shell" hidden/);
@@ -39,6 +42,8 @@ assert.match(
 );
 assert.match(html, /id="diffModeLabel"[^>]*>完整文件差异</);
 assert.match(html, /id="diffSnapshotSummary"/);
+assert.match(html, /markdown-live-preview\.css/);
+assert.match(html, /markdown-live-preview\.js/);
 assert.match(css, /\.diff-snapshot-summary\s*\{/);
 assert.match(css, /#activeEditor:not\(\[hidden\]\)\s*\{[^}]*flex:\s*1/s);
 assert.match(css, /#contentEditor\s*\{[^}]*flex:\s*1/s);
@@ -53,6 +58,8 @@ assert.match(
 );
 assert.doesNotMatch(siteIntegration, /initialEditType:\s*"wysiwyg"/);
 assert.doesNotMatch(javascript, /initialEditType:\s*"wysiwyg"/);
+assert.match(siteIntegration, /GCKMarkdownLivePreview\.create/);
+assert.match(javascript, /GCKMarkdownLivePreview\.create/);
 assert.match(
   javascript,
   /byId\("editChangeButton"\)\.dataset\.changeMode = "source"/
@@ -143,6 +150,31 @@ assert.equal(
     "README.md"
   ].join("/"),
   "program/knowledge/ecs/rendering/README.md"
+);
+
+const source = [
+  "---",
+  "shortTitle: Test",
+  "---",
+  "# Title",
+  "",
+  "## Original",
+  "",
+  "After"
+].join("\n");
+const range = livePreview.sourceRange(source, 5, 6);
+assert.equal(range.editable, "## Original");
+assert.equal(
+  livePreview.replaceSourceRange(range, "## Updated"),
+  source.replace("## Original", "## Updated")
+);
+
+const crlfSource = "# Title\r\n\r\n- one\r\n- two\r\n\r\nAfter\r\n";
+const crlfRange = livePreview.sourceRange(crlfSource, 2, 5);
+assert.equal(crlfRange.editable, "- one\r\n- two");
+assert.equal(
+  livePreview.replaceSourceRange(crlfRange, "- first\n- second"),
+  "# Title\r\n\r\n- first\r\n- second\r\n\r\nAfter\r\n"
 );
 
 process.stdout.write("Editor workspace checks passed\n");
