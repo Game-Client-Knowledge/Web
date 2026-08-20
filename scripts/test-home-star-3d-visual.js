@@ -463,6 +463,210 @@ async function inspectPortal(
   return [collapsedScreenshot, selectedScreenshot];
 }
 
+async function inspectStructureTransition(
+  browser,
+  name,
+  viewport,
+  deviceScaleFactor
+) {
+  const { context, page, errors } = await openPage(browser, {
+    viewport,
+    deviceScaleFactor,
+    reducedMotion: "no-preference",
+    settings: {
+      home_star_scope: "hero",
+      home_star_experience_mode: "contribution_portal",
+      home_star_portal_expanded_structure: "3d-spiral",
+      home_star_relation_visibility: "always"
+    }
+  });
+  await page.waitForTimeout(300);
+  const targetStructure =
+    viewport.width <= 600 ? "3d-nebula" : "3d-orbit";
+  const metrics = await page.evaluate((target) => {
+    const debug = window.__GCK_STAR3D_DEBUG;
+    const now = performance.now();
+    debug.openContributionSpace("structure-transition-test");
+    debug.portalState.startedAt = now - 1400;
+    debug.draw(now);
+    const selected = debug.stars.find(
+      (star) => star.kind === "contributor"
+    );
+    debug.selectStar(selected, now);
+    debug.draw(now);
+    const select = document.querySelector(
+      "[data-contribution-space-structure]"
+    );
+    const start = debug.stars.map((star) => [
+      star.x,
+      star.y,
+      star.z
+    ]);
+    const test = {
+      renderer: debug.renderer,
+      canvas: debug.renderer.domElement,
+      camera: debug.camera.position.toArray(),
+      selectedCount:
+        debug.renderer.domElement.dataset.selectedCount,
+      start,
+      mid: null
+    };
+    select.value = target;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    const unchanged = debug.stars.reduce((sum, star, index) => {
+      const origin = start[index];
+      return sum + Math.hypot(
+        star.x - origin[0],
+        star.y - origin[1],
+        star.z - origin[2]
+      );
+    }, 0) / Math.max(1, debug.stars.length);
+    const started = {
+      phase: debug.portalState.phase,
+      structure: debug.activeStructure,
+      transition: debug.renderer.domElement.dataset.structureTransition,
+      disabled: select.disabled,
+      unchanged
+    };
+    const transitionStart = debug.structureTransition.startedAt;
+    debug.draw(transitionStart + 450);
+    test.mid = debug.stars.map((star) => [
+      star.x,
+      star.y,
+      star.z
+    ]);
+    const midpointDistance = test.mid.reduce((sum, point, index) => {
+      const origin = test.start[index];
+      return sum + Math.hypot(
+        point[0] - origin[0],
+        point[1] - origin[1],
+        point[2] - origin[2]
+      );
+    }, 0) / Math.max(1, test.mid.length);
+    const middle = {
+      active: debug.structureTransition.active,
+      progress: debug.structureTransition.progress,
+      averageDistance: midpointDistance
+    };
+    debug.draw(transitionStart + 901);
+    const final = debug.stars.map((star) => [
+      star.x,
+      star.y,
+      star.z
+    ]);
+    function averageDistance(left, right) {
+      return left.reduce((sum, point, index) => {
+        const target = right[index];
+        return sum + Math.hypot(
+          point[0] - target[0],
+          point[1] - target[1],
+          point[2] - target[2]
+        );
+      }, 0) / Math.max(1, left.length);
+    }
+    const relationCanvas = debug.relationCanvas;
+    const pixels = relationCanvas
+      .getContext("2d")
+      .getImageData(
+        0,
+        0,
+        relationCanvas.width,
+        relationCanvas.height
+      ).data;
+    let paintedSamples = 0;
+    for (let index = 3; index < pixels.length; index += 32) {
+      if (pixels[index] > 8) paintedSamples += 1;
+    }
+    const controlRectangle = select
+      .closest("[data-contribution-space-structure-control]")
+      .getBoundingClientRect();
+    const finished = {
+      active: debug.structureTransition.active,
+      progress: debug.structureTransition.progress,
+      structure: debug.activeStructure,
+      map: debug.renderer.domElement.dataset.starMap,
+      selectValue: select.value,
+      disabled: select.disabled,
+      rendererStable: test.renderer === debug.renderer,
+      canvasStable: test.canvas === debug.renderer.domElement,
+      cameraDistance: Math.hypot(
+        ...debug.camera.position
+          .toArray()
+          .map((value, index) => value - test.camera[index])
+      ),
+      selectedStable:
+        debug.renderer.domElement.dataset.selectedCount ===
+        test.selectedCount,
+      startToFinal: averageDistance(test.start, final),
+      middleToFinal: averageDistance(test.mid, final),
+      activeRelations: Number(
+        relationCanvas.dataset.activeRelationCount
+      ),
+      paintedSamples,
+      calls: debug.renderer.info.render.calls,
+      controlInside:
+        controlRectangle.left >= 0 &&
+        controlRectangle.top >= 0 &&
+        controlRectangle.right <= window.innerWidth + 1,
+      overflow:
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth
+    };
+    return { started, middle, finished };
+  }, targetStructure);
+  const { started, middle, finished } = metrics;
+  const screenshot = path.join(
+    outputDirectory,
+    `${name}-${targetStructure}.png`
+  );
+  await page.screenshot({ path: screenshot, fullPage: false });
+  assert.equal(started.phase, "expanded");
+  assert.equal(started.structure, targetStructure);
+  assert.equal(started.transition, "active");
+  assert.equal(started.disabled, true);
+  assert.ok(started.unchanged < 0.001, `${name}: transition jumped`);
+  assert.equal(middle.active, true, `${name}: transition ended early`);
+  assert.ok(
+    middle.progress > 0.2 && middle.progress < 0.8,
+    `${name}: invalid midpoint ${middle.progress}`
+  );
+  assert.ok(
+    middle.averageDistance > 20,
+    `${name}: stars did not move at midpoint`
+  );
+  assert.equal(finished.active, false);
+  assert.equal(finished.progress, 1);
+  assert.equal(finished.structure, targetStructure);
+  assert.equal(finished.map, `contribution-${targetStructure}`);
+  assert.equal(finished.selectValue, targetStructure);
+  assert.equal(finished.disabled, false);
+  assert.equal(finished.rendererStable, true);
+  assert.equal(finished.canvasStable, true);
+  assert.ok(finished.cameraDistance < 0.001, `${name}: camera reset`);
+  assert.equal(finished.selectedStable, true, `${name}: selection reset`);
+  assert.ok(finished.startToFinal > 40, `${name}: final layout unchanged`);
+  assert.ok(
+    finished.middleToFinal > 20,
+    `${name}: midpoint already matched target`
+  );
+  assert.ok(finished.activeRelations > 0, `${name}: relations cleared`);
+  assert.ok(
+    finished.paintedSamples > 20,
+    `${name}: relations are blank (${finished.paintedSamples} samples)`
+  );
+  assert.equal(finished.calls, 4, `${name}: WebGL draw calls changed`);
+  assert.equal(finished.controlInside, true, `${name}: control overflow`);
+  assert.ok(finished.overflow <= 1, `${name}: horizontal overflow`);
+  assert.deepEqual(errors, [], `${name}: browser errors`);
+
+  await context.close();
+  console.log(
+    `${name}: moved=${finished.startToFinal.toFixed(1)}, ` +
+      `relations=${finished.activeRelations}, drawCalls=${finished.calls}`
+  );
+  return screenshot;
+}
+
 async function inspectRelationFlow(browser) {
   const { context, page, errors } = await openPage(browser, {
     viewport: { width: 1440, height: 1000 },
@@ -668,6 +872,22 @@ async function inspectScrolledPortalOpening(browser, name, viewport) {
           home_star_illumination_depth: 3,
           home_star_active_edge_mode: "minimal_tree"
         }
+      )
+    );
+    screenshots.push(
+      await inspectStructureTransition(
+        browser,
+        "portal-structure-transition-desktop",
+        { width: 1440, height: 1000 },
+        1
+      )
+    );
+    screenshots.push(
+      await inspectStructureTransition(
+        browser,
+        "portal-structure-transition-mobile",
+        { width: 390, height: 844 },
+        2
       )
     );
     screenshots.push(await inspectRelationFlow(browser));

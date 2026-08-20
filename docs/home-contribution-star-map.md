@@ -30,6 +30,12 @@ without changing star identity. Expanded choices include depth, drift,
 anchored drift, galaxy, orbital systems, four-arm spiral, warped nebula band,
 stellar clusters, and layered fibonacci shells.
 
+Once expanded, the top-right structure selector can switch among those
+layouts without recreating the WebGL or relation Canvas. Stars linearly move
+from their current coordinates to the new strategy over 900ms, and relation
+lines reshape from the same live endpoints. Camera orientation, active
+selection, and coverage statistics remain unchanged.
+
 In this experience, `home_content_idle_timeout_seconds` auto-opens the portal
 instead of hiding homepage content. The first subsequent activity reverses
 only an idle-triggered opening; manually entered full-screen space is not

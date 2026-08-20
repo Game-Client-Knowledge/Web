@@ -66,6 +66,7 @@
   const SPIKE_ART_SCALE = 2.1;
   const CONTENT_EXPOSURE = 0.28;
   const CONTRIBUTION_SPACE_DURATION = 1300;
+  const STRUCTURE_TRANSITION_DURATION = 900;
   const CONTRIBUTION_SPACE_RADIUS = 165;
   const DEFAULT_PORTAL_ROTATION_SPEED = 2.6;
   const DEFAULT_PORTAL_SIZE_PERCENT = 34;
@@ -642,7 +643,8 @@
       portalExperience && configuredMode === "2d-webgl"
         ? "3d-drift"
         : configuredMode;
-    const strategy = (STRATEGIES[mode] || depthStrategy)();
+    let activeStructure = mode;
+    let strategy = (STRATEGIES[activeStructure] || depthStrategy)();
     const {
       canvas,
       hero,
@@ -664,6 +666,12 @@
     const returnButton = portalExperience
       ? document.querySelector("[data-contribution-space-return]")
       : null;
+    const structureSelect = portalExperience
+      ? document.querySelector("[data-contribution-space-structure]")
+      : null;
+    const structureControl = structureSelect?.closest(
+      "[data-contribution-space-structure-control]"
+    );
     const heroContent = portalExperience
       ? hero.querySelector(".library-intro-overlay")
       : null;
@@ -710,6 +718,9 @@
       portalExperience
     );
     glCanvas.dataset.starMap = `contribution-${mode}`;
+    glCanvas.dataset.starStructure = activeStructure;
+    glCanvas.dataset.structureTransition = "idle";
+    glCanvas.dataset.structureTransitionProgress = "1.000";
     glCanvas.dataset.starScope = runtimeSettings.home_star_scope;
     glCanvas.dataset.starExperience = portalExperience
       ? "contribution_portal"
@@ -1296,6 +1307,18 @@
       screenOffset: [0, 0],
       reason: ""
     };
+    const expandedStructures = WEBGL_MODES.filter(
+      (item) => item !== "2d-webgl"
+    );
+    const structureTransition = {
+      active: false,
+      source: activeStructure,
+      target: activeStructure,
+      startedAt: 0,
+      duration: STRUCTURE_TRANSITION_DURATION,
+      progress: 1,
+      from: null
+    };
     const contentMaskMaterials = [
       haloLayer.material,
       coreLayer.material,
@@ -1326,6 +1349,7 @@
       );
       document.body.dataset.contributionSpaceState = phase;
       glCanvas.dataset.contributionSpaceState = phase;
+      updateStructureControl();
       window.dispatchEvent(
         new CustomEvent("gck:contribution-space-state", {
           detail: {
@@ -1346,6 +1370,153 @@
     function easePortal(value) {
       const progress = Math.max(0, Math.min(1, value));
       return progress * progress * (3 - 2 * progress);
+    }
+
+    function updateStructureControl() {
+      if (!structureSelect) return;
+      structureSelect.value = activeStructure;
+      structureSelect.disabled =
+        portalState.phase !== "expanded" ||
+        structureTransition.active;
+      structureControl?.toggleAttribute(
+        "data-transitioning",
+        structureTransition.active
+      );
+    }
+
+    function finishStructureTransition() {
+      structureTransition.active = false;
+      structureTransition.progress = 1;
+      structureTransition.from = null;
+      glCanvas.dataset.structureTransition = "idle";
+      glCanvas.dataset.structureTransitionProgress = "1.000";
+      updateStructureControl();
+      window.dispatchEvent(
+        new CustomEvent("gck:star-structure-change", {
+          detail: {
+            phase: "complete",
+            source: structureTransition.source,
+            structure: activeStructure
+          }
+        })
+      );
+    }
+
+    function setExpandedStructure(nextStructure, options = {}) {
+      if (
+        !portalState.enabled ||
+        portalState.phase !== "expanded" ||
+        !expandedStructures.includes(nextStructure) ||
+        (
+          nextStructure === activeStructure &&
+          !structureTransition.active
+        )
+      ) {
+        updateStructureControl();
+        return false;
+      }
+      const now = Number.isFinite(options.time)
+        ? options.time
+        : performance.now();
+      const from = new Float32Array(stars.length * 3);
+      for (let index = 0; index < stars.length; index += 1) {
+        const star = stars[index];
+        const offset = index * 3;
+        from[offset] = star.x;
+        from[offset + 1] = star.y;
+        from[offset + 2] = star.z;
+      }
+
+      const previousStructure = activeStructure;
+      const nextStrategy = (
+        STRATEGIES[nextStructure] || depthStrategy
+      )();
+      const nextRandom = seededRandom(
+        hashSeed(
+          `${sourceGraph.revision}:expanded-structure:${nextStructure}`
+        )
+      );
+      nextStrategy.init(stars, {
+        random: nextRandom,
+        edges,
+        starById
+      });
+      if (nextStrategy.camera === "flat") {
+        nextStrategy.fit(stars, { width, height });
+      }
+      nextStrategy.move(stars, 0, now);
+
+      activeStructure = nextStructure;
+      strategy = nextStrategy;
+      structureTransition.source = previousStructure;
+      structureTransition.target = nextStructure;
+      structureTransition.startedAt = now;
+      structureTransition.progress = 0;
+      structureTransition.from = from;
+      structureTransition.active =
+        !reducedMotion && options.immediate !== true;
+      glCanvas.dataset.starMap = `contribution-${activeStructure}`;
+      glCanvas.dataset.starStructure = activeStructure;
+      glCanvas.dataset.structureTransition = structureTransition.active
+        ? "active"
+        : "idle";
+      glCanvas.dataset.structureTransitionProgress =
+        structureTransition.active ? "0.000" : "1.000";
+
+      if (structureTransition.active) {
+        for (let index = 0; index < stars.length; index += 1) {
+          const star = stars[index];
+          const offset = index * 3;
+          star.x = from[offset];
+          star.y = from[offset + 1];
+          star.z = from[offset + 2];
+        }
+        updateStructureControl();
+        window.dispatchEvent(
+          new CustomEvent("gck:star-structure-change", {
+            detail: {
+              phase: "start",
+              source: previousStructure,
+              structure: activeStructure
+            }
+          })
+        );
+      } else {
+        finishStructureTransition();
+      }
+      return true;
+    }
+
+    function updateStructureTransition(time, delta) {
+      strategy.move(stars, delta, time);
+      if (!structureTransition.active) return;
+      const progress = Math.max(
+        0,
+        Math.min(
+          1,
+          (time - structureTransition.startedAt) /
+            structureTransition.duration
+        )
+      );
+      const from = structureTransition.from;
+      for (let index = 0; index < stars.length; index += 1) {
+        const star = stars[index];
+        const offset = index * 3;
+        const targetX = star.x;
+        const targetY = star.y;
+        const targetZ = star.z;
+        star.x = from[offset] + (targetX - from[offset]) * progress;
+        star.y =
+          from[offset + 1] +
+          (targetY - from[offset + 1]) * progress;
+        star.z =
+          from[offset + 2] +
+          (targetZ - from[offset + 2]) * progress;
+      }
+      structureTransition.progress = progress;
+      glCanvas.dataset.structureTransitionProgress =
+        progress.toFixed(3);
+      if (progress >= 1) finishStructureTransition();
     }
 
     function updatePortalRotation(time) {
@@ -2488,7 +2659,10 @@
 
     function draw(time) {
       updateVariations(time);
-      strategy.move(stars, time - (draw.lastTime || time), time);
+      updateStructureTransition(
+        time,
+        time - (draw.lastTime || time)
+      );
       draw.lastTime = time;
       updatePortalStarPositions(time);
       updatePortalPresentation();
@@ -2787,6 +2961,15 @@
       }
     }
 
+    function structureChange(event) {
+      const changed = setExpandedStructure(event.currentTarget.value);
+      if (!changed) {
+        updateStructureControl();
+        return;
+      }
+      if (reducedMotion) draw(performance.now());
+    }
+
     function blockPortalTransitionInteraction(event) {
       if (!portalTransitioning()) return;
       event.preventDefault();
@@ -2882,6 +3065,9 @@
         closeContributionSpace
       );
     }
+    if (structureSelect) {
+      structureSelect.addEventListener("change", structureChange);
+    }
     document.addEventListener("pointermove", portalPointerMove, {
       passive: false
     });
@@ -2910,6 +3096,7 @@
       );
       setPortalPhase("collapsed", "ready");
     }
+    updateStructureControl();
     glCanvas.dataset.starCount = String(stars.length);
     glCanvas.dataset.edgeCount = String(edges.length);
     glCanvas.dataset.contributorCount = String(contributors.length);
@@ -2939,14 +3126,17 @@
       stars,
       edges,
       portalState,
+      structureTransition,
       openContributionSpace,
       closeContributionSpace,
+      setExpandedStructure,
       selectStar,
       clearSelection,
       draw,
-      availableStructures: WEBGL_MODES.filter(
-        (item) => item !== "2d-webgl"
-      ),
+      availableStructures: expandedStructures,
+      get activeStructure() {
+        return activeStructure;
+      },
       portalSettings: {
         collapsedStructure: portalCollapsedStructure,
         expandedStructure: portalExpandedStructure,
@@ -2994,6 +3184,12 @@
         returnButton.removeEventListener(
           "click",
           closeContributionSpace
+        );
+      }
+      if (structureSelect) {
+        structureSelect.removeEventListener(
+          "change",
+          structureChange
         );
       }
       document.removeEventListener(

@@ -774,7 +774,8 @@ body[data-editor-state="loading"] [data-account-label] {
 }
 
 .contribution-space-section,
-.contribution-space-return {
+.contribution-space-return,
+.contribution-space-structure-control {
   display: none;
 }
 
@@ -1072,6 +1073,53 @@ body[data-editor-state="loading"] [data-account-label] {
   color: #ffffff;
   background: rgba(18, 52, 43, 0.94);
   border-color: rgba(156, 224, 205, 0.68);
+}
+
+.home-contribution-space-expanded
+  .contribution-space-structure-control {
+  position: fixed;
+  z-index: 10003;
+  top: 20px;
+  right: 20px;
+  display: grid;
+  min-width: 190px;
+  padding: 8px 10px;
+  color: #9ce0cd;
+  background: rgba(7, 17, 15, 0.82);
+  border: 1px solid rgba(156, 224, 205, 0.38);
+  border-radius: 4px;
+  gap: 4px;
+  backdrop-filter: blur(4px);
+}
+
+.contribution-space-structure-control > span {
+  font-size: 10px;
+  font-weight: 760;
+  line-height: 1;
+}
+
+.contribution-space-structure-control select {
+  width: 100%;
+  min-height: 28px;
+  padding: 0 28px 0 0;
+  color: #ffffff;
+  background-color: transparent;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.contribution-space-structure-control:focus-within {
+  border-color: rgba(156, 224, 205, 0.78);
+  box-shadow: 0 0 0 2px rgba(132, 220, 196, 0.14);
+}
+
+.contribution-space-structure-control select:disabled {
+  cursor: wait;
+  opacity: 0.68;
 }
 
 .home-contribution-space-return svg,
@@ -5730,6 +5778,22 @@ body.has-comments-open .reader-comments {
   .home-contribution-space-expanded .contribution-space-return {
     top: 12px;
     left: 12px;
+  }
+
+  .home-contribution-space-expanded
+    .contribution-space-structure-control {
+    top: 12px;
+    right: 12px;
+    min-width: 150px;
+    padding: 7px 9px;
+  }
+
+  .contribution-space-structure-control > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip: rect(0 0 0 0);
+    overflow: hidden;
   }
 
   .brand {

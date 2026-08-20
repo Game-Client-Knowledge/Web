@@ -506,6 +506,15 @@ expanded. Opening and closing install a transparent interaction shield and
 capture keyboard events so no underlying page command can run during either
 transition.
 
+The expanded contribution space exposes the supported 3D structures through
+`[data-contribution-space-structure]`. A selection keeps the existing WebGL
+renderer, Canvas layers, camera orientation, selected star, and coverage
+records. The current coordinates are captured once, the target strategy is
+initialized from a structure-specific deterministic seed, and every star is
+linearly interpolated for 900ms. Relations require no separate animation:
+their Canvas endpoints are projected from the interpolated star coordinates
+on every frame. The selector remains disabled until the transition completes.
+
 Useful Canvas datasets for browser tests:
 
 ```text
@@ -526,6 +535,9 @@ data-selected-brightness
 data-selected-relation-count
 data-selected-relation-coverage
 data-active-visual-edge-count
+data-star-structure
+data-structure-transition
+data-structure-transition-progress
 ```
 
 The relation Canvas exposes:
@@ -687,7 +699,9 @@ The visual test covers:
 
 The 3D visual test additionally covers every procedural structure, independent
 compact and expanded choices, typed relation pixels, active relation flow,
-desktop and DPR-2 mobile alignment, and the four-WebGL-draw-call limit.
+runtime structure transitions, renderer and Canvas identity, camera and
+selection persistence, desktop and DPR-2 mobile alignment, and the
+four-WebGL-draw-call limit.
 
 Do not hardcode production star or edge counts. They change with content,
 references, systems, and contributors. Assert structural invariants instead.

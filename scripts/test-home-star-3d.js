@@ -71,6 +71,7 @@ assert.match(
 );
 assert.match(source, /glCanvas\.dataset\.spikeCount/);
 assert.match(source, /const CONTRIBUTION_SPACE_DURATION = 1300;/);
+assert.match(source, /const STRUCTURE_TRANSITION_DURATION = 900;/);
 assert.match(source, /const CONTRIBUTION_SPACE_RADIUS = 165;/);
 assert.match(source, /home_star_portal_rotation_speed/);
 assert.match(source, /home_star_portal_size_percent/);
@@ -90,6 +91,19 @@ for (const structure of [
 assert.match(source, /function updatePortalTargets\(\)/);
 assert.match(source, /function portalStrategyLayout\(structure\)/);
 assert.match(source, /portal-structure:\$\{structure\}/);
+assert.match(source, /function setExpandedStructure\(nextStructure/);
+assert.match(source, /function updateStructureTransition\(time, delta\)/);
+assert.match(
+  source,
+  /from\[offset\] \+ \(targetX - from\[offset\]\) \* progress/
+);
+assert.match(source, /glCanvas\.dataset\.structureTransition/);
+assert.match(source, /structureSelect\.disabled/);
+assert.equal(
+  (source.match(/new THREE\.WebGLRenderer/g) || []).length,
+  1,
+  "structure changes must reuse the existing WebGL renderer"
+);
 assert.doesNotMatch(source, /contribution-space`\s*\)/);
 assert.match(source, /uniform float uPortalBrightness;/);
 assert.match(source, /alpha \*= uPortalBrightness;/);
@@ -137,7 +151,25 @@ assert.match(visualSource, /home_star_portal_collapsed_structure/);
 assert.match(visualSource, /home_star_portal_expanded_structure/);
 assert.match(indexSource, /data-contribution-space-portal/);
 assert.match(indexSource, /data-contribution-space-return/);
+assert.match(indexSource, /data-contribution-space-structure/);
+for (const structure of [
+  "3d",
+  "3d-drift",
+  "3d-drift-anchored",
+  "3d-galaxy",
+  "3d-orbit",
+  "3d-spiral",
+  "3d-nebula",
+  "3d-clusters",
+  "3d-shell"
+]) {
+  assert.match(
+    indexSource,
+    new RegExp(`<option value="${structure}">`)
+  );
+}
 assert.match(cssSource, /\.contribution-space-portal/);
+assert.match(cssSource, /\.contribution-space-structure-control/);
 assert.match(cssSource, /\.contribution-space-interaction-lock/);
 assert.match(cssSource, /\.home-contribution-space-expanded/);
 assert.match(
