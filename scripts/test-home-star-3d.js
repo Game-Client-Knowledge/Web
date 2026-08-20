@@ -77,7 +77,19 @@ assert.match(source, /home_star_portal_size_percent/);
 assert.match(source, /home_star_portal_brightness_percent/);
 assert.match(source, /home_star_portal_collapsed_structure/);
 assert.match(source, /home_star_portal_expanded_structure/);
+for (const structure of [
+  "3d-spiral",
+  "3d-nebula",
+  "3d-clusters",
+  "3d-shell"
+]) {
+  assert.match(source, new RegExp(`"${structure}"`));
+  assert.match(mapSource, new RegExp(`"${structure}"`));
+  assert.match(visualSource, new RegExp(`"${structure}"`));
+}
 assert.match(source, /function updatePortalTargets\(\)/);
+assert.match(source, /function portalStrategyLayout\(structure\)/);
+assert.match(source, /portal-structure:\$\{structure\}/);
 assert.doesNotMatch(source, /contribution-space`\s*\)/);
 assert.match(source, /uniform float uPortalBrightness;/);
 assert.match(source, /alpha \*= uPortalBrightness;/);
@@ -108,6 +120,13 @@ assert.match(
   /\(1 - portalState\.progress\) \* CONTRIBUTION_SPACE_DURATION/
 );
 assert.match(source, /data-contribution-space/);
+assert.match(source, /knowledge-relations-field/);
+assert.match(source, /function drawFormalRelation\(/);
+assert.match(source, /function drawDirectionMarker\(/);
+assert.match(source, /function drawEnergyPulse\(/);
+assert.match(source, /activeNodeDepths/);
+assert.doesNotMatch(source, /new THREE\.LineBasicMaterial/);
+assert.doesNotMatch(source, /new THREE\.LineSegments/);
 assert.match(mapSource, /home_star_experience_mode/);
 assert.match(mapSource, /home_star_portal_collapsed_structure/);
 assert.match(mapSource, /home_star_portal_expanded_structure/);

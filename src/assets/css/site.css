@@ -638,6 +638,10 @@ body[data-editor-state="loading"] [data-account-label] {
   pointer-events: none;
 }
 
+.knowledge-relations-field {
+  pointer-events: none;
+}
+
 .home-stars-full {
   color: #edf7f3;
   background: #07110f;
@@ -963,7 +967,9 @@ body[data-editor-state="loading"] [data-account-label] {
 }
 
 .home-star-experience-portal
-  .knowledge-field[data-contribution-space] {
+  .knowledge-field[data-contribution-space],
+.home-star-experience-portal
+  .knowledge-relations-field[data-contribution-space-relations] {
   position: fixed;
   z-index: 2;
   inset: 0;
@@ -990,7 +996,13 @@ body[data-editor-state="loading"] [data-account-label] {
 .home-contribution-space-expanded
   .knowledge-field[data-contribution-space],
 .home-contribution-space-closing
-  .knowledge-field[data-contribution-space] {
+  .knowledge-field[data-contribution-space],
+.home-contribution-space-opening
+  .knowledge-relations-field[data-contribution-space-relations],
+.home-contribution-space-expanded
+  .knowledge-relations-field[data-contribution-space-relations],
+.home-contribution-space-closing
+  .knowledge-relations-field[data-contribution-space-relations] {
   z-index: 10001;
 }
 
@@ -1296,6 +1308,46 @@ body[data-editor-state="loading"] [data-account-label] {
 .star-coverage-panel dd {
   color: #ffffff;
   font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+.star-relation-legend {
+  display: flex;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(156, 224, 205, 0.16);
+  align-items: center;
+  gap: 12px;
+}
+
+.star-relation-legend span {
+  display: inline-flex;
+  color: #b8c9c3;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.star-relation-legend span::before {
+  width: 14px;
+  height: 2px;
+  background: rgb(132, 220, 196);
+  box-shadow: 0 0 5px rgba(132, 220, 196, 0.7);
+  content: "";
+}
+
+.star-relation-legend [data-relation-type="reference"]::before {
+  background: repeating-linear-gradient(
+    90deg,
+    rgb(238, 190, 111) 0 4px,
+    transparent 4px 7px
+  );
+  box-shadow: none;
+}
+
+.star-relation-legend [data-relation-type="contribution"]::before {
+  background: rgb(239, 142, 120);
+  box-shadow: 0 0 5px rgba(239, 142, 120, 0.65);
 }
 
 .home-contribution-space-expanded .star-map-label,

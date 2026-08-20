@@ -12,7 +12,11 @@
     "3d-drift",
     "3d-drift-anchored",
     "3d-galaxy",
-    "3d-orbit"
+    "3d-orbit",
+    "3d-spiral",
+    "3d-nebula",
+    "3d-clusters",
+    "3d-shell"
   ];
   const formulaEngine = window.GCK_STAR_FORMULA_ENGINE;
   if (!formulaEngine) return;
@@ -686,7 +690,16 @@
         "match_expanded",
         "octahedron",
         "sphere",
-        "cube"
+        "cube",
+        "3d",
+        "3d-drift",
+        "3d-drift-anchored",
+        "3d-galaxy",
+        "3d-orbit",
+        "3d-spiral",
+        "3d-nebula",
+        "3d-clusters",
+        "3d-shell"
       ].includes(merged.home_star_portal_collapsed_structure)
         ? merged.home_star_portal_collapsed_structure
         : defaults.home_star_portal_collapsed_structure,
@@ -695,7 +708,11 @@
         "3d-drift",
         "3d-drift-anchored",
         "3d-galaxy",
-        "3d-orbit"
+        "3d-orbit",
+        "3d-spiral",
+        "3d-nebula",
+        "3d-clusters",
+        "3d-shell"
       ].includes(merged.home_star_portal_expanded_structure)
         ? merged.home_star_portal_expanded_structure
         : defaults.home_star_portal_expanded_structure,
@@ -960,7 +977,12 @@
       "<div><dt>静星</dt><dd data-star-coverage-contributors></dd></div>" +
       "<div><dt>动星</dt><dd data-star-coverage-documents></dd></div>" +
       "<div><dt>关系</dt><dd data-star-coverage-relations></dd></div>" +
-      "</dl>";
+      "</dl>" +
+      '<div class="star-relation-legend" aria-label="联系图例">' +
+      '<span data-relation-type="strong">强联系</span>' +
+      '<span data-relation-type="reference">引用</span>' +
+      '<span data-relation-type="contribution">贡献</span>' +
+      "</div>";
     document.body.append(panel);
     return panel;
   }

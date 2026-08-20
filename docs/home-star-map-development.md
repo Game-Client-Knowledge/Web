@@ -449,11 +449,10 @@ renderer available while presenting the graph as an explicit homepage portal:
 2. lower homepage bands return to light surfaces;
 3. the `贡献` portal occupies the upper-right side of the hero title row
    on desktop and remains right-aligned below the title copy on mobile;
-4. the same graph stars are projected into the configured compact volume and
-   rendered at the configured collapsed scale inside the portal;
-   compact coordinates are projected from the live expanded coordinates, so
-   star direction and neighbourhood remain recognizable instead of being
-   independently randomized;
+4. the same graph stars are rendered at the configured collapsed scale inside
+   the portal; primitive compact volumes project the live expanded coordinates,
+   while a compact 3D strategy uses its own deterministic snapshot keyed by the
+   immutable content revision and can differ from the expanded strategy;
 5. pointer dragging changes the portal yaw and pitch without activating it;
    releasing preserves that orientation and resumes automatic rotation from
    the dragged yaw instead of restoring a time-derived angle;
@@ -481,15 +480,18 @@ and interaction shield `10004`. This keeps the contribution surface above all
 normal page stacking contexts without scattering page-specific z-index
 exceptions.
 
-The pilot does not create a second graph, texture set, Canvas, vendor bundle,
-or API request. Portal coordinates are derived from the content revision and
-star ID. The existing atlas, formula output, cached contribution graph, and
-Three.js module are reused. The existing homepage idle timeout opens the
-contribution space instead of hiding page content in this mode. Pointer,
-touch, keyboard, wheel, or scroll activity reverses an idle-triggered opening
-from its current progress, while manually opened space remains expanded.
-Opening and closing install a transparent interaction shield and capture
-keyboard events so no underlying page command can run during either
+The pilot does not create a second graph, texture set, vendor bundle, or API
+request. Portal coordinates are derived from the content revision and star ID.
+The existing atlas, formula output, cached contribution graph, and Three.js
+module are reused. A transparent Canvas 2D relation layer sits below the
+four-draw-call WebGL star surface. It renders all base and active relations in
+one browser-composited surface, so line styling and animated direction markers
+do not consume additional WebGL draw calls. The existing homepage idle timeout
+opens the contribution space instead of hiding page content in this mode.
+Pointer, touch, keyboard, wheel, or scroll activity reverses an idle-triggered
+opening from its current progress, while manually opened space remains
+expanded. Opening and closing install a transparent interaction shield and
+capture keyboard events so no underlying page command can run during either
 transition.
 
 Useful Canvas datasets for browser tests:
@@ -514,6 +516,14 @@ data-selected-relation-coverage
 data-active-visual-edge-count
 ```
 
+The relation Canvas exposes:
+
+```text
+data-visible-relation-count
+data-active-relation-count
+data-relations-visible
+```
+
 ## 11. Administration Contract
 
 The star map is configured through:
@@ -529,8 +539,8 @@ Main settings:
 | `home_background_style` | `old_star_map`, `contribution_star_map` |
 | `home_star_scope` | `hero`, `full` |
 | `home_star_experience_mode` | `immersive`, `contribution_portal` |
-| `home_star_portal_collapsed_structure` | `match_expanded`, `octahedron`, `sphere`, `cube` |
-| `home_star_portal_expanded_structure` | `3d`, `3d-drift`, `3d-drift-anchored`, `3d-galaxy`, `3d-orbit` |
+| `home_star_portal_collapsed_structure` | `match_expanded`, `octahedron`, `sphere`, `cube`, or any expanded 3D structure |
+| `home_star_portal_expanded_structure` | `3d`, `3d-drift`, `3d-drift-anchored`, `3d-galaxy`, `3d-orbit`, `3d-spiral`, `3d-nebula`, `3d-clusters`, `3d-shell` |
 | `home_star_portal_rotation_speed` | `0..30` degrees per second; default `2.6`, `0` disables automatic rotation |
 | `home_star_portal_size_percent` | `10..100` percent; default `34`, expands to `100%` |
 | `home_star_portal_brightness_percent` | `10..100` percent; default `42`, expands to `100%` |
@@ -644,6 +654,8 @@ Visual check after building:
 python3 -m http.server 8088 --directory _site
 STAR_MAP_BASE_URL=http://127.0.0.1:8088 \
   node scripts/test-home-star-map-visual.js
+STAR_3D_BASE_URL=http://127.0.0.1:8088 \
+  npm run test:home-star-3d-visual
 ```
 
 The visual test covers:
@@ -660,6 +672,10 @@ The visual test covers:
 - active visual pruning;
 - independent relation and label timers;
 - browser errors and horizontal overflow.
+
+The 3D visual test additionally covers every procedural structure, independent
+compact and expanded choices, typed relation pixels, active relation flow,
+desktop and DPR-2 mobile alignment, and the four-WebGL-draw-call limit.
 
 Do not hardcode production star or edge counts. They change with content,
 references, systems, and contributors. Assert structural invariants instead.

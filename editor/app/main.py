@@ -1162,6 +1162,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "octahedron",
             "sphere",
             "cube",
+            "3d",
+            "3d-drift",
+            "3d-drift-anchored",
+            "3d-galaxy",
+            "3d-orbit",
+            "3d-spiral",
+            "3d-nebula",
+            "3d-clusters",
+            "3d-shell",
         }:
             collapsed_structure = "octahedron"
         expanded_structure = db.setting(
@@ -1174,6 +1183,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "3d-drift-anchored",
             "3d-galaxy",
             "3d-orbit",
+            "3d-spiral",
+            "3d-nebula",
+            "3d-clusters",
+            "3d-shell",
         }:
             expanded_structure = "3d-drift"
         return {
@@ -3556,6 +3569,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "3d-drift-anchored",
             "3d-galaxy",
             "3d-orbit",
+            "3d-spiral",
+            "3d-nebula",
+            "3d-clusters",
+            "3d-shell",
         }:
             raise HTTPException(status_code=422, detail="主页星图渲染模式无效")
         if payload.home_star_experience_mode not in {
@@ -3568,6 +3585,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "octahedron",
             "sphere",
             "cube",
+            "3d",
+            "3d-drift",
+            "3d-drift-anchored",
+            "3d-galaxy",
+            "3d-orbit",
+            "3d-spiral",
+            "3d-nebula",
+            "3d-clusters",
+            "3d-shell",
         }:
             raise HTTPException(status_code=422, detail="贡献空间微缩结构无效")
         if payload.home_star_portal_expanded_structure not in {
@@ -3576,6 +3602,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "3d-drift-anchored",
             "3d-galaxy",
             "3d-orbit",
+            "3d-spiral",
+            "3d-nebula",
+            "3d-clusters",
+            "3d-shell",
         }:
             raise HTTPException(status_code=422, detail="贡献空间展开结构无效")
         if payload.home_star_relation_visibility not in {

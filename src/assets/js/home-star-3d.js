@@ -11,6 +11,10 @@
  *               a Keplerian donut with random jitter
  *   3d-orbit  — top contributors become star systems; their documents
  *               orbit them like planets; the rest forms an outer belt
+ *   3d-spiral — four calm logarithmic arms around a bright core
+ *   3d-nebula — stars follow a warped volumetric nebula ribbon
+ *   3d-clusters — six slowly orbiting stellar groups
+ *   3d-shell — layered fibonacci shells with gentle precession
  *
  * Bandwidth: this file and the three.js vendor bundle are lazy-loaded
  * only when a WebGL mode is enabled. All motion is computed on the
@@ -26,14 +30,28 @@
     "3d-drift",
     "3d-drift-anchored",
     "3d-galaxy",
-    "3d-orbit"
+    "3d-orbit",
+    "3d-spiral",
+    "3d-nebula",
+    "3d-clusters",
+    "3d-shell"
+  ];
+  const PORTAL_PRIMITIVE_STRUCTURES = [
+    "match_expanded",
+    "octahedron",
+    "sphere",
+    "cube"
   ];
   const CAMERA_RADIUS = {
     "3d": 700,
     "3d-drift": 620,
     "3d-drift-anchored": 620,
     "3d-galaxy": 780,
-    "3d-orbit": 820
+    "3d-orbit": 820,
+    "3d-spiral": 790,
+    "3d-nebula": 760,
+    "3d-clusters": 820,
+    "3d-shell": 780
   };
   const DEFAULT_ORBIT_POINT_MIN_DEPTH = 280;
   const DEFAULT_POINT_MAX_CSS_SIZE = Object.freeze({
@@ -394,13 +412,204 @@
     };
   }
 
+  function spiralStrategy() {
+    return {
+      camera: "orbit",
+      init(stars, ctx) {
+        const { random } = ctx;
+        const brightest = stars
+          .slice()
+          .sort((left, right) => right.baseBrightness - left.baseBrightness);
+        const coreIds = new Set(brightest.slice(0, 3).map((star) => star.id));
+        for (const star of stars) {
+          star.spiralCore = coreIds.has(star.id);
+          if (star.spiralCore) {
+            const coreIndex = brightest.indexOf(star);
+            star.spiralR = coreIndex * 24;
+            star.spiralTheta = coreIndex * Math.PI * 0.72;
+            star.spiralY = (coreIndex - 1) * 9;
+          } else {
+            star.spiralR = 58 + 410 * Math.pow(random(), 0.62);
+            const arm = star.index % 4;
+            star.spiralTheta =
+              arm * Math.PI * 0.5 +
+              star.spiralR * 0.018 +
+              (random() - 0.5) * 0.58;
+            star.spiralY =
+              (random() + random() - 1) *
+              (12 + star.spiralR * 0.045);
+          }
+          star.spiralOmega =
+            0.012 + 0.034 * (1 - Math.min(1, star.spiralR / 480));
+          star.spiralPhase = random() * Math.PI * 2;
+        }
+      },
+      fit() {},
+      move(stars, dt, time) {
+        const step = Math.min(dt, 100) / 1000;
+        for (const star of stars) {
+          star.spiralTheta += star.spiralOmega * step;
+          const ripple = star.spiralCore
+            ? 0
+            : Math.sin(time * 0.00022 + star.spiralPhase) * 5;
+          star.x = Math.cos(star.spiralTheta) * (star.spiralR + ripple);
+          star.z = Math.sin(star.spiralTheta) * (star.spiralR + ripple);
+          star.y =
+            star.spiralY +
+            Math.sin(time * 0.00016 + star.spiralPhase) *
+              (star.spiralCore ? 2 : 7);
+        }
+      }
+    };
+  }
+
+  function nebulaStrategy() {
+    return {
+      camera: "orbit",
+      init(stars, ctx) {
+        const { random } = ctx;
+        for (const star of stars) {
+          star.nebulaT = random() * 2 - 1;
+          star.nebulaWidth = (random() + random() - 1) * 105;
+          star.nebulaHeight = (random() + random() - 1) * 74;
+          star.nebulaDepth = (random() + random() - 1) * 92;
+          star.nebulaPhase = random() * Math.PI * 2;
+          star.nebulaSpeed = 0.00008 + random() * 0.00009;
+        }
+      },
+      fit() {},
+      move(stars, dt, time) {
+        for (const star of stars) {
+          const t = star.nebulaT;
+          const twist = t * Math.PI * 1.65 + time * 0.000035;
+          const width =
+            star.nebulaWidth +
+            Math.sin(time * star.nebulaSpeed + star.nebulaPhase) * 8;
+          star.x = t * 430 + Math.cos(twist) * width * 0.46;
+          star.y =
+            Math.sin(t * Math.PI * 1.28) * 118 +
+            Math.sin(twist) * width * 0.28 +
+            star.nebulaHeight;
+          star.z =
+            Math.sin(t * Math.PI * 2.05) * 185 +
+            Math.cos(twist) * width * 0.72 +
+            star.nebulaDepth;
+        }
+      }
+    };
+  }
+
+  function clusterStrategy() {
+    const CLUSTER_COUNT = 6;
+    return {
+      camera: "orbit",
+      init(stars, ctx) {
+        const { random } = ctx;
+        const golden = Math.PI * (3 - Math.sqrt(5));
+        for (const star of stars) {
+          const cluster = star.index % CLUSTER_COUNT;
+          const y =
+            1 - (cluster / Math.max(1, CLUSTER_COUNT - 1)) * 2;
+          const ring = Math.sqrt(Math.max(0, 1 - y * y));
+          const theta = cluster * golden;
+          star.clusterCenterX = Math.cos(theta) * ring * 315;
+          star.clusterCenterY = y * 210;
+          star.clusterCenterZ = Math.sin(theta) * ring * 315;
+          const radius = 28 + 92 * Math.cbrt(random());
+          const localTheta = random() * Math.PI * 2;
+          const localCosPhi = random() * 2 - 1;
+          const localSinPhi = Math.sqrt(
+            Math.max(0, 1 - localCosPhi * localCosPhi)
+          );
+          star.clusterX =
+            radius * localSinPhi * Math.cos(localTheta);
+          star.clusterY = radius * localCosPhi * 0.72;
+          star.clusterZ =
+            radius * localSinPhi * Math.sin(localTheta);
+          star.clusterPhase = random() * Math.PI * 2;
+        }
+      },
+      fit() {},
+      move(stars, dt, time) {
+        const rotation = time * 0.000018;
+        const cos = Math.cos(rotation);
+        const sin = Math.sin(rotation);
+        for (const star of stars) {
+          const centerX =
+            star.clusterCenterX * cos - star.clusterCenterZ * sin;
+          const centerZ =
+            star.clusterCenterX * sin + star.clusterCenterZ * cos;
+          star.x =
+            centerX +
+            star.clusterX +
+            Math.sin(time * 0.00012 + star.clusterPhase) * 4;
+          star.y =
+            star.clusterCenterY +
+            star.clusterY +
+            Math.cos(time * 0.0001 + star.clusterPhase) * 4;
+          star.z = centerZ + star.clusterZ;
+        }
+      }
+    };
+  }
+
+  function shellStrategy() {
+    return {
+      camera: "orbit",
+      init(stars, ctx) {
+        const { random } = ctx;
+        const golden = Math.PI * (3 - Math.sqrt(5));
+        for (const star of stars) {
+          const shell = star.index % 3;
+          const shellIndex = Math.floor(star.index / 3);
+          const shellCount = Math.ceil(stars.length / 3);
+          const y =
+            1 - (shellIndex / Math.max(1, shellCount - 1)) * 2;
+          const ring = Math.sqrt(Math.max(0, 1 - y * y));
+          const theta = shellIndex * golden + shell * 0.78;
+          star.shellRadius = 185 + shell * 118 + (random() - 0.5) * 18;
+          star.shellX = Math.cos(theta) * ring;
+          star.shellY = y;
+          star.shellZ = Math.sin(theta) * ring;
+          star.shellPhase = random() * Math.PI * 2;
+        }
+      },
+      fit() {},
+      move(stars, dt, time) {
+        const yaw = time * 0.000021;
+        const pitch = Math.sin(time * 0.000037) * 0.16;
+        const cosYaw = Math.cos(yaw);
+        const sinYaw = Math.sin(yaw);
+        const cosPitch = Math.cos(pitch);
+        const sinPitch = Math.sin(pitch);
+        for (const star of stars) {
+          const radius =
+            star.shellRadius +
+            Math.sin(time * 0.00011 + star.shellPhase) * 5;
+          const x = star.shellX * radius;
+          const y = star.shellY * radius;
+          const z = star.shellZ * radius;
+          const yawX = x * cosYaw - z * sinYaw;
+          const yawZ = x * sinYaw + z * cosYaw;
+          star.x = yawX;
+          star.y = y * cosPitch - yawZ * sinPitch;
+          star.z = y * sinPitch + yawZ * cosPitch;
+        }
+      }
+    };
+  }
+
   const STRATEGIES = {
     "2d-webgl": flatStrategy,
     "3d": depthStrategy,
     "3d-drift": driftStrategy,
     "3d-drift-anchored": anchoredDriftStrategy,
     "3d-galaxy": galaxyStrategy,
-    "3d-orbit": orbitStrategy
+    "3d-orbit": orbitStrategy,
+    "3d-spiral": spiralStrategy,
+    "3d-nebula": nebulaStrategy,
+    "3d-clusters": clusterStrategy,
+    "3d-shell": shellStrategy
   };
 
   // ---------- Renderer factory ----------
@@ -412,20 +621,14 @@
     const portalExperience =
       runtimeSettings.home_star_experience_mode ===
       "contribution_portal";
-    const portalExpandedStructure = [
-      "3d",
-      "3d-drift",
-      "3d-drift-anchored",
-      "3d-galaxy",
-      "3d-orbit"
-    ].includes(runtimeSettings.home_star_portal_expanded_structure)
+    const portalExpandedStructure = WEBGL_MODES.includes(
+      runtimeSettings.home_star_portal_expanded_structure
+    )
       ? runtimeSettings.home_star_portal_expanded_structure
       : "3d-drift";
     const portalCollapsedStructure = [
-      "match_expanded",
-      "octahedron",
-      "sphere",
-      "cube"
+      ...PORTAL_PRIMITIVE_STRUCTURES,
+      ...WEBGL_MODES.filter((item) => item !== "2d-webgl")
     ].includes(runtimeSettings.home_star_portal_collapsed_structure)
       ? runtimeSettings.home_star_portal_collapsed_structure
       : "octahedron";
@@ -477,6 +680,16 @@
     } else {
       canvas.parentElement.insertBefore(glCanvas, canvas);
     }
+    const relationCanvas = document.createElement("canvas");
+    relationCanvas.className =
+      `${canvas.className} knowledge-relations-field`;
+    relationCanvas.setAttribute("aria-hidden", "true");
+    relationCanvas.toggleAttribute(
+      "data-contribution-space-relations",
+      portalExperience
+    );
+    glCanvas.parentElement.insertBefore(relationCanvas, glCanvas);
+    const relationContext = relationCanvas.getContext("2d");
     document.body.classList.remove("home-stars-old");
     document.body.classList.toggle(
       "home-stars-full",
@@ -529,6 +742,7 @@
       });
     } catch (error) {
       glCanvas.remove();
+      relationCanvas.remove();
       portalBackdrop?.remove();
       portalInteractionLock?.remove();
       canvas.style.display = "";
@@ -639,48 +853,6 @@
 
     function tierIdOf(star) {
       return star.brightnessTier?.id || "default";
-    }
-
-    // Tier canonical colors as 0..1 RGB, cached per tier id. Edges blend
-    // these so a link between two different brightness tiers renders as
-    // a smooth nebula-like gradient.
-    const tierRgbCache = new Map();
-    function tierRgbOf(star) {
-      const id = tierIdOf(star);
-      let rgb = tierRgbCache.get(id);
-      if (!rgb) {
-        const hex = String(
-          tierProfile(star.brightnessTier).tintHex || "#ffffff"
-        ).replace("#", "");
-        rgb = [
-          parseInt(hex.slice(0, 2), 16) / 255 || 0,
-          parseInt(hex.slice(2, 4), 16) / 255 || 0,
-          parseInt(hex.slice(4, 6), 16) / 255 || 0
-        ];
-        tierRgbCache.set(id, rgb);
-      }
-      return rgb;
-    }
-
-    function relationRgbOf(type) {
-      const parts = String(relationColors[type] || "255, 255, 255").split(",");
-      return [
-        (Number(parts[0]) || 255) / 255,
-        (Number(parts[1]) || 255) / 255,
-        (Number(parts[2]) || 255) / 255
-      ];
-    }
-
-    // Edge glow strength follows the star's brightness: the same edge is
-    // radiant at a blue giant's end and faint at a brown dwarf's end.
-    // Kept deliberately subtle so lines never wash out the stars.
-    function starEdgeGain(star, time) {
-      const maximum = runtimeSettings.home_star_brightness_max || 100;
-      const normalized = Math.max(
-        0,
-        Math.min(1, currentBrightness(star, time) / maximum)
-      );
-      return 0.14 + 0.58 * Math.pow(normalized, 1.55);
     }
 
     const scene = new THREE.Scene();
@@ -1076,167 +1248,15 @@
     scene.add(coreLayer);
     scene.add(spikeLayer);
 
-    // Relation edges. Visibility comes from the existing admin setting:
-    //   always — every formal edge, every frame
-    //   near   — formal edges shorter than a range limit, plus (in drift
-    //            mode) transient links between any two close stars
-    //   hidden — none
+    // Relations are projected onto a Canvas 2D layer below the WebGL stars.
+    // This preserves relation-type colors and directional details without
+    // adding WebGL draw calls.
     const visibility = runtimeSettings.home_star_relation_visibility;
     const NEAR_LIMIT = 170;
-    const edgeLayers = [];
-    if (visibility !== "hidden") {
-      for (const type of ["strong", "reference", "contribution"]) {
-        const typeEdges = edges.filter((edge) => edge.type === type);
-        if (!typeEdges.length) continue;
-        const positions = new Float32Array(typeEdges.length * 6);
-        const colors = new Float32Array(typeEdges.length * 6);
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute(
-          "position",
-          new THREE.BufferAttribute(positions, 3)
-        );
-        geometry.setAttribute(
-          "color",
-          new THREE.BufferAttribute(colors, 3)
-        );
-        const material = new THREE.LineBasicMaterial({
-          // Per-vertex colors carry the tier gradient and the
-          // brightness-scaled glow; opacity is just the global gain.
-          vertexColors: true,
-          transparent: true,
-          opacity: visibility === "always" ? 0.18 : 0.4,
-          blending: THREE.AdditiveBlending,
-          depthTest: false,
-          depthWrite: false
-        });
-        const lines = new THREE.LineSegments(geometry, material);
-        lines.renderOrder = 0;
-        lines.userData.edges = typeEdges;
-        lines.userData.relationRgb = relationRgbOf(type);
-        scene.add(lines);
-        edgeLayers.push(lines);
-      }
-    }
-
-    // Transient proximity links for the drift mode.
     const PROXIMITY_LIMIT = 120;
-    const PROXIMITY_MAX = 700;
-    let proximityLayer = null;
-    if (strategy.proximity && visibility === "near") {
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute(
-        "position",
-        new THREE.BufferAttribute(new Float32Array(PROXIMITY_MAX * 6), 3)
-      );
-      geometry.setAttribute(
-        "color",
-        new THREE.BufferAttribute(new Float32Array(PROXIMITY_MAX * 6), 3)
-      );
-      proximityLayer = new THREE.LineSegments(
-        geometry,
-        new THREE.LineBasicMaterial({
-          vertexColors: true,
-          transparent: true,
-          opacity: 0.2,
-          blending: THREE.AdditiveBlending,
-          depthTest: false,
-          depthWrite: false
-        })
-      );
-      proximityLayer.renderOrder = 0;
-      scene.add(proximityLayer);
-    }
-
-    // Highlight path + travelling pulses for the active selection.
-    const highlightGeometry = new THREE.BufferGeometry();
-    highlightGeometry.setAttribute(
-      "position",
-      new THREE.BufferAttribute(new Float32Array(0), 3)
-    );
-    const highlightLayer = new THREE.LineSegments(
-      highlightGeometry,
-      new THREE.LineBasicMaterial({
-        color: new THREE.Color("#dff5ec"),
-        transparent: true,
-        opacity: 0.85,
-        blending: THREE.AdditiveBlending,
-        depthTest: false,
-        depthWrite: false
-      })
-    );
-    highlightLayer.renderOrder = 3;
-    scene.add(highlightLayer);
+    const PROXIMITY_MAX = 260;
     let highlightEdges = [];
-
-    const pulseGeometry = new THREE.BufferGeometry();
-    pulseGeometry.setAttribute(
-      "position",
-      new THREE.BufferAttribute(new Float32Array(0), 3)
-    );
-    pulseGeometry.setAttribute(
-      "aSize",
-      new THREE.BufferAttribute(new Float32Array(0), 1)
-    );
-    pulseGeometry.setAttribute(
-      "aAlpha",
-      new THREE.BufferAttribute(new Float32Array(0), 1)
-    );
-    pulseGeometry.setAttribute(
-      "aTile",
-      new THREE.BufferAttribute(new Float32Array(0), 1)
-    );
-    pulseGeometry.setAttribute(
-      "aRot",
-      new THREE.BufferAttribute(new Float32Array(0), 1)
-    );
-    pulseGeometry.setAttribute(
-      "aColor",
-      new THREE.BufferAttribute(new Float32Array(0), 3)
-    );
-    const pulseLayer = new THREE.Points(
-      pulseGeometry,
-      new THREE.ShaderMaterial({
-        uniforms: {
-          uAtlas: { value: atlasTexture },
-          uTiles: { value: usedTierIds.length * 2 },
-          uScale: { value: 1 },
-          uPixelRatio: { value: 1 },
-          uMinDepth: { value: pointMinDepth },
-          uMaxCssSize: { value: pointMaxCssSize.pulse },
-          uSoftKneeRatio: {
-            value:
-              strategy.camera === "flat" ? 1 : POINT_SIZE_SOFT_KNEE
-          },
-          uPortalScale: { value: 1 },
-          uContentRect0: {
-            value: new Float32Array([-2, -2, -2, -2])
-          },
-          uContentRect1: {
-            value: new Float32Array([-2, -2, -2, -2])
-          },
-          uContentRect2: {
-            value: new Float32Array([-2, -2, -2, -2])
-          },
-          uContentFeather: {
-            value: new Float32Array([0.04, 0.04])
-          },
-          uContentExposure: { value: 0.78 },
-          uPortalBrightness: { value: 1 },
-          uScreenOffset: {
-            value: new Float32Array([0, 0])
-          }
-        },
-        vertexShader: pointVertexShader,
-        fragmentShader: pointFragmentShader,
-        blending: THREE.AdditiveBlending,
-        depthTest: false,
-        depthWrite: false,
-        transparent: true
-      })
-    );
-    pulseLayer.frustumCulled = false;
-    pulseLayer.renderOrder = 4;
-    scene.add(pulseLayer);
+    const relationProjectionCache = new Map();
 
     const panel = host.createCoveragePanel();
     const label = host.createLabel();
@@ -1250,6 +1270,7 @@
     let selectedTier = null;
     let activeRelationPlan = null;
     let activeVisualEdgeIds = new Set();
+    let activeNodeDepths = new Map();
     let labelStar = null;
     let labelExpiresAt = 0;
     let labelTimer = 0;
@@ -1272,13 +1293,13 @@
       rectangle: null,
       heroRectangle: null,
       heroContentRectangle: null,
+      screenOffset: [0, 0],
       reason: ""
     };
     const contentMaskMaterials = [
       haloLayer.material,
       coreLayer.material,
-      spikeLayer.material,
-      pulseLayer.material
+      spikeLayer.material
     ];
     const portalPhases = [
       "collapsed",
@@ -1361,8 +1382,68 @@
       };
     }
 
+    const portalLayoutCache = new Map();
+    function portalStrategyLayout(structure) {
+      if (portalLayoutCache.has(structure)) {
+        return portalLayoutCache.get(structure);
+      }
+      const snapshotStars = stars.map((star) => ({
+        id: star.id,
+        kind: star.kind,
+        baseBrightness: star.baseBrightness,
+        index: star.index,
+        metrics: { ...(star.metrics || {}) },
+        x: 0,
+        y: 0,
+        z: 0
+      }));
+      const snapshotById = new Map(
+        snapshotStars.map((star) => [star.id, star])
+      );
+      const snapshotStrategy = (
+        STRATEGIES[structure] || depthStrategy
+      )();
+      const snapshotRandom = seededRandom(
+        hashSeed(
+          `${sourceGraph.revision}:portal-structure:${structure}`
+        )
+      );
+      snapshotStrategy.init(snapshotStars, {
+        random: snapshotRandom,
+        edges,
+        starById: snapshotById
+      });
+      snapshotStrategy.move(snapshotStars, 16, 0);
+      snapshotStrategy.move(snapshotStars, 16, 16);
+      let maximum = 1;
+      for (const star of snapshotStars) {
+        maximum = Math.max(
+          maximum,
+          Math.hypot(star.x || 0, star.y || 0, star.z || 0)
+        );
+      }
+      const scale = CONTRIBUTION_SPACE_RADIUS * 0.94 / maximum;
+      const positions = new Map(
+        snapshotStars.map((star) => [
+          star.id,
+          {
+            x: (star.x || 0) * scale,
+            y: (star.y || 0) * scale,
+            z: (star.z || 0) * scale
+          }
+        ])
+      );
+      portalLayoutCache.set(structure, positions);
+      return positions;
+    }
+
     function updatePortalTargets() {
       if (!portalState.enabled) return;
+      const independentLayout = WEBGL_MODES.includes(
+        portalCollapsedStructure
+      )
+        ? portalStrategyLayout(portalCollapsedStructure)
+        : null;
       let maxRadius = 1;
       for (const star of stars) {
         star.expandedX = star.x;
@@ -1374,6 +1455,13 @@
         );
       }
       for (const star of stars) {
+        const independent = independentLayout?.get(star.id);
+        if (independent) {
+          star.portalX = independent.x;
+          star.portalY = independent.y;
+          star.portalZ = independent.z;
+          continue;
+        }
         const radius = Math.hypot(star.x, star.y, star.z);
         if (radius < 0.0001) {
           star.portalX = 0;
@@ -1650,6 +1738,7 @@
         (centerX / width * 2 - 1) * collapsed,
         (1 - centerY / height * 2) * collapsed
       ];
+      portalState.screenOffset = offset;
       const portalScale =
         portalCollapsedScale +
         (1 - portalCollapsedScale) *
@@ -1667,21 +1756,16 @@
       const geometry = contributionSpaceClip(portalState.progress);
       if (geometry.clip) {
         glCanvas.style.clipPath = geometry.clip;
+        relationCanvas.style.clipPath = geometry.clip;
         portalBackdrop.style.clipPath = geometry.clip;
       }
       updateHeroContentCover(geometry.expansion);
       backgroundLayer.visible = true;
       backgroundLayer.material.uniforms.uOpacity.value =
         portalBrightness;
-      const relationsVisible = portalState.progress > 0.72;
-      for (const layer of edgeLayers) {
-        layer.visible = relationsVisible;
-      }
-      if (proximityLayer) {
-        proximityLayer.visible = relationsVisible;
-      }
-      highlightLayer.visible = relationsVisible;
-      pulseLayer.visible = relationsVisible;
+      relationCanvas.dataset.relationsVisible = String(
+        portalState.progress > 0.72
+      );
       label.hidden =
         portalState.progress < 0.98 || !labelStar;
       glCanvas.dataset.contributionSpaceState = portalState.phase;
@@ -1827,6 +1911,11 @@
       renderer.setSize(width, height, false);
       glCanvas.style.width = `${width}px`;
       glCanvas.style.height = `${height}px`;
+      relationCanvas.width = Math.max(1, Math.round(width * ratio));
+      relationCanvas.height = Math.max(1, Math.round(height * ratio));
+      relationCanvas.style.width = `${width}px`;
+      relationCanvas.style.height = `${height}px`;
+      relationContext.setTransform(ratio, 0, 0, ratio, 0, 0);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       const uScale =
@@ -1835,12 +1924,10 @@
       haloLayer.material.uniforms.uScale.value = uScale;
       coreLayer.material.uniforms.uScale.value = uScale;
       spikeLayer.material.uniforms.uScale.value = uScale;
-      pulseLayer.material.uniforms.uScale.value = uScale;
       backgroundLayer.material.uniforms.uScale.value = uScale;
       haloLayer.material.uniforms.uPixelRatio.value = ratio;
       coreLayer.material.uniforms.uPixelRatio.value = ratio;
       spikeLayer.material.uniforms.uPixelRatio.value = ratio;
-      pulseLayer.material.uniforms.uPixelRatio.value = ratio;
       backgroundLayer.material.uniforms.uPixelRatio.value = ratio;
       measurePortal();
       updateContentMask();
@@ -2030,146 +2117,315 @@
       spikeColor.needsUpdate = true;
     }
 
-    function writeEdgePositions(time) {
-      // Per-frame glow strength of every star, so each edge end can be
-      // tinted and scaled by its own star's brightness tier.
-      const gains = new Map();
-      for (const star of stars) {
-        gains.set(star.id, starEdgeGain(star, time));
+    function relationStyle(type) {
+      if (type === "reference") {
+        return runtimeSettings.home_star_reference_relation_style;
       }
-      for (const layer of edgeLayers) {
-        const attribute = layer.geometry.attributes.position;
-        const colorAttribute = layer.geometry.attributes.color;
-        const relationRgb = layer.userData.relationRgb;
-        let count = 0;
-        for (const edge of layer.userData.edges) {
-          const source = starById.get(edge.source);
-          const target = starById.get(edge.target);
-          if (visibility === "near") {
-            const length = Math.hypot(
-              source.x - target.x,
-              source.y - target.y,
-              source.z - target.z
-            );
-            if (length > NEAR_LIMIT) continue;
-          }
-          attribute.setXYZ(count * 2, source.x, source.y, source.z);
-          attribute.setXYZ(count * 2 + 1, target.x, target.y, target.z);
-          const sourceTier = tierRgbOf(source);
-          const targetTier = tierRgbOf(target);
-          const sourceGain = gains.get(source.id);
-          const targetGain = gains.get(target.id);
-          colorAttribute.setXYZ(
-            count * 2,
-            (sourceTier[0] * 0.65 + relationRgb[0] * 0.35) * sourceGain,
-            (sourceTier[1] * 0.65 + relationRgb[1] * 0.35) * sourceGain,
-            (sourceTier[2] * 0.65 + relationRgb[2] * 0.35) * sourceGain
-          );
-          colorAttribute.setXYZ(
-            count * 2 + 1,
-            (targetTier[0] * 0.65 + relationRgb[0] * 0.35) * targetGain,
-            (targetTier[1] * 0.65 + relationRgb[1] * 0.35) * targetGain,
-            (targetTier[2] * 0.65 + relationRgb[2] * 0.35) * targetGain
-          );
-          count += 1;
-        }
-        layer.geometry.setDrawRange(0, count * 2);
-        attribute.needsUpdate = true;
-        colorAttribute.needsUpdate = true;
+      if (type === "contribution") {
+        return runtimeSettings.home_star_contributor_relation_style;
       }
-      if (proximityLayer) {
-        const attribute = proximityLayer.geometry.attributes.position;
-        const colorAttribute = proximityLayer.geometry.attributes.color;
-        let count = 0;
-        for (let i = 0; i < stars.length && count < PROXIMITY_MAX; i += 1) {
-          for (let j = i + 1; j < stars.length && count < PROXIMITY_MAX; j += 1) {
-            const a = stars[i];
-            const b = stars[j];
-            const distance = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
-            if (distance > PROXIMITY_LIMIT) continue;
-            attribute.setXYZ(count * 2, a.x, a.y, a.z);
-            attribute.setXYZ(count * 2 + 1, b.x, b.y, b.z);
-            const aTier = tierRgbOf(a);
-            const bTier = tierRgbOf(b);
-            const aGain = gains.get(a.id) * 0.6;
-            const bGain = gains.get(b.id) * 0.6;
-            colorAttribute.setXYZ(
-              count * 2,
-              aTier[0] * aGain,
-              aTier[1] * aGain,
-              aTier[2] * aGain
-            );
-            colorAttribute.setXYZ(
-              count * 2 + 1,
-              bTier[0] * bGain,
-              bTier[1] * bGain,
-              bTier[2] * bGain
-            );
-            count += 1;
-          }
-        }
-        proximityLayer.geometry.setDrawRange(0, count * 2);
-        attribute.needsUpdate = true;
-        colorAttribute.needsUpdate = true;
-      }
-      // Highlight path follows the moving stars.
-      if (highlightEdges.length) {
-        const attribute = highlightGeometry.attributes.position;
-        highlightEdges.forEach((edge, index) => {
-          const source = starById.get(edge.source);
-          const target = starById.get(edge.target);
-          attribute.setXYZ(index * 2, source.x, source.y, source.z);
-          attribute.setXYZ(index * 2 + 1, target.x, target.y, target.z);
-        });
-        attribute.needsUpdate = true;
-      }
+      return runtimeSettings.home_star_strong_relation_style;
     }
 
-    function writePulses(time) {
-      const count = highlightEdges.length;
-      if (!count) {
-        pulseGeometry.setDrawRange(0, 0);
+    function edgeCurve(edge, source, target) {
+      const seed = hashSeed(illumination.edgeId(edge));
+      const bend = ((seed % 1000) / 1000 - 0.5) * 0.24;
+      const dx = target.x - source.x;
+      const dy = target.y - source.y;
+      const length = Math.hypot(dx, dy) || 1;
+      return {
+        cx: (source.x + target.x) / 2 - dy * bend,
+        cy: (source.y + target.y) / 2 + dx * bend,
+        length
+      };
+    }
+
+    function curvePoint(source, target, curve, progress) {
+      const inverse = 1 - progress;
+      return {
+        x:
+          inverse * inverse * source.x +
+          2 * inverse * progress * curve.cx +
+          progress * progress * target.x,
+        y:
+          inverse * inverse * source.y +
+          2 * inverse * progress * curve.cy +
+          progress * progress * target.y
+      };
+    }
+
+    function curveTangent(source, target, curve, progress) {
+      return {
+        x:
+          2 * (1 - progress) * (curve.cx - source.x) +
+          2 * progress * (target.x - curve.cx),
+        y:
+          2 * (1 - progress) * (curve.cy - source.y) +
+          2 * progress * (target.y - curve.cy)
+      };
+    }
+
+    function drawDirectionMarker(
+      source,
+      target,
+      curve,
+      progress,
+      color,
+      alpha,
+      size
+    ) {
+      const point = curvePoint(source, target, curve, progress);
+      const tangent = curveTangent(source, target, curve, progress);
+      const angle = Math.atan2(tangent.y, tangent.x);
+      relationContext.save();
+      relationContext.translate(point.x, point.y);
+      relationContext.rotate(angle);
+      relationContext.fillStyle = `rgba(${color}, ${alpha})`;
+      relationContext.beginPath();
+      relationContext.moveTo(size, 0);
+      relationContext.lineTo(-size * 0.7, -size * 0.55);
+      relationContext.lineTo(-size * 0.3, 0);
+      relationContext.lineTo(-size * 0.7, size * 0.55);
+      relationContext.closePath();
+      relationContext.fill();
+      relationContext.restore();
+    }
+
+    function drawEnergyPulse(
+      source,
+      target,
+      curve,
+      progress,
+      color,
+      alpha,
+      radius
+    ) {
+      const point = curvePoint(source, target, curve, progress);
+      const gradient = relationContext.createRadialGradient(
+        point.x,
+        point.y,
+        0,
+        point.x,
+        point.y,
+        radius
+      );
+      gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+      gradient.addColorStop(0.22, `rgba(${color}, ${alpha * 0.92})`);
+      gradient.addColorStop(1, `rgba(${color}, 0)`);
+      relationContext.fillStyle = gradient;
+      relationContext.beginPath();
+      relationContext.arc(point.x, point.y, radius, 0, Math.PI * 2);
+      relationContext.fill();
+    }
+
+    function activeEdgeDepth(edge) {
+      const sourceDepth = activeNodeDepths.get(edge.source);
+      const targetDepth = activeNodeDepths.get(edge.target);
+      return Math.min(
+        Number.isFinite(sourceDepth) ? sourceDepth : 20,
+        Number.isFinite(targetDepth) ? targetDepth : 20
+      );
+    }
+
+    function drawFormalRelation(edge, time, highlighted) {
+      const sourceStar = starById.get(edge.source);
+      const targetStar = starById.get(edge.target);
+      if (!sourceStar || !targetStar) return false;
+      const worldDistance = Math.hypot(
+        sourceStar.x - targetStar.x,
+        sourceStar.y - targetStar.y,
+        sourceStar.z - targetStar.z
+      );
+      if (
+        !highlighted &&
+        (
+          visibility === "hidden" ||
+          (visibility === "near" && worldDistance > NEAR_LIMIT)
+        )
+      ) {
+        return false;
+      }
+      const source = projectRelationStar(sourceStar);
+      const target = projectRelationStar(targetStar);
+      if (!source.visible || !target.visible) return false;
+      const curve = edgeCurve(edge, source, target);
+      const typeColor =
+        relationColors[edge.type] || relationColors.strong;
+      const depth = highlighted ? activeEdgeDepth(edge) : 0;
+      const levelGain = highlighted
+        ? Math.max(0.52, 1 - depth * 0.11)
+        : 1;
+      const alpha = highlighted
+        ? 0.9 * levelGain
+        : visibility === "always"
+          ? 0.14
+          : Math.max(0.04, 0.24 * (1 - worldDistance / NEAR_LIMIT));
+      const style = relationStyle(edge.type);
+      const gradient = relationContext.createLinearGradient(
+        source.x,
+        source.y,
+        target.x,
+        target.y
+      );
+      gradient.addColorStop(0, `rgba(${typeColor}, ${alpha * 0.35})`);
+      gradient.addColorStop(0.22, `rgba(${typeColor}, ${alpha})`);
+      gradient.addColorStop(0.78, `rgba(${typeColor}, ${alpha})`);
+      gradient.addColorStop(1, `rgba(${typeColor}, ${alpha * 0.35})`);
+      relationContext.save();
+      relationContext.strokeStyle = gradient;
+      relationContext.lineWidth = highlighted
+        ? Math.max(1.2, 2.35 - depth * 0.16)
+        : style === "glow"
+          ? 1.1
+          : 0.72;
+      relationContext.lineCap = "round";
+      relationContext.setLineDash(
+        style === "dashed"
+          ? highlighted
+            ? [9, 7]
+            : [6, 8]
+          : []
+      );
+      relationContext.lineDashOffset = highlighted
+        ? -(time * 0.018 + depth * 6)
+        : 0;
+      if (style === "glow" || highlighted) {
+        relationContext.shadowColor = `rgba(${typeColor}, ${alpha})`;
+        relationContext.shadowBlur = highlighted ? 8 : 4;
+      }
+      relationContext.beginPath();
+      relationContext.moveTo(source.x, source.y);
+      relationContext.quadraticCurveTo(
+        curve.cx,
+        curve.cy,
+        target.x,
+        target.y
+      );
+      relationContext.stroke();
+      relationContext.restore();
+
+      const directed = edge.type !== "strong";
+      if (directed) {
+        const markerProgress = highlighted
+          ? 0.58 + ((time * 0.00016 + depth * 0.11) % 0.22)
+          : 0.72;
+        drawDirectionMarker(
+          source,
+          target,
+          curve,
+          markerProgress,
+          typeColor,
+          highlighted ? alpha : alpha * 0.72,
+          highlighted ? 5.2 : 3.2
+        );
+      }
+      if (highlighted && !reducedMotion) {
+        const seed = hashSeed(`${illumination.edgeId(edge)}:pulse`);
+        const progress =
+          (time * 0.00032 + (seed % 1000) / 1000) % 1;
+        drawEnergyPulse(
+          source,
+          target,
+          curve,
+          progress,
+          typeColor,
+          alpha,
+          Math.max(
+            5,
+            Math.min(12, pointMaxCssSize.pulse * 0.25) -
+              depth * 0.45
+          )
+        );
+      }
+      return true;
+    }
+
+    function drawProximityRelations() {
+      if (
+        !strategy.proximity ||
+        visibility !== "near" ||
+        highlightEdges.length
+      ) {
+        return 0;
+      }
+      let count = 0;
+      relationContext.save();
+      relationContext.lineWidth = 0.55;
+      relationContext.lineCap = "round";
+      for (let left = 0; left < stars.length && count < PROXIMITY_MAX; left += 1) {
+        for (
+          let right = left + 1;
+          right < stars.length && count < PROXIMITY_MAX;
+          right += 1
+        ) {
+          const sourceStar = stars[left];
+          const targetStar = stars[right];
+          const distance = Math.hypot(
+            sourceStar.x - targetStar.x,
+            sourceStar.y - targetStar.y,
+            sourceStar.z - targetStar.z
+          );
+          if (distance > PROXIMITY_LIMIT) continue;
+          const source = projectRelationStar(sourceStar);
+          const target = projectRelationStar(targetStar);
+          if (!source.visible || !target.visible) continue;
+          const alpha = 0.1 * (1 - distance / PROXIMITY_LIMIT);
+          relationContext.strokeStyle =
+            `rgba(112, 190, 171, ${Math.max(0.015, alpha)})`;
+          relationContext.beginPath();
+          relationContext.moveTo(source.x, source.y);
+          relationContext.lineTo(target.x, target.y);
+          relationContext.stroke();
+          count += 1;
+        }
+      }
+      relationContext.restore();
+      return count;
+    }
+
+    function drawRelations(time) {
+      relationContext.clearRect(0, 0, width, height);
+      relationProjectionCache.clear();
+      if (
+        portalState.enabled &&
+        portalState.progress <= 0.72
+      ) {
+        relationCanvas.dataset.visibleRelationCount = "0";
         return;
       }
-      const position = pulseGeometry.attributes.position;
-      const size = pulseGeometry.attributes.aSize;
-      const alpha = pulseGeometry.attributes.aAlpha;
-      const tile = pulseGeometry.attributes.aTile;
-      const rot = pulseGeometry.attributes.aRot;
-      const color = pulseGeometry.attributes.aColor;
-      highlightEdges.forEach((edge, index) => {
-        const source = starById.get(edge.source);
-        const target = starById.get(edge.target);
-        const t = (time * 0.0004 + index * 0.37) % 1;
-        position.setXYZ(
-          index,
-          source.x + (target.x - source.x) * t,
-          source.y + (target.y - source.y) * t,
-          source.z + (target.z - source.z) * t
+      let visibleCount = drawProximityRelations();
+      for (const edge of edges) {
+        const highlighted = activeVisualEdgeIds.has(
+          illumination.edgeId(edge)
         );
-        size.setX(index, 26);
-        alpha.setX(index, 0.9);
-        tile.setX(index, 0);
-        rot.setX(index, 0);
-        color.setXYZ(index, 1, 1, 1);
-      });
-      pulseGeometry.setDrawRange(0, count);
-      position.needsUpdate = true;
-      size.needsUpdate = true;
-      alpha.needsUpdate = true;
-      tile.needsUpdate = true;
-      rot.needsUpdate = true;
-      color.needsUpdate = true;
+        if (drawFormalRelation(edge, time, highlighted)) {
+          visibleCount += 1;
+        }
+      }
+      relationCanvas.dataset.visibleRelationCount =
+        String(visibleCount);
+      relationCanvas.dataset.activeRelationCount =
+        String(highlightEdges.length);
     }
 
     function projectStar(star) {
       const vector = new THREE.Vector3(star.x, star.y, star.z);
       vector.project(camera);
+      const offset = portalState.enabled
+        ? portalState.screenOffset
+        : [0, 0];
       return {
-        x: ((vector.x + 1) / 2) * width,
-        y: ((1 - vector.y) / 2) * height,
+        x: ((vector.x + offset[0] + 1) / 2) * width,
+        y: ((1 - vector.y - offset[1]) / 2) * height,
         visible: vector.z < 1
       };
+    }
+
+    function projectRelationStar(star) {
+      if (!relationProjectionCache.has(star.id)) {
+        relationProjectionCache.set(star.id, projectStar(star));
+      }
+      return relationProjectionCache.get(star.id);
     }
 
     function updateLabel(time) {
@@ -2219,9 +2475,9 @@
         );
         camera.lookAt(0, 0, 0);
       }
+      camera.updateMatrixWorld();
       writePointAttributes(time);
-      writeEdgePositions(time);
-      writePulses(time);
+      drawRelations(time);
       renderer.render(scene, camera);
       updateLabel(time);
     }
@@ -2307,6 +2563,28 @@
       updateLabel(now);
     }
 
+    function relationDepths(rootId, activeEdges) {
+      const adjacency = new Map();
+      for (const edge of activeEdges) {
+        if (!adjacency.has(edge.source)) adjacency.set(edge.source, []);
+        if (!adjacency.has(edge.target)) adjacency.set(edge.target, []);
+        adjacency.get(edge.source).push(edge.target);
+        adjacency.get(edge.target).push(edge.source);
+      }
+      const depths = new Map([[rootId, 0]]);
+      const queue = [rootId];
+      while (queue.length) {
+        const current = queue.shift();
+        const depth = depths.get(current);
+        for (const neighbor of adjacency.get(current) || []) {
+          if (depths.has(neighbor)) continue;
+          depths.set(neighbor, depth + 1);
+          queue.push(neighbor);
+        }
+      }
+      return depths;
+    }
+
     function clearSelection() {
       selectedRoot = "";
       selectedIds = new Set();
@@ -2314,25 +2592,8 @@
       selectedTier = null;
       activeRelationPlan = null;
       activeVisualEdgeIds = new Set();
+      activeNodeDepths = new Map();
       highlightEdges = [];
-      highlightGeometry.setAttribute(
-        "position",
-        new THREE.BufferAttribute(new Float32Array(0), 3)
-      );
-      pulseGeometry.setAttribute(
-        "position",
-        new THREE.BufferAttribute(new Float32Array(0), 3)
-      );
-      for (const name of ["aSize", "aAlpha", "aTile", "aRot"]) {
-        pulseGeometry.setAttribute(
-          name,
-          new THREE.BufferAttribute(new Float32Array(0), 1)
-        );
-      }
-      pulseGeometry.setAttribute(
-        "aColor",
-        new THREE.BufferAttribute(new Float32Array(0), 3)
-      );
       panel.hidden = true;
       glCanvas.dataset.selectedCount = "0";
       glCanvas.dataset.selectedTier = "";
@@ -2345,23 +2606,6 @@
       selectedRoot = star.id;
       selectedBrightness = star.baseBrightness;
       selectedTier = star.brightnessTier;
-      if (runtimeSettings.home_star_relation_visibility === "always") {
-        selectedIds = new Set([star.id]);
-        activeRelationPlan = {
-          coverageCount: edges.filter((edge) => {
-            return edge.source === star.id || edge.target === star.id;
-          }).length,
-          totalCount: edges.length
-        };
-        glCanvas.dataset.selectedCount = "1";
-        glCanvas.dataset.selectedTier = selectedTier?.name || "";
-        updateCoverage();
-        selectionTimer = window.setTimeout(
-          clearSelection,
-          runtimeSettings.home_star_selection_duration_ms
-        );
-        return;
-      }
       selectedIds = illumination.illuminate(
         stars,
         edges,
@@ -2382,24 +2626,9 @@
       highlightEdges = activeRelationPlan.visualEdges.filter((edge) => {
         return activeVisualEdgeIds.has(illumination.edgeId(edge));
       });
-      highlightGeometry.setAttribute(
-        "position",
-        new THREE.BufferAttribute(new Float32Array(highlightEdges.length * 6), 3)
-      );
-      const pulseCount = highlightEdges.length;
-      pulseGeometry.setAttribute(
-        "position",
-        new THREE.BufferAttribute(new Float32Array(pulseCount * 3), 3)
-      );
-      for (const name of ["aSize", "aAlpha", "aTile", "aRot"]) {
-        pulseGeometry.setAttribute(
-          name,
-          new THREE.BufferAttribute(new Float32Array(pulseCount), 1)
-        );
-      }
-      pulseGeometry.setAttribute(
-        "aColor",
-        new THREE.BufferAttribute(new Float32Array(pulseCount * 3), 3)
+      activeNodeDepths = relationDepths(
+        star.id,
+        activeRelationPlan.coverageEdges
       );
       glCanvas.dataset.selectedCount = String(selectedIds.size);
       glCanvas.dataset.selectedTier = selectedTier?.name || "";
@@ -2668,6 +2897,8 @@
     );
     glCanvas.dataset.selectedCount = "0";
     glCanvas.dataset.selectedTier = "";
+    glCanvas.dataset.relationRenderer = "canvas-2d";
+    relationCanvas.dataset.relationRenderer = "canvas-2d";
     if (!reducedMotion) frame = window.requestAnimationFrame(animate);
     else draw(performance.now());
 
@@ -2677,9 +2908,16 @@
       scene,
       camera,
       stars,
+      edges,
       portalState,
       openContributionSpace,
       closeContributionSpace,
+      selectStar,
+      clearSelection,
+      draw,
+      availableStructures: WEBGL_MODES.filter(
+        (item) => item !== "2d-webgl"
+      ),
       portalSettings: {
         collapsedStructure: portalCollapsedStructure,
         expandedStructure: portalExpandedStructure,
@@ -2693,7 +2931,8 @@
         ...pointMaxCssSize
       },
       backgroundLayer,
-      layers: { haloLayer, coreLayer, spikeLayer, pulseLayer }
+      relationCanvas,
+      layers: { haloLayer, coreLayer, spikeLayer }
     };
 
     return function () {
@@ -2756,17 +2995,14 @@
         backgroundLayer,
         haloLayer,
         coreLayer,
-        spikeLayer,
-        pulseLayer,
-        highlightLayer,
-        ...(proximityLayer ? [proximityLayer] : []),
-        ...edgeLayers
+        spikeLayer
       ]) {
         layer.geometry.dispose();
         layer.material.dispose();
       }
       atlasTexture.dispose();
       renderer.dispose();
+      relationCanvas.remove();
       glCanvas.remove();
       portalBackdrop?.remove();
       portalInteractionLock?.remove();

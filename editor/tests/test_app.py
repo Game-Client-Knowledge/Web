@@ -1359,9 +1359,10 @@ def test_admin_can_configure_client_visual_effects(
             "home_content_mask_enabled": True,
             "home_content_idle_timeout_seconds": 45,
             "home_star_scope": "full",
+            "home_star_render_mode": "3d-nebula",
             "home_star_experience_mode": "contribution_portal",
-            "home_star_portal_collapsed_structure": "sphere",
-            "home_star_portal_expanded_structure": "3d-orbit",
+            "home_star_portal_collapsed_structure": "3d-galaxy",
+            "home_star_portal_expanded_structure": "3d-spiral",
             "home_star_portal_rotation_speed": 4.5,
             "home_star_portal_size_percent": 48,
             "home_star_portal_brightness_percent": 55,
@@ -1450,10 +1451,10 @@ def test_admin_can_configure_client_visual_effects(
         "home_content_mask_enabled": True,
         "home_content_idle_timeout_seconds": 45,
         "home_star_scope": "full",
-        "home_star_render_mode": "2d",
+        "home_star_render_mode": "3d-nebula",
         "home_star_experience_mode": "contribution_portal",
-        "home_star_portal_collapsed_structure": "sphere",
-        "home_star_portal_expanded_structure": "3d-orbit",
+        "home_star_portal_collapsed_structure": "3d-galaxy",
+        "home_star_portal_expanded_structure": "3d-spiral",
         "home_star_portal_rotation_speed": 4.5,
         "home_star_portal_size_percent": 48,
         "home_star_portal_brightness_percent": 55,
@@ -1540,12 +1541,13 @@ def test_admin_can_configure_client_visual_effects(
     assert config["home_content_mask_enabled"] is True
     assert config["home_content_idle_timeout_seconds"] == 45
     assert config["home_star_scope"] == "full"
+    assert config["home_star_render_mode"] == "3d-nebula"
     assert (
         config["home_star_experience_mode"]
         == "contribution_portal"
     )
-    assert config["home_star_portal_collapsed_structure"] == "sphere"
-    assert config["home_star_portal_expanded_structure"] == "3d-orbit"
+    assert config["home_star_portal_collapsed_structure"] == "3d-galaxy"
+    assert config["home_star_portal_expanded_structure"] == "3d-spiral"
     assert config["home_star_portal_rotation_speed"] == 4.5
     assert config["home_star_portal_size_percent"] == 48
     assert config["home_star_portal_brightness_percent"] == 55

@@ -24,6 +24,7 @@
     "test:home-star-graph": "node scripts/test-home-star-graph.js",
     "test:home-star-illumination": "node scripts/test-home-star-illumination.js",
     "test:home-star-3d": "node scripts/test-home-star-3d.js",
+    "test:home-star-3d-visual": "node scripts/test-home-star-3d-visual.js",
     "test:star-formula": "node scripts/test-star-formula-engine.js",
     "test:home-content-controls": "node scripts/test-home-content-controls.js",
     "test:onboarding-guide": "node scripts/test-onboarding-guide.js",

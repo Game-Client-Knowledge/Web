@@ -97,6 +97,14 @@ assert.match(html, /<h3 id="contributionPortalTitle">贡献空间<\/h3>/);
 assert.match(html, /自动旋转速率（°\/秒）/);
 assert.match(html, /微缩结构/);
 assert.match(html, /展开结构/);
+assert.match(html, /3D 螺旋星系/);
+assert.match(html, /3D 星云带/);
+assert.match(html, /3D 星团/);
+assert.match(html, /3D 分层星壳/);
+assert.match(
+  html,
+  /3D 结构使用独立确定性快照，可与展开结构不同/
+);
 assert.match(html, /收拢尺寸（%）/);
 assert.match(html, /收拢亮度（%）/);
 assert.match(html, /主页空闲触发（秒，0 为关闭）/);

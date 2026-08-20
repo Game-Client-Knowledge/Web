@@ -111,7 +111,16 @@
         "match_expanded",
         "octahedron",
         "sphere",
-        "cube"
+        "cube",
+        "3d",
+        "3d-drift",
+        "3d-drift-anchored",
+        "3d-galaxy",
+        "3d-orbit",
+        "3d-spiral",
+        "3d-nebula",
+        "3d-clusters",
+        "3d-shell"
       ].includes(settings.home_star_portal_collapsed_structure)
         ? settings.home_star_portal_collapsed_structure
         : "octahedron",
@@ -120,7 +129,11 @@
         "3d-drift",
         "3d-drift-anchored",
         "3d-galaxy",
-        "3d-orbit"
+        "3d-orbit",
+        "3d-spiral",
+        "3d-nebula",
+        "3d-clusters",
+        "3d-shell"
       ].includes(settings.home_star_portal_expanded_structure)
         ? settings.home_star_portal_expanded_structure
         : "3d-drift",

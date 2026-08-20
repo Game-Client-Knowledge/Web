@@ -21,10 +21,14 @@ rotates it; clicking expands the black field and the same stars to the full
 viewport. The return control reverses the transition and restores the page
 scroll position.
 
-Compact and expanded structures are configured independently. Compact choices
-project each live expanded coordinate into a matching, octahedral, spherical,
-or cubic volume; they do not generate a second random layout. Expanded choices
-reuse the existing depth, drift, anchored-drift, galaxy, and orbital engines.
+Compact and expanded structures are configured independently. Primitive
+compact choices project each live expanded coordinate into a matching,
+octahedral, spherical, or cubic volume. A compact 3D choice instead evaluates
+its own deterministic snapshot from the immutable graph revision, so a compact
+galaxy can expand into a spiral, nebula, cluster, shell, or another strategy
+without changing star identity. Expanded choices include depth, drift,
+anchored drift, galaxy, orbital systems, four-arm spiral, warped nebula band,
+stellar clusters, and layered fibonacci shells.
 
 In this experience, `home_content_idle_timeout_seconds` auto-opens the portal
 instead of hiding homepage content. The first subsequent activity reverses
@@ -73,9 +77,11 @@ The graph keeps source and target semantics for every edge:
 The administrator can switch between `directed` and `undirected`. Directed mode
 uses the semantics above for traversal. Undirected mode preserves the original
 behavior by making every edge traversable both ways. Both modes render the same
-plain relation lines without arrowheads; direction is an algorithmic property,
-not an extra Canvas marker. Reciprocal references remain separate facts in both
-modes, so changing the traversal mode does not rewrite source data.
+typed relation geometry: strong links use teal energy arcs, references use
+gold arcs, and contributions use coral arcs. Directed reference and
+contribution links include source-to-target markers. Reciprocal references
+remain separate facts in both modes, so changing the traversal mode does not
+rewrite source data.
 
 All member references and contributor links are folded into their code-system
 star. Multiple files changed by the same contributor produce one contributor
@@ -167,8 +173,8 @@ label again navigates to the document. Contributor labels show the public
 contributor name. Label and relation-highlight durations are configured
 independently and default to three seconds.
 
-When edge visibility is not `always`, clicking a star applies the selected
-illumination rule. In directed mode, "forward" means outgoing edges and
+Clicking a star applies the selected illumination rule regardless of normal
+edge visibility. In directed mode, "forward" means outgoing edges and
 "reverse" means incoming edges. Strong edges participate in both directions.
 
 | Rule | Behavior |
@@ -215,6 +221,13 @@ The minimal tree affects only active highlight lines. The complete edge set
 still drives illumination rules and coverage metrics. `always` and `near`
 continue to render their normal edges independently, including covered edges
 that were pruned from the active tree.
+
+In 3D modes, relations are projected into one transparent Canvas below the
+WebGL stars. Active paths retain their relation color instead of switching to
+white. Line width and opacity decay by propagation depth, directed edges show
+moving markers, and a small type-colored energy pulse travels along each
+active curve. The WebGL renderer therefore remains at four star draw calls
+while active relations animate.
 
 After the configured relation duration, the set and coverage panel are cleared
 while normal star movement continues.
