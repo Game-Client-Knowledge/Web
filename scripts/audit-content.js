@@ -6,6 +6,9 @@ const {
   resolveContentRoot,
   toPosix
 } = require("../lib/content-loader");
+const {
+  validateMarkdownStructure
+} = require("../lib/markdown-structure");
 
 const root = resolveContentRoot();
 const errors = [];
@@ -56,40 +59,8 @@ function validateMarkdown(file) {
     return;
   }
 
-  const headings = [];
-  let inFence = false;
-  let fenceCount = 0;
-  for (const line of parsed.content.split("\n")) {
-    if (line.trim().startsWith("```")) {
-      inFence = !inFence;
-      fenceCount += 1;
-      continue;
-    }
-    if (inFence) {
-      continue;
-    }
-    const heading = line.match(/^(#{1,6})\s+\S/);
-    if (heading) {
-      headings.push(heading[1].length);
-    }
-  }
-
-  if (fenceCount % 2 !== 0) {
-    report(file, "代码围栏未闭合");
-  }
-
-  const h1Count = headings.filter((level) => level === 1).length;
-  if (h1Count !== 1) {
-    report(file, `需要且只能有一个一级标题，当前为 ${h1Count} 个`);
-  }
-
-  for (let index = 1; index < headings.length; index += 1) {
-    if (headings[index] > headings[index - 1] + 1) {
-      report(
-        file,
-        `标题层级从 H${headings[index - 1]} 跳到 H${headings[index]}`
-      );
-    }
+  for (const message of validateMarkdownStructure(parsed.content)) {
+    report(file, message);
   }
 
   for (const href of parseLinks(parsed.content)) {
