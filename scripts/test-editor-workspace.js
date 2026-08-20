@@ -11,6 +11,10 @@ const css = fs.readFileSync(
   path.join(root, "editor/app/static/editor.css"),
   "utf8"
 );
+const siteCss = fs.readFileSync(
+  path.join(root, "src/assets/css/site.css"),
+  "utf8"
+);
 const javascript = fs.readFileSync(
   path.join(root, "editor/app/static/editor.js"),
   "utf8"
@@ -36,6 +40,27 @@ assert.match(
 assert.match(html, /id="diffModeLabel"[^>]*>完整文件差异</);
 assert.match(html, /id="diffSnapshotSummary"/);
 assert.match(css, /\.diff-snapshot-summary\s*\{/);
+assert.match(css, /#activeEditor:not\(\[hidden\]\)\s*\{[^}]*flex:\s*1/s);
+assert.match(css, /#contentEditor\s*\{[^}]*flex:\s*1/s);
+assert.match(siteCss, /\.inline-editor-modebar\s*\{/);
+assert.match(
+  siteIntegration,
+  /previewMode\.innerHTML\s*=\s*[\s\S]*?<span>预览<\/span>/
+);
+assert.match(
+  siteIntegration,
+  /textarea\.dataset\.markdownSource\s*=\s*""/
+);
+assert.doesNotMatch(siteIntegration, /initialEditType:\s*"wysiwyg"/);
+assert.doesNotMatch(javascript, /initialEditType:\s*"wysiwyg"/);
+assert.match(
+  javascript,
+  /byId\("editChangeButton"\)\.dataset\.changeMode = "source"/
+);
+assert.match(
+  javascript,
+  /byId\("editChangeButton"\)\.dataset\.changeMode = "diff"/
+);
 assert.match(
   javascript,
   /function renderDiffSnapshotSummary\(draft, contextAvailable = true\)/

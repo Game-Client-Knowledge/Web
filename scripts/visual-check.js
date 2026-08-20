@@ -221,12 +221,26 @@ async function inspectPage(browser, scenario) {
       })
     });
   });
+  await context.route("**/editor/api/analytics/visit", (route) => {
+    return route.fulfill({ status: 204, body: "" });
+  });
   await context.route("**/editor/api/preview", (route) => {
     previewAttempts += 1;
+    const content = JSON.parse(route.request().postData() || "{}").content || "";
+    const linked = content.includes(
+      "./06-component-query-implementation.md"
+    );
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        html: "<h1>Preview</h1><p>Preview content</p>"
+        html:
+          "<h1>Preview</h1><p>Preview content</p>" +
+          (
+            linked
+              ? '<p><a href="./06-component-query-implementation.md">' +
+                "组件存储与查询实现</a></p>"
+              : ""
+          )
       })
     });
   });
@@ -917,36 +931,28 @@ async function inspectPage(browser, scenario) {
     });
     await page.locator("[data-edit-mode-trigger]").click();
     await page
-      .locator(".toastui-editor-ww-container .ProseMirror h2")
-      .first()
-      .waitFor({ state: "attached" });
+      .locator(".inline-editor.is-modern [data-inline-input]")
+      .waitFor({ state: "visible" });
     const editing = await page.evaluate(() => {
       const panel = document.querySelector(".inline-editor.is-modern");
-      const prose = panel?.querySelector(
-        ".toastui-editor-ww-container .ProseMirror"
-      );
-      const heading = prose?.querySelector("h2");
-      const toolbar = panel?.querySelector(".toastui-editor-toolbar");
-      if (!panel || !prose || !heading) return null;
+      const source = panel?.querySelector("[data-inline-input]");
+      if (!panel || !source) return null;
       return {
-        fontSize: getComputedStyle(prose).fontSize,
-        lineHeight: getComputedStyle(prose).lineHeight,
-        headingSize: getComputedStyle(heading).fontSize,
-        headingOffset:
-          heading.getBoundingClientRect().top -
-          prose.getBoundingClientRect().top,
+        markdown: source.value,
+        sourceMode: panel.dataset.editorMode || "source",
+        sourceHeight: source.getBoundingClientRect().height,
+        sourceScrollHeight: source.scrollHeight,
         inlineToolbar: panel.querySelectorAll(".inline-editor-toolbar").length,
         saveButtons: panel.querySelectorAll("[data-inline-save]").length,
         previewToolbar: document.querySelectorAll(".reader-preview-controls")
           .length,
         localEditButtons: document.querySelectorAll("[data-edit-current]")
           .length,
-        toastToolbar: toolbar ? getComputedStyle(toolbar).display : "absent",
+        modeButtons: panel.querySelectorAll("[data-inline-mode]").length,
+        toastEditors: panel.querySelectorAll(".toastui-editor-defaultUI").length,
         visibleButtons: Array.from(panel.querySelectorAll("button")).filter(
           (button) => button.offsetWidth || button.offsetHeight
         ).length,
-        borderLeftWidth: getComputedStyle(prose).borderLeftWidth,
-        tables: prose.querySelectorAll("table").length,
         overflow:
           document.documentElement.scrollWidth -
           document.documentElement.clientWidth
@@ -955,36 +961,25 @@ async function inspectPage(browser, scenario) {
     assert(preview && editing, `${scenario.name}: reader editor did not mount`);
     if (preview && editing) {
       assert(
-        preview.fontSize === editing.fontSize &&
-          preview.lineHeight === editing.lineHeight &&
-          preview.headingSize === editing.headingSize,
-        `${scenario.name}: reader typography changed`
-      );
-      assert(
-        Math.abs(preview.headingOffset - editing.headingOffset) <= 24,
-        `${scenario.name}: reader content shifted vertically`
+        /^##\s+/m.test(editing.markdown) &&
+          editing.sourceMode === "source" &&
+          editing.sourceHeight >= 420 &&
+          editing.sourceHeight + 2 >= editing.sourceScrollHeight,
+        `${scenario.name}: Markdown source editor is incomplete`
       );
       assert(
         editing.inlineToolbar === 0 &&
           editing.saveButtons === 0 &&
           editing.previewToolbar === 0 &&
           editing.localEditButtons === 0 &&
-          editing.visibleButtons === 0 &&
-          ["none", "absent"].includes(editing.toastToolbar),
-        `${scenario.name}: editor controls are visible`
+          editing.modeButtons === 2 &&
+          editing.visibleButtons === 2 &&
+          editing.toastEditors === 0,
+        `${scenario.name}: Markdown mode controls are invalid`
       );
       assert(
         editing.overflow === 0,
         `${scenario.name}: editor caused horizontal overflow`
-      );
-      assert(
-        preview.borderLeftWidth === "0px" &&
-          editing.borderLeftWidth === "0px",
-        `${scenario.name}: edit state added a content border`
-      );
-      assert(
-        preview.tables === 0 || preview.tables === editing.tables,
-        `${scenario.name}: table structure changed while editing`
       );
     }
     await page.screenshot({
@@ -1017,8 +1012,9 @@ async function inspectPage(browser, scenario) {
     }
     if (scenario.readerLinkNavigation) {
       await page.locator("[data-edit-mode-trigger]").click();
+      await page.locator('[data-inline-mode="preview"]').click();
       const editorLink = page
-        .locator(".toastui-editor-ww-container .ProseMirror a")
+        .locator("[data-visual-editor] .inline-editor-source-preview a")
         .filter({ hasText: "组件存储与查询实现" })
         .first();
       await editorLink.waitFor({ state: "attached" });
@@ -1038,11 +1034,13 @@ async function inspectPage(browser, scenario) {
       );
     }
     if (scenario.readerAutosave) {
-      const heading = page
-        .locator(".toastui-editor-ww-container .ProseMirror h2")
-        .first();
-      await heading.click({ clickCount: 3 });
-      await page.keyboard.type("1.autosave-check");
+      await page.locator("[data-inline-input]").evaluate((textarea) => {
+        textarea.value = textarea.value.replace(
+          /^##\s+.+$/m,
+          "## 1.autosave-check"
+        );
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      });
       await page.waitForTimeout(250);
       const local = await page.evaluate(() => {
         const item = Object.entries(localStorage).find(([key]) => {
@@ -1086,19 +1084,16 @@ async function inspectPage(browser, scenario) {
       allowDraftWrites = false;
       await page.reload({ waitUntil: "networkidle" });
       await page
-        .locator(".toastui-editor-ww-container .ProseMirror h2")
-        .first()
-        .waitFor({ state: "attached" });
+        .locator(".inline-editor.is-modern [data-inline-input]")
+        .waitFor({ state: "visible" });
       const restored = await page.evaluate(() => {
         return {
-          heading: document.querySelector(
-            ".toastui-editor-ww-container .ProseMirror h2"
-          )?.textContent,
+          content: document.querySelector("[data-inline-input]")?.value,
           sync: document.body.dataset.editorSyncState
         };
       });
       assert(
-        restored.heading === "1.autosave-check" &&
+        restored.content.includes("## 1.autosave-check") &&
           restored.sync === "local",
         `${scenario.name}: Current Tree edit was not restored`
       );

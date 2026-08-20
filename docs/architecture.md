@@ -122,12 +122,14 @@ queries without depending on whitespace tokenization.
 Authenticated editing is layered on top of the static reader rather than replacing
 it. The header calls the same-origin `/editor/api/` service for session state. Edit
 mode uses each generated page's source metadata to load and save private Markdown
-drafts. Toast UI Editor provides WYSIWYG interaction while keeping Markdown as the
-storage and Git submission format. Saved drafts overlay the static reader in the
-authenticated browser, while public rendered reading remains available without
-authentication.
+changes. The reader exposes literal Markdown source and an on-demand rendered
+preview. Every valid edit replaces the complete file in the browser's Current
+Tree; the immutable Base Tree remains the comparison baseline and Git submission
+format. Local changes overlay the static reader in the authenticated browser,
+while public rendered reading remains available without authentication.
 The separate `/editor/` workspace provides the complete repository tree, aggregate
-change review, and the only branch/commit/pull-request submission action.
+change review, in-place Diff/Markdown switching, and the only
+branch/commit/pull-request submission action.
 
 Reader authentication and draft state are loaded through one head-started bootstrap
 request. Static content is never blocked by that request; account controls keep

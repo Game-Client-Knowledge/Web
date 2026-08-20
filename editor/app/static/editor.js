@@ -1097,6 +1097,8 @@ async function showChangeDiff(draft) {
   byId("diffViewer").hidden = false;
   byId("diffModeLabel").hidden = false;
   byId("editChangeButton").hidden = false;
+  byId("editChangeButton").dataset.changeMode = "source";
+  byId("editChangeButton").textContent = "编辑 Markdown";
   byId("previewButton").hidden = true;
   byId("discardDraftButton").hidden = false;
   byId("markDeleteButton").hidden = true;
@@ -1147,35 +1149,6 @@ function showContentEditor(path, content) {
   byId("visualEditor").closest(".editor-surface").hidden = false;
   byId("previewPane").hidden = true;
   const markdown = path.toLowerCase().endsWith(".md");
-  if (markdown && window.toastui?.Editor) {
-    byId("contentEditor").hidden = true;
-    byId("visualEditor").hidden = false;
-    byId("previewButton").hidden = true;
-    state.visualEditor = new window.toastui.Editor({
-      el: byId("visualEditor"),
-      height: "560px",
-      initialEditType: "wysiwyg",
-      previewStyle: "tab",
-      initialValue: content,
-      usageStatistics: false,
-      autofocus: true,
-      toolbarItems: [
-        ["heading", "bold", "italic"],
-        ["hr", "quote"],
-        ["ul", "ol", "task"],
-        ["table", "link"],
-        ["code", "codeblock"]
-      ],
-      events: {
-        change: scheduleActivePersist
-      }
-    });
-    if (state.active) {
-      state.active.originalContent = content;
-      state.active.canonicalContent = state.visualEditor.getMarkdown();
-    }
-    return;
-  }
   if (state.active) {
     state.active.originalContent = content;
     state.active.canonicalContent = content;
@@ -1183,8 +1156,15 @@ function showContentEditor(path, content) {
   byId("visualEditor").hidden = true;
   byId("contentEditor").hidden = false;
   byId("contentEditor").value = content;
+  byId("contentEditor").dataset.language = markdown ? "markdown" : "text";
   byId("previewButton").hidden = !markdown;
   byId("previewButton").textContent = "预览";
+  if (state.workspaceView === "changes") {
+    byId("editChangeButton").hidden = false;
+    byId("editChangeButton").dataset.changeMode = "diff";
+    byId("editChangeButton").textContent = "查看 Diff";
+  }
+  byId("contentEditor").focus();
 }
 
 function editorContent() {
@@ -1933,11 +1913,31 @@ byId("passwordForm").addEventListener("submit", async (event) => {
 byId("logoutButton").addEventListener("click", logout);
 byId("saveDraftButton").addEventListener("click", saveActiveLocally);
 byId("contentEditor").addEventListener("input", scheduleActivePersist);
+byId("contentEditor").addEventListener("keydown", (event) => {
+  if (event.key !== "Tab") return;
+  event.preventDefault();
+  const textarea = event.currentTarget;
+  textarea.setRangeText(
+    "  ",
+    textarea.selectionStart,
+    textarea.selectionEnd,
+    "end"
+  );
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+});
 byId("discardDraftButton").addEventListener("click", discardActiveDraft);
 byId("markDeleteButton").addEventListener("click", markActiveFileDeleted);
 byId("previewButton").addEventListener("click", togglePreview);
 byId("editChangeButton").addEventListener("click", async () => {
-  await setWorkspaceView("resources");
+  const draft = state.drafts.find((item) => {
+    return item.path === state.active?.path;
+  });
+  if (!draft) return;
+  if (byId("editChangeButton").dataset.changeMode === "source") {
+    await openDraft(draft, true);
+    return;
+  }
+  await showChangeDiff(draft);
 });
 byId("newFileButton").addEventListener("click", () => {
   clearFeedback(byId("fileDialogFeedback"));

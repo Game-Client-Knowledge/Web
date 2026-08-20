@@ -6,10 +6,11 @@ The `new` reader mode has a single editing command: the global **Edit / Exit**
 button in the site header.
 
 Entering edit mode immediately opens the current document in place. The reader
-does not add a preview toolbar, file toolbar, save button, or local edit button.
-Toast UI's formatting toolbar and code-block language control are also hidden.
-The title and document body keep the same dimensions, typography, spacing,
-lists, quotes, code blocks, and tables used by the rendered reader.
+does not add a file toolbar, save button, or local edit button. The title remains
+in the article header. The body opens as literal Markdown source, including
+headings, lists, links, tables, code fences, and Mermaid fences. A compact
+`Markdown / Preview` segmented control renders the current full-file snapshot
+on demand.
 
 The published preview remains visible until the editor is initialized. The DOM
 swap happens only after the editable document is ready, which prevents a blank
@@ -19,7 +20,7 @@ draft-styled preview merely because the editor was opened and closed. When
 local content actually differs from the rendered source, exit renders that
 latest content back into the normal preview without requiring a server save.
 
-Links remain navigable in WYSIWYG mode. The build exposes the existing
+Links remain navigable in preview mode. The build exposes the existing
 source-path-to-reader-route index to the client, so relative Markdown targets
 such as `./02-details.md` open the corresponding reader page instead of a raw
 `.md` URL. Standard HTTP, HTTPS, mail, telephone, and same-page links retain
@@ -28,71 +29,55 @@ their normal destinations.
 The `old` mode remains available as an administrative fallback and retains its
 explicit file, close, and save controls.
 
-## Local buffer
+## Local workspace
 
-Every content change is serialized immediately into `localStorage`. Buffers are
-isolated by both user ID and repository path:
+Every content change is serialized immediately into `localStorage`. Trees are
+isolated by user ID and repository:
 
 ```text
-gck-reader-buffer:v1:<encoded-user-id>:<encoded-path>
+gck-workspace-base:v1:<encoded-user-id>:<encoded-repository>
+gck-workspace-current:v1:<encoded-user-id>:<encoded-repository>
 ```
 
-Each record contains only:
+Current Tree entries contain only:
 
+- repository path;
 - content;
 - base Git blob SHA;
-- last known server draft revision;
 - client update timestamp.
 
 Authentication tokens, CSRF values, email addresses, and GitHub credentials are
 never stored in the editor buffer.
 
 Malformed or mismatched records are removed during read. Storage failures do
-not block editing; the client keeps the current value in memory and attempts an
-immediate server sync.
+not block the current editing session, but the page reports that the change is
+only available in memory.
 
-## Server synchronization
+## Base Tree and Current Tree
 
-While an in-place editor is open, the client checks for pending content every
-30 seconds. It calls `PUT /api/drafts` only when serialized content differs from
-the last server version.
+Reader editing never writes a server-side draft. The browser stores:
 
-Synchronization uses content snapshots:
+- an immutable Base Tree received from the current content commit;
+- a Current Tree cloned from that base and changed locally;
+- a derived line Diff between both trees.
 
-1. The request captures the exact local and canonical Markdown versions.
-2. Input made while that request is in flight remains a newer local snapshot.
-3. A successful response clears the buffer only when no newer input exists.
-4. Failed requests leave the local buffer intact for the next interval.
-
-When a page becomes hidden or receives `pagehide`, the client also attempts a
-`keepalive` sync. Browser and payload limits can prevent that request from
-finishing, so local persistence remains the recovery source. Reopening the same
-path as the same user restores the local snapshot before the editor is shown.
+Every valid input event replaces the complete file in Current Tree. The
+workspace reads the same local tree immediately. Remote synchronization updates
+Base Tree only when no local changes exist or after the merge workflow accepts
+the new baseline.
 
 ## Markdown source preservation
 
-Toast UI canonicalizes numeric heading prefixes such as:
-
-```markdown
-## 1. Overview
-```
-
-to:
-
-```markdown
-## 1\. Overview
-```
-
-The source-preservation layer now normalizes that editor-only escape before
-computing the three-way line merge. Editing `## 1.xxx` to `## 1.yyy` therefore
-produces exactly:
+The browser edits Markdown source directly. Editing `## 1.xxx` to `## 1.yyy`
+therefore produces exactly:
 
 ```markdown
 ## 1.yyy
 ```
 
-Normalization is limited to numeric prefixes at ATX heading starts and skips
-fenced code blocks. Ordered lists, prose, links, and code content are unchanged.
+No WYSIWYG serialization step can add `1\.` escapes or rebuild tables and
+lists. The title/body split is reassembled as one complete Markdown snapshot
+before validation and storage.
 
 ## Verification
 
@@ -100,16 +85,15 @@ Automated checks cover:
 
 - user- and path-isolated local buffers;
 - invalid buffer cleanup;
-- numeric heading escape normalization;
-- no server request before the synchronization interval;
+- numeric heading preservation;
+- no server draft writes;
 - offline reload and local recovery;
-- one server update after 30 seconds;
-- buffer removal after a successful update;
-- preview-to-edit typography and heading-position equality;
-- no reader, inline, Toast UI, or save toolbar in `new` mode;
+- Current Tree and line Diff updates after every input;
+- Markdown source auto-height on desktop and mobile;
+- no Toast UI runtime dependency;
 - unchanged edit-mode round trips preserve the exact rendered DOM;
 - unchanged round trips create no preview request, buffer, or draft write;
-- relative Markdown links navigate to their generated reader routes;
+- relative Markdown links in preview navigate to generated reader routes;
 - preview rendering after real edits when edit mode exits;
 - desktop and mobile horizontal overflow;
 - preservation of the explicit toolbar in `old` mode.

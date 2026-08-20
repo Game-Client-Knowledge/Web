@@ -194,13 +194,17 @@ inside account settings.
   without a GitHub Contents request.
 - Source resolution order is personal draft, head prefetch, versioned session
   cache, deployed raw source, then `/repository/file` as a compatibility fallback.
-- Markdown files open in Toast UI's WYSIWYG mode. Toolbar and direct visual changes
-  are serialized back to Markdown through `getMarkdown()`.
-- Existing Markdown uses a source-preserving three-way merge when saved. Toast UI's
-  initial canonical serialization is treated as a baseline, so only lines changed
-  by the user are applied to the original source; unrelated bullet, heading, table,
-  and escaping style stays untouched.
+- Markdown files open as literal source. A segmented `Markdown / Preview`
+  control renders the complete current snapshot on demand without changing the
+  stored source.
+- Input writes the complete Markdown file directly into Current Tree. There is
+  no WYSIWYG serialization step, so heading prefixes, tables, lists, code
+  fences, and escaping remain exactly as typed.
 - Source files continue to use a plain text editor.
+- The workspace `Changes` pane opens full-file Diff first and can switch the
+  selected file to editable Markdown without leaving that pane. The center
+  reader expands to the full grid-row height instead of leaving unused space
+  below a fixed-height editor.
 - Module pages edit the module `README.md`.
 - Module and topic controls prefill the correct content root and parent directory
   when creating child modules or files.

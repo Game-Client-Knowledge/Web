@@ -3292,25 +3292,76 @@ body.reader-edit-old [data-editor-host]::before {
   overflow: visible;
 }
 
+.inline-editor-modebar {
+  display: flex;
+  min-height: 38px;
+  margin-bottom: 12px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.inline-editor-modebar button {
+  display: inline-flex;
+  min-height: 32px;
+  padding: 5px 10px;
+  color: var(--ink-faint);
+  background: #f3f6f4;
+  border: 1px solid var(--line);
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.inline-editor-modebar button:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.inline-editor-modebar button:last-child {
+  margin-left: -1px;
+  border-radius: 0 4px 4px 0;
+}
+
+.inline-editor-modebar button.is-active {
+  position: relative;
+  z-index: 1;
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+  border-color: #9bcabd;
+}
+
+.inline-editor-modebar button svg {
+  width: 14px;
+  height: 14px;
+}
+
 .module-page-shell .inline-editor.is-modern {
   padding: 24px 0 6px;
   border-bottom: 1px solid var(--line);
 }
 
 .inline-editor.is-modern textarea {
-  min-height: 560px;
-  padding: 20px;
-  color: #e7ede9;
-  background: #202522;
-  border: 1px solid #313a36;
-  border-radius: 5px;
+  min-height: 420px;
+  padding: 22px 24px;
+  color: #25312d;
+  background: #ffffff;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
   font-size: 13px;
-  line-height: 1.65;
+  line-height: 1.72;
+  resize: none;
+  overflow: hidden;
+  tab-size: 2;
 }
 
 .inline-editor.is-modern [data-visual-editor] {
   min-height: 0;
   background: transparent;
+}
+
+.inline-editor-source-preview {
+  min-height: 420px;
+  padding: 4px 0 24px;
 }
 
 .inline-editor.is-modern .toastui-editor-defaultUI {

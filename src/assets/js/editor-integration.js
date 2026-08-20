@@ -1928,7 +1928,29 @@
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
     status.textContent = "正在加载源文件…";
-    if (!modern) {
+    if (modern) {
+      const modebar = document.createElement("div");
+      modebar.className = "inline-editor-modebar";
+      modebar.setAttribute("role", "tablist");
+      modebar.setAttribute("aria-label", "Markdown 编辑视图");
+      const sourceMode = document.createElement("button");
+      sourceMode.className = "is-active";
+      sourceMode.type = "button";
+      sourceMode.dataset.inlineMode = "source";
+      sourceMode.setAttribute("role", "tab");
+      sourceMode.setAttribute("aria-selected", "true");
+      sourceMode.innerHTML =
+        '<i data-lucide="braces" aria-hidden="true"></i><span>Markdown</span>';
+      const previewMode = document.createElement("button");
+      previewMode.type = "button";
+      previewMode.dataset.inlineMode = "preview";
+      previewMode.setAttribute("role", "tab");
+      previewMode.setAttribute("aria-selected", "false");
+      previewMode.innerHTML =
+        '<i data-lucide="eye" aria-hidden="true"></i><span>预览</span>';
+      modebar.append(sourceMode, previewMode);
+      panel.append(modebar);
+    } else {
       const toolbar = document.createElement("div");
       toolbar.className = "inline-editor-toolbar";
       const path = document.createElement("span");
@@ -1965,6 +1987,7 @@
     } else {
       host.append(panel);
     }
+    refreshIcons(panel);
     return panel;
   }
 
@@ -2130,7 +2153,7 @@
       if (event.button !== 0) {
         return;
       }
-      const anchor = event.target.closest(".ProseMirror a[href]");
+      const anchor = event.target.closest("a[href]");
       if (!anchor) {
         return;
       }
@@ -2151,6 +2174,76 @@
     });
   }
 
+  function resizeInlineSource(textarea) {
+    if (!textarea.closest(".inline-editor.is-modern") || textarea.hidden) {
+      return;
+    }
+    textarea.style.height = "auto";
+    textarea.style.height =
+      Math.max(420, textarea.scrollHeight + 2) + "px";
+  }
+
+  function setInlineEditorMode(panel, mode) {
+    const mount = query("[data-visual-editor]", panel);
+    const textarea = query("[data-inline-input]", panel);
+    const sourceMode = query('[data-inline-mode="source"]', panel);
+    const previewMode = query('[data-inline-mode="preview"]', panel);
+    const previewing = mode === "preview";
+    panel.dataset.editorMode = previewing ? "preview" : "source";
+    textarea.hidden = previewing;
+    mount.hidden = !previewing;
+    if (sourceMode) {
+      sourceMode.classList.toggle("is-active", !previewing);
+      sourceMode.setAttribute("aria-selected", String(!previewing));
+    }
+    if (previewMode) {
+      previewMode.classList.toggle("is-active", previewing);
+      previewMode.setAttribute("aria-selected", String(previewing));
+    }
+    if (!previewing) {
+      window.requestAnimationFrame(function () {
+        resizeInlineSource(textarea);
+        textarea.focus();
+      });
+    }
+  }
+
+  async function renderInlineMarkdownPreview(panel) {
+    const previewMode = query('[data-inline-mode="preview"]', panel);
+    if (previewMode) previewMode.disabled = true;
+    try {
+      const content = serializedInlineContent(panel);
+      const result = await api("/preview", {
+        method: "POST",
+        body: JSON.stringify({ content: content.serialized })
+      });
+      const mount = query("[data-visual-editor]", panel);
+      const template = document.createElement("template");
+      template.innerHTML = result.html;
+      template.content.querySelector("h1")?.remove();
+      const prose = document.createElement("div");
+      prose.className = "prose inline-editor-source-preview";
+      prose.append(template.content);
+      queryAll("table", prose).forEach(function (table) {
+        if (table.parentElement?.classList.contains("table-scroll")) return;
+        const wrapper = document.createElement("div");
+        wrapper.className = "table-scroll";
+        wrapper.tabIndex = 0;
+        table.before(wrapper);
+        wrapper.append(table);
+      });
+      mount.replaceChildren(prose);
+      if (window.GCKMermaid) {
+        window.GCKMermaid.render(prose);
+      }
+      setInlineEditorMode(panel, "preview");
+    } catch (error) {
+      setInlineFeedback(panel, error.message, "error");
+    } finally {
+      if (previewMode) previewMode.disabled = false;
+    }
+  }
+
   function initializeVisualEditor(panel, host, content) {
     const mount = query("[data-visual-editor]", panel);
     const textarea = query("[data-inline-input]", panel);
@@ -2164,52 +2257,39 @@
     }
     const editorValue = modern ? parts.body : content;
     panel.originalContent = content;
-    if (!window.toastui || !window.toastui.Editor) {
-      mount.hidden = true;
-      textarea.hidden = false;
-      textarea.value = editorValue;
-      panel.canonicalContent = modern
-        ? assembleMarkdownDocument(parts, parts.title, editorValue)
-        : content;
-      return;
-    }
-    textarea.hidden = true;
-    mount.hidden = false;
-    state.inlineEditor = new window.toastui.Editor({
-      el: mount,
-      height: modern ? "auto" : "600px",
-      initialEditType: "wysiwyg",
-      previewStyle: "tab",
-      initialValue: editorValue,
-      usageStatistics: false,
-      autofocus: !modern,
-      toolbarItems: modern
-        ? []
-        : [
-            ["heading", "bold", "italic"],
-            ["hr", "quote"],
-            ["ul", "ol", "task"],
-            ["table", "link"],
-            ["code", "codeblock"]
-          ],
-      events: {
-        change: function () {
-          if (panel.ready) {
-            cacheInlineEditor(panel);
-          }
-        }
-      }
+    mount.hidden = true;
+    textarea.hidden = false;
+    textarea.value = editorValue;
+    textarea.dataset.markdownSource = "";
+    textarea.addEventListener("keydown", function (event) {
+      if (event.key !== "Tab") return;
+      event.preventDefault();
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      textarea.setRangeText("  ", start, end, "end");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
     });
     if (modern) {
       bindModernEditorLinks(panel, mount);
+      query('[data-inline-mode="source"]', panel)?.addEventListener(
+        "click",
+        function () {
+          setInlineEditorMode(panel, "source");
+        }
+      );
+      query('[data-inline-mode="preview"]', panel)?.addEventListener(
+        "click",
+        function () {
+          renderInlineMarkdownPreview(panel);
+        }
+      );
     }
     panel.canonicalContent = modern
-      ? assembleMarkdownDocument(
-          parts,
-          parts.title,
-          state.inlineEditor.getMarkdown()
-        )
-      : state.inlineEditor.getMarkdown();
+      ? assembleMarkdownDocument(parts, parts.title, editorValue)
+      : content;
+    window.requestAnimationFrame(function () {
+      resizeInlineSource(textarea);
+    });
   }
 
   function inlineContent(panel) {
@@ -2552,6 +2632,7 @@
       }
       panel.ready = true;
       textarea.addEventListener("input", function () {
+        resizeInlineSource(textarea);
         cacheInlineEditor(panel);
       });
       if (panel.repairedLegacySnapshot) {
@@ -2594,9 +2675,8 @@
       activateInlinePanel(panel, host);
       if (panel.classList.contains("is-modern")) {
         beginInlineAutoSync(panel);
-      } else {
-        textarea.focus();
       }
+      textarea.focus();
     } catch (error) {
       panel.hidden = false;
       setInlineFeedback(panel, error.message, "error");

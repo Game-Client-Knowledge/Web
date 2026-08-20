@@ -951,8 +951,17 @@ a[aria-disabled="true"] {
 }
 
 .editor-panel {
+  display: flex;
   min-width: 0;
   background: #ffffff;
+  flex-direction: column;
+}
+
+#activeEditor:not([hidden]) {
+  display: flex;
+  min-height: 100%;
+  flex: 1;
+  flex-direction: column;
 }
 
 .empty-editor {
@@ -1013,12 +1022,15 @@ a[aria-disabled="true"] {
 }
 
 .editor-surface {
+  display: flex;
   min-height: 540px;
+  flex: 1;
 }
 
 .diff-viewer {
   min-height: 540px;
   background: #ffffff;
+  flex: 1;
   overflow: auto;
 }
 
@@ -1222,12 +1234,16 @@ a[aria-disabled="true"] {
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 13px;
   line-height: 1.7;
-  resize: vertical;
+  flex: 1;
+  resize: none;
+  tab-size: 2;
 }
 
 .preview-pane {
+  width: 100%;
   min-height: 540px;
   padding: 20px 28px;
+  flex: 1;
   overflow: auto;
 }
 
