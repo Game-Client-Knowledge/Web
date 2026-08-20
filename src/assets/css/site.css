@@ -778,7 +778,7 @@ body[data-editor-state="loading"] [data-account-label] {
   display: none;
 }
 
-.home-star-experience-portal {
+.page-home.home-star-experience-portal {
   color: var(--ink);
   background: #ffffff;
 }
@@ -805,6 +805,11 @@ body[data-editor-state="loading"] [data-account-label] {
 }
 
 .home-star-experience-portal .contribution-ledger {
+  background: #ffffff;
+}
+
+.home-star-experience-portal .catalog-overview {
+  color: var(--ink);
   background: #ffffff;
 }
 

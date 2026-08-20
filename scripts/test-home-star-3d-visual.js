@@ -194,13 +194,23 @@ async function inspectPortal(
     return {
       phase: debug.portalState.phase,
       settings: debug.portalSettings,
-      calls: debug.renderer.info.render.calls
+      calls: debug.renderer.info.render.calls,
+      pageBackground: getComputedStyle(document.body).backgroundColor,
+      catalogBackground: getComputedStyle(
+        document.querySelector(".catalog-overview")
+      ).backgroundColor,
+      catalogColor: getComputedStyle(
+        document.querySelector(".catalog-overview")
+      ).color
     };
   });
   assert.equal(collapsed.phase, "collapsed");
   assert.equal(collapsed.settings.collapsedStructure, "3d-galaxy");
   assert.equal(collapsed.settings.expandedStructure, "3d-spiral");
   assert.equal(collapsed.calls, 4);
+  assert.equal(collapsed.pageBackground, "rgb(255, 255, 255)");
+  assert.equal(collapsed.catalogBackground, "rgb(255, 255, 255)");
+  assert.equal(collapsed.catalogColor, "rgb(31, 41, 38)");
 
   const collapsedScreenshot = path.join(
     outputDirectory,
