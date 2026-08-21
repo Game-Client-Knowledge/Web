@@ -16,6 +16,7 @@ const state = {
   resourceFilter: "",
   visualEditor: null,
   livePreview: null,
+  markdownInputRulesCleanup: null,
   localSaveFrame: 0,
   remoteContent: new Map(),
   onboardingStep: 0,
@@ -1137,6 +1138,8 @@ function destroyVisualEditor() {
     state.livePreview.destroy();
     state.livePreview = null;
   }
+  state.markdownInputRulesCleanup?.();
+  state.markdownInputRulesCleanup = null;
   if (state.visualEditor) {
     state.visualEditor.destroy();
     state.visualEditor = null;
@@ -1158,24 +1161,102 @@ function showContentEditor(path, content) {
     state.active.originalContent = content;
     state.active.canonicalContent = content;
   }
-  byId("visualEditor").hidden = true;
-  byId("contentEditor").hidden = false;
+  const visualEditor = byId("visualEditor");
+  const contentEditor = byId("contentEditor");
+  visualEditor.hidden = true;
+  contentEditor.hidden = false;
   byId("contentEditor").value = content;
   byId("contentEditor").dataset.language = markdown ? "markdown" : "text";
   byId("previewButton").hidden = !markdown;
   byId("previewButton").textContent = "预览";
+  if (
+    markdown &&
+    state.active &&
+    window.toastui?.Editor &&
+    window.GCKEditorDocument
+  ) {
+    const parts = window.GCKEditorDocument.splitMarkdownDocument(content);
+    const title = document.createElement("h1");
+    title.className = "workspace-markdown-title";
+    title.textContent = parts.title || "未命名文档";
+    title.contentEditable = "plaintext-only";
+    title.setAttribute("role", "textbox");
+    title.setAttribute("aria-label", "文档标题");
+    const mount = document.createElement("div");
+    mount.className = "workspace-markdown-editor";
+    visualEditor.replaceChildren(title, mount);
+    contentEditor.hidden = true;
+    visualEditor.hidden = false;
+    byId("previewButton").hidden = true;
+    state.active.documentParts = parts;
+    state.active.titleElement = title;
+    state.visualEditor = new window.toastui.Editor({
+      el: mount,
+      height: "auto",
+      minHeight: "0",
+      initialEditType: "wysiwyg",
+      previewStyle: "tab",
+      initialValue: parts.body,
+      usageStatistics: false,
+      autofocus: false,
+      hideModeSwitch: true,
+      toolbarItems: [],
+      events: {
+        change: scheduleActivePersist,
+        focus: function () {
+          visualEditor.classList.add("is-markdown-editing");
+        },
+        blur: function () {
+          visualEditor.classList.remove("is-markdown-editing");
+        }
+      }
+    });
+    state.markdownInputRulesCleanup =
+      window.GCKMarkdownLivePreview?.installWysiwygInputRules(
+        state.visualEditor
+      );
+    const canonicalBody = state.visualEditor.getMarkdown();
+    state.active.canonicalContent =
+      window.GCKEditorDocument.assembleMarkdownDocument(
+        parts,
+        parts.title,
+        canonicalBody
+      );
+    title.addEventListener("input", scheduleActivePersist);
+    title.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        mount.querySelector('[contenteditable="true"]')?.focus();
+      }
+    });
+  }
   if (state.workspaceView === "changes") {
     byId("editChangeButton").hidden = false;
     byId("editChangeButton").dataset.changeMode = "diff";
     byId("editChangeButton").textContent = "查看 Diff";
   }
-  byId("contentEditor").focus();
+  if (!state.visualEditor) {
+    contentEditor.focus();
+  }
 }
 
 function editorContent() {
-  return state.visualEditor
-    ? state.visualEditor.getMarkdown()
-    : byId("contentEditor").value;
+  if (!state.visualEditor) {
+    return byId("contentEditor").value;
+  }
+  const body = state.visualEditor.getMarkdown();
+  if (
+    state.active?.documentParts &&
+    window.GCKEditorDocument
+  ) {
+    return window.GCKEditorDocument.assembleMarkdownDocument(
+      state.active.documentParts,
+      state.active.titleElement?.textContent ||
+        state.active.documentParts.title,
+      body
+    );
+  }
+  return body;
 }
 
 function activeSerializedContent() {

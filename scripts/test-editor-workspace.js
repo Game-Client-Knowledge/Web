@@ -44,6 +44,8 @@ assert.match(html, /id="diffModeLabel"[^>]*>完整文件差异</);
 assert.match(html, /id="diffSnapshotSummary"/);
 assert.match(html, /markdown-live-preview\.css/);
 assert.match(html, /markdown-live-preview\.js/);
+assert.match(html, /toastui-editor\.css/);
+assert.match(html, /toastui-editor\.js/);
 assert.match(css, /\.diff-snapshot-summary\s*\{/);
 assert.match(css, /#activeEditor:not\(\[hidden\]\)\s*\{[^}]*flex:\s*1/s);
 assert.match(css, /#contentEditor\s*\{[^}]*flex:\s*1/s);
@@ -56,8 +58,10 @@ assert.match(
   siteIntegration,
   /textarea\.dataset\.markdownSource\s*=\s*""/
 );
-assert.doesNotMatch(siteIntegration, /initialEditType:\s*"wysiwyg"/);
-assert.doesNotMatch(javascript, /initialEditType:\s*"wysiwyg"/);
+assert.match(siteIntegration, /initialEditType:\s*"wysiwyg"/);
+assert.match(javascript, /initialEditType:\s*"wysiwyg"/);
+assert.match(siteIntegration, /panel\.canonicalContent\s*=\s*modern/);
+assert.match(javascript, /state\.active\.canonicalContent\s*=/);
 assert.match(siteIntegration, /GCKMarkdownLivePreview\.create/);
 assert.match(javascript, /GCKMarkdownLivePreview\.create/);
 assert.match(
@@ -176,5 +180,22 @@ assert.equal(
   livePreview.replaceSourceRange(crlfRange, "- first\n- second"),
   "# Title\r\n\r\n- first\r\n- second\r\n\r\nAfter\r\n"
 );
+assert.deepEqual(
+  livePreview.wysiwygInputRule("###", " "),
+  {
+    command: "heading",
+    markerLength: 3,
+    payload: { level: 3 }
+  }
+);
+assert.deepEqual(
+  livePreview.wysiwygInputRule("1.", " "),
+  { command: "orderedList", markerLength: 2 }
+);
+assert.deepEqual(
+  livePreview.wysiwygInputRule("``", "`"),
+  { command: "codeBlock", markerLength: 2 }
+);
+assert.equal(livePreview.wysiwygInputRule("text", " "), null);
 
 process.stdout.write("Editor workspace checks passed\n");

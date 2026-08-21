@@ -1107,7 +1107,7 @@ async function inspectPage(browser, scenario) {
     });
     await page.locator("[data-edit-mode-trigger]").click();
     await page
-      .locator(".inline-editor.is-modern [data-md-live-preview]")
+      .locator(".inline-editor.is-modern [data-markdown-wysiwyg]")
       .waitFor({ state: "visible" });
     const editing = await page.evaluate(() => {
       const panel = document.querySelector(".inline-editor.is-modern");
@@ -1126,6 +1126,10 @@ async function inspectPage(browser, scenario) {
           .length,
         modeButtons: panel.querySelectorAll("[data-inline-mode]").length,
         toastEditors: panel.querySelectorAll(".toastui-editor-defaultUI").length,
+        editablePreviews: panel.querySelectorAll(
+          "[data-markdown-wysiwyg] .toastui-editor-ww-container " +
+            '.ProseMirror[contenteditable="true"]'
+        ).length,
         visibleButtons: Array.from(panel.querySelectorAll("button")).filter(
           (button) => button.offsetWidth || button.offsetHeight
         ).length,
@@ -1140,7 +1144,8 @@ async function inspectPage(browser, scenario) {
         /^##\s+/m.test(editing.markdown) &&
           editing.sourceMode === "preview" &&
           editing.sourceVisible === false &&
-          editing.liveBlocks > 0,
+          editing.toastEditors === 1 &&
+          editing.editablePreviews === 1,
         `${scenario.name}: editable Markdown preview is incomplete`
       );
       assert(
@@ -1150,7 +1155,7 @@ async function inspectPage(browser, scenario) {
           editing.localEditButtons === 0 &&
           editing.modeButtons === 2 &&
           editing.visibleButtons === 2 &&
-          editing.toastEditors === 0,
+          editing.toastEditors === 1,
         `${scenario.name}: Markdown mode controls are invalid`
       );
       assert(
@@ -1175,7 +1180,7 @@ async function inspectPage(browser, scenario) {
     );
     await page.locator('[data-inline-mode="preview"]').click();
     await page
-      .locator(".inline-editor.is-modern [data-md-live-preview]")
+      .locator(".inline-editor.is-modern [data-markdown-wysiwyg]")
       .waitFor({ state: "visible" });
     await page.screenshot({
       path: path.join(outputDirectory, `${scenario.name}-editing.png`),
@@ -1200,7 +1205,7 @@ async function inspectPage(browser, scenario) {
         roundTrip.html === preview.html &&
           roundTrip.draftOverlay === preview.draftOverlay &&
           roundTrip.localBuffers === 0 &&
-          previewAttempts === 2 &&
+          previewAttempts === 0 &&
           draftAttempts === 0,
         `${scenario.name}: unchanged edit round trip mutated the document`
       );
@@ -1208,10 +1213,13 @@ async function inspectPage(browser, scenario) {
     if (scenario.readerLinkNavigation) {
       await page.locator("[data-edit-mode-trigger]").click();
       await page
-        .locator(".inline-editor.is-modern [data-md-live-preview]")
+        .locator(".inline-editor.is-modern [data-markdown-wysiwyg]")
         .waitFor({ state: "visible" });
       const editorLink = page
-        .locator("[data-visual-editor] .inline-editor-source-preview a")
+        .locator(
+          "[data-visual-editor] " +
+            ".toastui-editor-ww-container a"
+        )
         .filter({ hasText: "组件存储与查询实现" })
         .first();
       await editorLink.waitFor({ state: "attached" });
@@ -1231,29 +1239,56 @@ async function inspectPage(browser, scenario) {
       );
     }
     if (scenario.readerAutosave) {
-      const editableHeading = page
-        .locator(
-          '[data-visual-editor] [data-md-block]' +
-            '[data-source-kind="heading"]'
-        )
-        .first();
-      await editableHeading.dblclick();
-      const blockEditor = page.locator(
-        ".md-live-preview-editor textarea"
+      const richEditor = page.locator(
+        '.inline-editor.is-modern [data-markdown-wysiwyg] ' +
+          ".toastui-editor-ww-container " +
+          '.ProseMirror[contenteditable="true"]'
       );
-      await blockEditor.waitFor({ state: "visible" });
-      await blockEditor.fill("## 1.autosave-check");
-      const liveLayout = await blockEditor.evaluate((textarea) => {
+      await richEditor.waitFor({ state: "visible" });
+      await richEditor.locator("p").first().click();
+      await page.keyboard.press("End");
+      await page.keyboard.press("Enter");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("### ");
+      await page.keyboard.type("1.autosave-check");
+      const convertedHeading = richEditor.locator("h3").filter({
+        hasText: "1.autosave-check"
+      });
+      await page.waitForTimeout(150);
+      const headingConversion = await richEditor.evaluate((surface) => {
         return {
-          height: textarea.getBoundingClientRect().height,
+          installed: surface.dataset.markdownInputRules,
+          html: surface.innerHTML,
+          markdown:
+            document.querySelector("[data-inline-input]")?.value || ""
+        };
+      });
+      assert(
+        await convertedHeading.count() === 1,
+        `${scenario.name}: heading input rule failed ` +
+          JSON.stringify(headingConversion)
+      );
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("```");
+      await page.keyboard.type("const livePreview = true;");
+      const convertedCode = richEditor
+        .locator(".toastui-editor-ww-code-block")
+        .filter({ hasText: "const livePreview = true;" });
+      await page.waitForTimeout(150);
+      assert(
+        await convertedCode.count() === 1,
+        `${scenario.name}: code fence input rule failed`
+      );
+      const liveLayout = await richEditor.evaluate((surface) => {
+        return {
+          height: surface.getBoundingClientRect().height,
           overflow:
             document.documentElement.scrollWidth -
             document.documentElement.clientWidth
         };
       });
       assert(
-        liveLayout.height >= 72 &&
-          liveLayout.height <= 180 &&
+        liveLayout.height >= 420 &&
           liveLayout.overflow === 0,
         `${scenario.name}: live preview block layout is invalid ` +
           JSON.stringify(liveLayout)
@@ -1265,14 +1300,6 @@ async function inspectPage(browser, scenario) {
         ),
         fullPage: false
       });
-      await blockEditor.press("Control+Enter");
-      await page
-        .locator(
-          '[data-visual-editor] [data-md-block]' +
-            '[data-source-kind="heading"]'
-        )
-        .filter({ hasText: "1.autosave-check" })
-        .waitFor({ state: "visible" });
       await page.waitForTimeout(250);
       const local = await page.evaluate(() => {
         const item = Object.entries(localStorage).find(([key]) => {
@@ -1298,11 +1325,15 @@ async function inspectPage(browser, scenario) {
       });
       assert(
         local.sync === "local" &&
-          local.content.includes("## 1.autosave-check") &&
-          !local.content.includes("## 1\\.autosave-check") &&
+          local.content.includes("### 1.autosave-check") &&
+          !local.content.includes("### 1\\.autosave-check") &&
+          local.content.includes("const livePreview = true;") &&
           local.version === 1 &&
           local.lineDiff.length > 0 &&
-          Number(local.diffSummary.modified) > 0 &&
+          (
+            Number(local.diffSummary.modified) +
+            Number(local.diffSummary.added)
+          ) > 0 &&
           Boolean(local.workspaceRevision) &&
           Number(local.cachedTree?.updatedAt) > 0,
         `${scenario.name}: edit was not cached without heading escapes ` +
@@ -1316,7 +1347,7 @@ async function inspectPage(browser, scenario) {
       allowDraftWrites = false;
       await page.reload({ waitUntil: "networkidle" });
       await page
-        .locator(".inline-editor.is-modern [data-md-live-preview]")
+        .locator(".inline-editor.is-modern [data-markdown-wysiwyg]")
         .waitFor({ state: "visible" });
       const restored = await page.evaluate(() => {
         return {
@@ -1325,7 +1356,7 @@ async function inspectPage(browser, scenario) {
         };
       });
       assert(
-        restored.content.includes("## 1.autosave-check") &&
+        restored.content.includes("### 1.autosave-check") &&
           restored.sync === "local",
         `${scenario.name}: Current Tree edit was not restored`
       );

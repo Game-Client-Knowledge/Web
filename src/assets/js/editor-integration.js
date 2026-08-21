@@ -2034,6 +2034,7 @@
       panel.titleElement.removeAttribute("role");
       panel.titleElement.removeAttribute("aria-label");
     }
+    panel.removeMarkdownInputRules?.();
     if (state.inlineEditor) {
       state.inlineEditor.destroy();
       state.inlineEditor = null;
@@ -2193,6 +2194,9 @@
     const sourceMode = query('[data-inline-mode="source"]', panel);
     const previewMode = query('[data-inline-mode="preview"]', panel);
     const previewing = mode === "preview";
+    if (!previewing && state.inlineEditor) {
+      textarea.value = state.inlineEditor.getMarkdown();
+    }
     panel.dataset.editorMode = previewing ? "preview" : "source";
     textarea.hidden = previewing;
     mount.hidden = !previewing;
@@ -2298,7 +2302,7 @@
     }
   }
 
-  function initializeVisualEditor(panel, host, content) {
+  async function initializeVisualEditor(panel, host, content) {
     const mount = query("[data-visual-editor]", panel);
     const textarea = query("[data-inline-input]", panel);
     const modern = readerEditMode() === "new";
@@ -2315,6 +2319,16 @@
     textarea.hidden = false;
     textarea.value = editorValue;
     textarea.dataset.markdownSource = "";
+    if (
+      !window.toastui?.Editor &&
+      window.GCKMarkdownLivePreview?.ensureWysiwygAssets
+    ) {
+      try {
+        await window.GCKMarkdownLivePreview.ensureWysiwygAssets();
+      } catch (error) {
+        setInlineFeedback(panel, error.message, "error");
+      }
+    }
     textarea.addEventListener("keydown", function (event) {
       if (event.key !== "Tab") return;
       event.preventDefault();
@@ -2335,13 +2349,71 @@
       query('[data-inline-mode="preview"]', panel)?.addEventListener(
         "click",
         function () {
-          renderInlineMarkdownPreview(panel);
+          if (state.inlineEditor) {
+            state.inlineEditor.setMarkdown(textarea.value, false);
+            cacheInlineEditor(panel);
+            setInlineEditorMode(panel, "preview");
+          } else {
+            renderInlineMarkdownPreview(panel);
+          }
         }
       );
     }
-    panel.canonicalContent = modern
-      ? assembleMarkdownDocument(parts, parts.title, editorValue)
-      : content;
+    if (window.toastui?.Editor) {
+      mount.replaceChildren();
+      textarea.hidden = true;
+      mount.hidden = false;
+      state.inlineEditor = new window.toastui.Editor({
+        el: mount,
+        height: modern ? "auto" : "600px",
+        minHeight: modern ? "0" : "600px",
+        initialEditType: "wysiwyg",
+        previewStyle: "tab",
+        initialValue: editorValue,
+        usageStatistics: false,
+        autofocus: false,
+        hideModeSwitch: true,
+        toolbarItems: modern
+          ? []
+          : [
+              ["heading", "bold", "italic"],
+              ["hr", "quote"],
+              ["ul", "ol", "task"],
+              ["table", "link"],
+              ["code", "codeblock"]
+            ],
+        events: {
+          change: function () {
+            if (panel.ready) {
+              cacheInlineEditor(panel);
+            }
+          },
+          focus: function () {
+            mount.classList.add("is-markdown-editing");
+          },
+          blur: function () {
+            mount.classList.remove("is-markdown-editing");
+          }
+        }
+      });
+      mount.dataset.markdownWysiwyg = "";
+      panel.removeMarkdownInputRules =
+        window.GCKMarkdownLivePreview?.installWysiwygInputRules(
+          state.inlineEditor
+        );
+      const canonicalBody = state.inlineEditor.getMarkdown();
+      textarea.value = canonicalBody;
+      panel.canonicalContent = modern
+        ? assembleMarkdownDocument(parts, parts.title, canonicalBody)
+        : canonicalBody;
+      if (modern) {
+        setInlineEditorMode(panel, "preview");
+      }
+    } else {
+      panel.canonicalContent = modern
+        ? assembleMarkdownDocument(parts, parts.title, editorValue)
+        : content;
+    }
     window.requestAnimationFrame(function () {
       resizeInlineSource(textarea);
     });
@@ -2677,7 +2749,7 @@
           panel.dataset.baseSha ? "删除文件" : "删除新增文件";
       }
       if (markdownDocument) {
-        initializeVisualEditor(panel, host, editorContent);
+        await initializeVisualEditor(panel, host, editorContent);
       } else {
         query("[data-visual-editor]", panel).hidden = true;
         textarea.hidden = false;
@@ -2731,7 +2803,11 @@
         markdownDocument &&
         panel.classList.contains("is-modern");
       if (startsInPreview) {
-        await renderInlineMarkdownPreview(panel);
+        if (state.inlineEditor) {
+          setInlineEditorMode(panel, "preview");
+        } else {
+          await renderInlineMarkdownPreview(panel);
+        }
       }
       activateInlinePanel(panel, host);
       if (panel.classList.contains("is-modern")) {
