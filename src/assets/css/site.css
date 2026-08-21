@@ -6583,6 +6583,111 @@ body.has-comments-open .reader-comments {
   }
 }
 
+.contribution-space-backdrop {
+  background:
+    linear-gradient(
+      124deg,
+      rgba(7, 34, 41, 0.34) 0%,
+      rgba(3, 8, 9, 0) 36%,
+      rgba(3, 8, 9, 0) 64%,
+      rgba(44, 12, 31, 0.24) 100%
+    ),
+    linear-gradient(24deg, #010405 0%, #061114 48%, #08050a 100%);
+  box-shadow:
+    inset 0 0 220px rgba(0, 0, 0, 0.9),
+    inset 180px 0 240px rgba(5, 35, 43, 0.12),
+    inset -160px -80px 240px rgba(42, 12, 30, 0.1);
+}
+
+.home-contribution-space-opening
+  .knowledge-field[data-contribution-space],
+.home-contribution-space-expanded
+  .knowledge-field[data-contribution-space],
+.home-contribution-space-closing
+  .knowledge-field[data-contribution-space] {
+  filter: saturate(1.18) contrast(1.06);
+}
+
+.home-contribution-space-expanded
+  .knowledge-relations-field[data-contribution-space-relations] {
+  filter: saturate(1.08);
+  mix-blend-mode: screen;
+}
+
+.home-contribution-space-expanded .contribution-space-return,
+.home-contribution-space-expanded
+  .contribution-space-structure-control {
+  background: rgba(3, 10, 12, 0.76);
+  border-color: rgba(156, 224, 205, 0.28);
+  backdrop-filter: blur(18px);
+  opacity: 0.82;
+}
+
+.home-contribution-space-expanded .contribution-space-return {
+  transition:
+    opacity 160ms ease,
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+.home-contribution-space-expanded
+  .contribution-space-structure-control {
+  transition:
+    opacity 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.home-contribution-space-expanded .contribution-space-return:hover,
+.home-contribution-space-expanded .contribution-space-return:focus-visible,
+.home-contribution-space-expanded
+  .contribution-space-structure-control:hover,
+.home-contribution-space-expanded
+  .contribution-space-structure-control:focus-within {
+  opacity: 1;
+}
+
+.home-contribution-space-expanded .contribution-space-return:hover,
+.home-contribution-space-expanded .contribution-space-return:focus-visible {
+  background: rgba(8, 24, 27, 0.94);
+}
+
+.home-contribution-space-expanded .star-map-label,
+.home-contribution-space-expanded .star-coverage-panel {
+  background: rgba(3, 10, 12, 0.82);
+  border-color: rgba(156, 224, 205, 0.3);
+  backdrop-filter: blur(18px);
+}
+
+@media (max-width: 700px) {
+  .home-contribution-space-expanded .contribution-space-return {
+    width: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .home-contribution-space-expanded
+    .contribution-space-return
+    span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip: rect(0 0 0 0);
+    overflow: hidden;
+  }
+
+  .home-contribution-space-expanded
+    .contribution-space-structure-control {
+    min-width: 176px;
+  }
+
+  .home-contribution-space-expanded
+    .contribution-space-structure-select {
+    min-width: 136px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .primary-button,
   .secondary-button,

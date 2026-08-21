@@ -145,6 +145,10 @@ async function inspectStructure(browser, structure) {
       calls: debug.renderer.info.render.calls,
       structures: debug.availableStructures,
       map: canvas.dataset.starMap,
+      backgroundStars: Number(canvas.dataset.backgroundStarCount),
+      backgroundDust: Number(canvas.dataset.backgroundDustCount),
+      visualProfile: canvas.dataset.visualProfile,
+      backgroundTime: debug.backgroundLayer.material.uniforms.uTime.value,
       width: canvas.width,
       height: canvas.height
     };
@@ -158,6 +162,10 @@ async function inspectStructure(browser, structure) {
   assert.equal(metrics.calls, 4, `${structure}: WebGL draw calls changed`);
   assert.ok(metrics.structures.includes(structure));
   assert.equal(metrics.map, `contribution-${structure}`);
+  assert.equal(metrics.backgroundStars, 2800);
+  assert.equal(metrics.backgroundDust, 1540);
+  assert.equal(metrics.visualProfile, "deep-field");
+  assert.equal(metrics.backgroundTime, 0);
   assert.ok(metrics.width > 0 && metrics.height > 0);
   assert.deepEqual(errors, [], `${structure}: browser errors`);
 
@@ -338,9 +346,31 @@ async function inspectPortal(
   );
   await page.screenshot({ path: collapsedScreenshot, fullPage: false });
 
-  const expanded = await page.evaluate(() => {
+  const cleanExpanded = await page.evaluate(() => {
     const debug = window.__GCK_STAR3D_DEBUG;
     debug.openContributionSpace("visual-test");
+    return {
+      phase: debug.portalState.phase,
+      progress: debug.portalState.progress,
+      selected: Number(debug.renderer.domElement.dataset.selectedCount),
+      calls: debug.renderer.info.render.calls
+    };
+  });
+  assert.equal(cleanExpanded.phase, "expanded");
+  assert.equal(cleanExpanded.progress, 1);
+  assert.equal(cleanExpanded.selected, 0);
+  assert.equal(cleanExpanded.calls, 4);
+  const cleanExpandedScreenshot = path.join(
+    outputDirectory,
+    `${name}-expanded-clean.png`
+  );
+  await page.screenshot({
+    path: cleanExpandedScreenshot,
+    fullPage: false
+  });
+
+  const expanded = await page.evaluate(() => {
+    const debug = window.__GCK_STAR3D_DEBUG;
     const relationCanvas = debug.relationCanvas;
     let bestStar = null;
     let bestCount = -1;

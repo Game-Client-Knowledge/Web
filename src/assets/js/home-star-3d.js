@@ -62,7 +62,8 @@
   });
   const POINT_SIZE_SOFT_KNEE = 0.62;
   const SECONDARY_SPIKE_FRACTION = 0.06;
-  const BACKGROUND_STAR_COUNT = 240;
+  const BACKGROUND_STAR_COUNT = 2800;
+  const BACKGROUND_DUST_FRACTION = 0.55;
   const DRIFT_SPEED_MULTIPLIER = 2.4;
   const SPIKE_ART_SCALE = 2.1;
   const CONTENT_EXPOSURE = 0.28;
@@ -776,12 +777,20 @@
       const colorRandom = seededRandom(
         hashSeed(`${sourceGraph.revision}:${star.id}:temperature`)
       );
-      const temperature =
-        (colorRandom() * 2 - 1) * (0.35 + colorRandom() * 0.65);
+      const kindBias = star.kind === "contributor" ? -0.16 : 0.08;
+      const temperature = Math.max(
+        -1,
+        Math.min(
+          1,
+          (colorRandom() * 2 - 1) *
+            (0.35 + colorRandom() * 0.65) +
+            kindBias
+        )
+      );
       const amount = Math.abs(temperature);
       return temperature < 0
-        ? [1, 1 - amount * 0.04, 1 - amount * 0.11]
-        : [1 - amount * 0.08, 1 - amount * 0.025, 1];
+        ? [1, 1 - amount * 0.1, 1 - amount * 0.26]
+        : [1 - amount * 0.18, 1 - amount * 0.055, 1];
     }
     const stars = sourceGraph.stars.map((source, index) => ({
       ...source,
@@ -874,8 +883,9 @@
     const camera = new THREE.PerspectiveCamera(50, 1, 1, 5000);
     const cameraState = {
       theta: 0.6,
-      phi: Math.PI / 2.25,
-      radius: CAMERA_RADIUS[mode] || 900
+      phi: Math.PI / 2.85,
+      radius: CAMERA_RADIUS[mode] || 900,
+      framingScale: 1
     };
     function boundedSetting(key, fallback, minimum, maximum) {
       const value = Number(runtimeSettings[key]);
@@ -949,10 +959,12 @@
       "attribute float aAlpha;",
       "attribute float aTile;",
       "attribute float aRot;",
+      "attribute float aPhase;",
       "attribute vec3 aColor;",
       "varying float vAlpha;",
       "varying float vTile;",
       "varying float vRot;",
+      "varying float vPhase;",
       "varying vec3 vColor;",
       "varying vec2 vScreenUv;",
       "uniform float uScale;",
@@ -966,6 +978,7 @@
       "  vAlpha = aAlpha;",
       "  vTile = aTile;",
       "  vRot = aRot;",
+      "  vPhase = aPhase;",
       "  vColor = aColor;",
       "  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);",
       "  float safeDepth = max(-mvPosition.z, uMinDepth);",
@@ -992,6 +1005,7 @@
       "varying float vAlpha;",
       "varying float vTile;",
       "varying float vRot;",
+      "varying float vPhase;",
       "varying vec3 vColor;",
       "varying vec2 vScreenUv;",
       "uniform vec4 uContentRect0;",
@@ -1000,6 +1014,7 @@
       "uniform vec2 uContentFeather;",
       "uniform float uContentExposure;",
       "uniform float uPortalBrightness;",
+      "uniform float uTime;",
       "float rectMask(vec2 point, vec4 rect) {",
       "  float x = smoothstep(",
       "    rect.x - uContentFeather.x,",
@@ -1032,7 +1047,9 @@
       "  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;",
       "  vec2 atlasUv = vec2((vTile + uv.x) / uTiles, uv.y);",
       "  vec4 tex = texture2D(uAtlas, atlasUv);",
-      "  float alpha = tex.a * vAlpha;",
+      "  float twinkle =",
+      "    0.94 + 0.06 * sin(uTime * (0.72 + mod(vPhase, 1.31)) + vPhase);",
+      "  float alpha = tex.a * vAlpha * twinkle;",
       "  float contentMask = max(",
       "    rectMask(vScreenUv, uContentRect0),",
       "    max(",
@@ -1043,7 +1060,8 @@
       "  alpha *= mix(1.0, uContentExposure, contentMask);",
       "  alpha *= uPortalBrightness;",
       "  if (alpha < 0.004) discard;",
-      "  gl_FragColor = vec4(tex.rgb * vColor, alpha);",
+      "  vec3 emitted = tex.rgb * vColor * (0.94 + tex.a * 0.16);",
+      "  gl_FragColor = vec4(emitted, alpha);",
       "}"
     ].join("\n");
 
@@ -1071,6 +1089,10 @@
       );
       geometry.setAttribute(
         "aRot",
+        new THREE.BufferAttribute(new Float32Array(count), 1)
+      );
+      geometry.setAttribute(
+        "aPhase",
         new THREE.BufferAttribute(new Float32Array(count), 1)
       );
       geometry.setAttribute(
@@ -1104,6 +1126,7 @@
           },
           uContentExposure: { value: contentExposure },
           uPortalBrightness: { value: 1 },
+          uTime: { value: 0 },
           uScreenOffset: {
             value: new Float32Array([0, 0])
           }
@@ -1123,30 +1146,68 @@
     function createBackgroundStarLayer() {
       const count =
         strategy.camera === "flat" ? 0 : BACKGROUND_STAR_COUNT;
+      const dustCount = Math.round(count * BACKGROUND_DUST_FRACTION);
       const geometry = new THREE.BufferGeometry();
       const positions = new Float32Array(count * 3);
       const sizes = new Float32Array(count);
       const alphas = new Float32Array(count);
+      const phases = new Float32Array(count);
       const colors = new Float32Array(count * 3);
       const backgroundRandom = seededRandom(
         hashSeed(`${sourceGraph.revision}:background-stars-3d`)
       );
       for (let index = 0; index < count; index += 1) {
-        const radius = 1100 + backgroundRandom() * 500;
-        const theta = backgroundRandom() * Math.PI * 2;
-        const cosPhi = backgroundRandom() * 2 - 1;
-        const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
-        positions[index * 3] = radius * sinPhi * Math.cos(theta);
-        positions[index * 3 + 1] = radius * cosPhi;
-        positions[index * 3 + 2] = radius * sinPhi * Math.sin(theta);
-        sizes[index] = 0.55 + Math.pow(backgroundRandom(), 2.4) * 1.75;
-        alphas[index] = 0.05 + Math.pow(backgroundRandom(), 1.8) * 0.18;
-        const temperature = backgroundRandom() * 2 - 1;
-        const amount = Math.abs(temperature);
-        const color =
-          temperature < 0
-            ? [1, 1 - amount * 0.05, 1 - amount * 0.12]
-            : [1 - amount * 0.09, 1 - amount * 0.035, 1];
+        const dust = index < dustCount;
+        let x;
+        let y;
+        let z;
+        if (dust) {
+          const radius = 1450 + backgroundRandom() * 360;
+          const theta = backgroundRandom() * Math.PI * 2;
+          x = Math.cos(theta) * radius;
+          y =
+            (
+              backgroundRandom() +
+              backgroundRandom() +
+              backgroundRandom() -
+              1.5
+            ) *
+            138;
+          z = Math.sin(theta) * radius;
+          const tiltZ = 0.24;
+          const tiltX = -0.12;
+          const tiltedX = x * Math.cos(tiltZ) - y * Math.sin(tiltZ);
+          const tiltedY = x * Math.sin(tiltZ) + y * Math.cos(tiltZ);
+          x = tiltedX;
+          y = tiltedY * Math.cos(tiltX) - z * Math.sin(tiltX);
+          z = tiltedY * Math.sin(tiltX) + z * Math.cos(tiltX);
+          sizes[index] =
+            0.72 + Math.pow(backgroundRandom(), 2.5) * 3.1;
+          alphas[index] =
+            0.055 + Math.pow(backgroundRandom(), 1.55) * 0.2;
+        } else {
+          const radius = 1550 + backgroundRandom() * 520;
+          const theta = backgroundRandom() * Math.PI * 2;
+          const cosPhi = backgroundRandom() * 2 - 1;
+          const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
+          x = radius * sinPhi * Math.cos(theta);
+          y = radius * cosPhi;
+          z = radius * sinPhi * Math.sin(theta);
+          sizes[index] =
+            0.9 + Math.pow(backgroundRandom(), 2.55) * 6.2;
+          alphas[index] =
+            0.1 + Math.pow(backgroundRandom(), 1.5) * 0.38;
+        }
+        positions[index * 3] = x;
+        positions[index * 3 + 1] = y;
+        positions[index * 3 + 2] = z;
+        phases[index] = backgroundRandom() * Math.PI * 2;
+        const temperature = backgroundRandom();
+        const color = temperature < 0.22
+          ? [1, 0.72 + temperature * 0.45, 0.58]
+          : temperature > 0.68
+            ? [0.58, 0.78 + (1 - temperature) * 0.35, 1]
+            : [0.82, 0.93, 0.91];
         colors.set(color, index * 3);
       }
       geometry.setAttribute(
@@ -1162,6 +1223,10 @@
         new THREE.BufferAttribute(alphas, 1)
       );
       geometry.setAttribute(
+        "aPhase",
+        new THREE.BufferAttribute(phases, 1)
+      );
+      geometry.setAttribute(
         "aColor",
         new THREE.BufferAttribute(colors, 3)
       );
@@ -1169,38 +1234,52 @@
         uniforms: {
           uScale: { value: 1 },
           uPixelRatio: { value: 1 },
-          uOpacity: { value: 1 }
+          uOpacity: { value: 1 },
+          uTime: { value: 0 }
         },
         vertexShader: [
           "attribute float aSize;",
           "attribute float aAlpha;",
+          "attribute float aPhase;",
           "attribute vec3 aColor;",
           "varying float vAlpha;",
+          "varying float vSparkle;",
           "varying vec3 vColor;",
           "uniform float uScale;",
           "uniform float uPixelRatio;",
+          "uniform float uTime;",
           "void main() {",
-          "  vAlpha = aAlpha;",
+          "  float pulse = 0.78 + 0.22 * sin(",
+          "    uTime * (0.38 + fract(aPhase) * 0.62) + aPhase",
+          "  );",
+          "  vAlpha = aAlpha * pulse;",
+          "  vSparkle = smoothstep(2.25, 4.1, aSize);",
           "  vColor = aColor;",
           "  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);",
           "  float projected = aSize * (uScale / max(-mvPosition.z, 500.0));",
           "  gl_PointSize = clamp(",
           "    projected,",
           "    0.65 * uPixelRatio,",
-          "    2.2 * uPixelRatio",
+          "    6.4 * uPixelRatio",
           "  );",
           "  gl_Position = projectionMatrix * mvPosition;",
           "}"
         ].join("\n"),
         fragmentShader: [
           "varying float vAlpha;",
+          "varying float vSparkle;",
           "varying vec3 vColor;",
           "uniform float uOpacity;",
           "void main() {",
           "  vec2 offset = gl_PointCoord - vec2(0.5);",
           "  float radius = length(offset);",
           "  if (radius > 0.5) discard;",
-          "  float falloff = exp(-radius * radius * 22.0);",
+          "  float core = exp(-radius * radius * 26.0);",
+          "  float rayX = pow(max(0.0, 1.0 - abs(offset.x) * 28.0), 3.0)",
+          "    * exp(-abs(offset.y) * 6.0);",
+          "  float rayY = pow(max(0.0, 1.0 - abs(offset.y) * 28.0), 3.0)",
+          "    * exp(-abs(offset.x) * 6.0);",
+          "  float falloff = max(core, (rayX + rayY) * 0.24 * vSparkle);",
           "  float alpha = falloff * vAlpha * uOpacity;",
           "  if (alpha < 0.003) discard;",
           "  gl_FragColor = vec4(vColor, alpha);",
@@ -1214,6 +1293,7 @@
       const points = new THREE.Points(geometry, material);
       points.frustumCulled = false;
       points.renderOrder = -2;
+      points.userData.dustCount = dustCount;
       return points;
     }
 
@@ -1257,6 +1337,20 @@
       spikedStars.length,
       pointMaxCssSize.spike
     );
+    function assignPointPhases(layer, sourceStars) {
+      const phases = layer.geometry.attributes.aPhase;
+      sourceStars.forEach((star, index) => {
+        phases.setX(
+          index,
+          ((star.index + 1) * 2.399963229728653) %
+            (Math.PI * 2)
+        );
+      });
+      phases.needsUpdate = true;
+    }
+    assignPointPhases(haloLayer, stars);
+    assignPointPhases(coreLayer, stars);
+    assignPointPhases(spikeLayer, spikedStars);
     spikeLayer.renderOrder = 3;
     scene.add(backgroundLayer);
     scene.add(haloLayer);
@@ -2122,6 +2216,10 @@
       relationContext.setTransform(ratio, 0, 0, ratio, 0, 0);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
+      cameraState.framingScale =
+        width < height
+          ? Math.min(1.24, 1 + (height / width - 1) * 0.14)
+          : 1;
       const uScale =
         (height * ratio) /
         (2 * Math.tan((camera.fov * Math.PI) / 360));
@@ -2241,7 +2339,7 @@
         haloAlpha.setX(
           index,
           tierHaloAlpha > 0.04
-            ? Math.max(0.12, Math.min(1, tierHaloAlpha * 2.2))
+            ? Math.max(0.13, Math.min(1, tierHaloAlpha * 2.4))
             : 0
         );
         haloTile.setX(index, tierTileIndex.get(tierIdOf(star)) * 2);
@@ -2457,13 +2555,31 @@
         relationColors[edge.type] || relationColors.strong;
       const depth = highlighted ? activeEdgeDepth(edge) : 0;
       const levelGain = highlighted
-        ? Math.max(0.52, 1 - depth * 0.11)
+        ? Math.max(0.42, 1 - depth * 0.11)
         : 1;
+      const densityGain = highlighted
+        ? Math.max(
+            0.28,
+            Math.min(
+              1,
+              Math.sqrt(90 / Math.max(90, highlightEdges.length))
+            )
+          )
+        : 1;
+      const ambientDensityGain = Math.max(
+        0.36,
+        Math.min(1, Math.sqrt(180 / Math.max(180, edges.length)))
+      );
       const alpha = highlighted
-        ? 0.9 * levelGain
+        ? 0.88 * levelGain * densityGain
         : visibility === "always"
-          ? 0.14
-          : Math.max(0.04, 0.24 * (1 - worldDistance / NEAR_LIMIT));
+          ? 0.1 * ambientDensityGain
+          : Math.max(
+              0.03,
+              0.2 *
+                ambientDensityGain *
+                (1 - worldDistance / NEAR_LIMIT)
+            );
       const style = relationStyle(edge.type);
       const gradient = relationContext.createLinearGradient(
         source.x,
@@ -2478,7 +2594,10 @@
       relationContext.save();
       relationContext.strokeStyle = gradient;
       relationContext.lineWidth = highlighted
-        ? Math.max(1.2, 2.35 - depth * 0.16)
+        ? Math.max(
+            0.7,
+            (2.25 - depth * 0.16) * (0.72 + densityGain * 0.28)
+          )
         : style === "glow"
           ? 1.1
           : 0.72;
@@ -2523,8 +2642,17 @@
           highlighted ? 5.2 : 3.2
         );
       }
-      if (highlighted && !reducedMotion) {
-        const seed = hashSeed(`${illumination.edgeId(edge)}:pulse`);
+      const pulseSeed = hashSeed(`${illumination.edgeId(edge)}:pulse`);
+      const pulseStride = Math.max(
+        1,
+        Math.ceil(highlightEdges.length / 140)
+      );
+      if (
+        highlighted &&
+        !reducedMotion &&
+        pulseSeed % pulseStride === 0
+      ) {
+        const seed = pulseSeed;
         const progress =
           (time * 0.00032 + (seed % 1000) / 1000) % 1;
         drawEnergyPulse(
@@ -2671,17 +2799,24 @@
       updatePortalStarPositions(time);
       updatePortalPresentation();
       if (strategy.camera !== "flat") {
+        const cameraRadius =
+          cameraState.radius * cameraState.framingScale;
         camera.position.set(
-          cameraState.radius *
+          cameraRadius *
             Math.sin(cameraState.phi) *
             Math.sin(cameraState.theta),
-          cameraState.radius * Math.cos(cameraState.phi),
-          cameraState.radius *
+          cameraRadius * Math.cos(cameraState.phi),
+          cameraRadius *
             Math.sin(cameraState.phi) *
             Math.cos(cameraState.theta)
         );
         camera.lookAt(0, 0, 0);
       }
+      const shaderTime = reducedMotion ? 0 : time * 0.001;
+      for (const material of contentMaskMaterials) {
+        material.uniforms.uTime.value = shaderTime;
+      }
+      backgroundLayer.material.uniforms.uTime.value = shaderTime;
       camera.updateMatrixWorld();
       writePointAttributes(time);
       drawRelations(time);
@@ -3115,6 +3250,10 @@
     glCanvas.dataset.backgroundStarCount = String(
       backgroundLayer.geometry.attributes.position.count
     );
+    glCanvas.dataset.backgroundDustCount = String(
+      backgroundLayer.userData.dustCount || 0
+    );
+    glCanvas.dataset.visualProfile = "deep-field";
     glCanvas.dataset.selectedCount = "0";
     glCanvas.dataset.selectedTier = "";
     glCanvas.dataset.relationRenderer = "canvas-2d";

@@ -53,7 +53,8 @@ assert.match(
   /strategy\.camera === "flat"[\s\S]*DEFAULT_ORBIT_POINT_MIN_DEPTH/
 );
 assert.match(source, /const SECONDARY_SPIKE_FRACTION = 0\.06;/);
-assert.match(source, /const BACKGROUND_STAR_COUNT = 240;/);
+assert.match(source, /const BACKGROUND_STAR_COUNT = 2800;/);
+assert.match(source, /const BACKGROUND_DUST_FRACTION = 0\.55;/);
 assert.match(source, /const DRIFT_SPEED_MULTIPLIER = 2\.4;/);
 assert.equal(
   (source.match(/\* DRIFT_SPEED_MULTIPLIER;/g) || []).length,
@@ -64,6 +65,9 @@ assert.match(source, /const SPIKE_ART_SCALE = 2\.1;/);
 assert.match(source, /const CONTENT_EXPOSURE = 0\.28;/);
 assert.match(source, /initializeSmoothDrift/);
 assert.match(source, /background-stars-3d/);
+assert.match(source, /attribute float aPhase;/);
+assert.match(source, /uniform float uTime;/);
+assert.match(source, /backgroundLayer\.material\.uniforms\.uTime/);
 assert.match(source, /attribute vec3 aColor;/);
 assert.match(source, /uniform vec4 uContentRect0;/);
 assert.match(source, /home-content-hidden/);
@@ -75,6 +79,8 @@ assert.match(
   source,
   /glCanvas\.dataset\.backgroundStarCount/
 );
+assert.match(source, /glCanvas\.dataset\.backgroundDustCount/);
+assert.match(source, /glCanvas\.dataset\.visualProfile = "deep-field"/);
 assert.match(source, /glCanvas\.dataset\.spikeCount/);
 assert.match(source, /const CONTRIBUTION_SPACE_DURATION = 1300;/);
 assert.match(source, /const STRUCTURE_TRANSITION_DURATION = 900;/);
