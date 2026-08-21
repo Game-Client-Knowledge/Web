@@ -540,7 +540,7 @@ def test_line_attribution_and_comment_threads(client: TestClient) -> None:
         "/api/auth/register",
         json={
             "email": "author@example.test",
-            "username": "line-author",
+            "username": "canonical-author",
             "password": "local-password-123",
         },
     ).json()
@@ -572,13 +572,13 @@ def test_line_attribution_and_comment_threads(client: TestClient) -> None:
                         {
                             "line": 1,
                             "commit": "b" * 40,
-                            "name": "Line Author",
+                            "name": "line-author",
                             "email": "author@example.test",
                         },
                         {
                             "line": 2,
                             "commit": "c" * 40,
-                            "name": "Line Author",
+                            "name": "line-author",
                             "email": "author@example.test",
                         },
                     ],
@@ -596,6 +596,32 @@ def test_line_attribution_and_comment_threads(client: TestClient) -> None:
                             "email": "author@example.test",
                             "commit_count": 2,
                             "last_contributed_at": "2026-08-16T00:00:00Z",
+                        }
+                    ],
+                },
+                {
+                    "path": "knowledge/cpp/github-alias.md",
+                    "commit": "a" * 40,
+                    "line_count": 1,
+                    "lines": [
+                        {
+                            "line": 1,
+                            "commit": "d" * 40,
+                            "name": "line-author",
+                            "email": (
+                                "123+line-author@users.noreply.github.com"
+                            ),
+                        }
+                    ],
+                    "contributors": [
+                        {
+                            "id": "github-line-author",
+                            "name": "line-author",
+                            "email": (
+                                "123+line-author@users.noreply.github.com"
+                            ),
+                            "commit_count": 1,
+                            "last_contributed_at": "2026-08-19T00:00:00Z",
                         }
                     ],
                 },
@@ -667,13 +693,23 @@ def test_line_attribution_and_comment_threads(client: TestClient) -> None:
     external_identity = hashlib.sha256(
         b"email:external@example.test"
     ).hexdigest()[:12]
+    github_identity = hashlib.sha256(
+        b"github:line-author"
+    ).hexdigest()[:12]
     assert graph["links"] == [
         {
             "path": "knowledge/cpp/example.md",
             "contributor_id": f"user:{author['user']['id']}",
-            "contributor_name": "line-author",
+            "contributor_name": "canonical-author",
             "commit_count": 5,
             "last_contributed_at": "2026-08-18T00:00:00Z",
+        },
+        {
+            "path": "knowledge/cpp/github-alias.md",
+            "contributor_id": github_identity,
+            "contributor_name": "line-author",
+            "commit_count": 1,
+            "last_contributed_at": "2026-08-19T00:00:00Z",
         },
         {
             "path": "planning/README.md",
@@ -691,7 +727,10 @@ def test_line_attribution_and_comment_threads(client: TestClient) -> None:
         },
     ]
     assert graph["identity_aliases"] == {
-        f"user:{author['user']['id']}": [author_identity]
+        f"user:{author['user']['id']}": [
+            github_identity,
+            author_identity,
+        ]
     }
 
     created = client.post(

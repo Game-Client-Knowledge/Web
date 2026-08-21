@@ -103,6 +103,10 @@ def _github_login(email: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _normalized_identity_name(value: str) -> str:
+    return " ".join(value.strip().lower().split())
+
+
 def _validate_attribution_path(value: str) -> str:
     raw = value.strip().replace("\\", "/")
     path = PurePosixPath(raw)
@@ -348,6 +352,14 @@ def contribution_graph_payload(db: Database) -> dict[str, Any]:
             WHERE user_id IS NOT NULL
             """
         ).fetchall()
+        github_alias_rows = connection.execute(
+            """
+            SELECT DISTINCT author_name, github_login
+            FROM line_authors
+            WHERE user_id IS NULL
+              AND github_login IS NOT NULL
+            """
+        ).fetchall()
         canonical_names = _canonical_contributor_names(connection)
     graph_settings = {row["key"]: row["value"] for row in settings_rows}
     try:
@@ -385,6 +397,23 @@ def contribution_graph_payload(db: Database) -> dict[str, Any]:
             identity_alias_sets.setdefault(contributor_id, set()).add(
                 _github_contributor_id(row["github_login"])
             )
+    matched_name_users: dict[str, set[int]] = {}
+    for row in line_alias_rows:
+        name = _normalized_identity_name(str(row["author_name"] or ""))
+        if name:
+            matched_name_users.setdefault(name, set()).add(int(row["user_id"]))
+    for row in github_alias_rows:
+        login = _normalized_identity_name(str(row["github_login"] or ""))
+        name = _normalized_identity_name(str(row["author_name"] or ""))
+        if not login or name != login:
+            continue
+        user_ids = matched_name_users.get(name, set())
+        if len(user_ids) != 1:
+            continue
+        contributor_id = f"user:{next(iter(user_ids))}"
+        identity_alias_sets.setdefault(contributor_id, set()).add(
+            _github_contributor_id(login)
+        )
     identity_aliases = {
         contributor_id: sorted(
             identity_id
