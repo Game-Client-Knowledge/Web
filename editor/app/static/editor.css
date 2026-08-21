@@ -1710,6 +1710,14 @@ dialog::backdrop {
   font-weight: 700;
 }
 
+.analytics-period-card > .analytics-period-engagement {
+  margin-top: 7px;
+  color: var(--ink-soft);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 .analytics-details {
   margin-top: 18px;
   border-top: 1px solid var(--line);
@@ -1824,6 +1832,80 @@ dialog::backdrop {
   min-width: 2px;
   height: 100%;
   background: linear-gradient(90deg, var(--teal), #d6a442);
+}
+
+.analytics-ranking-grid {
+  display: grid;
+  gap: 0 22px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.analytics-table-wrap {
+  max-height: 430px;
+  padding-bottom: 10px;
+  overflow: auto;
+}
+
+.analytics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.analytics-table th,
+.analytics-table td {
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.analytics-table thead th {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  color: var(--ink-faint);
+  background: #ffffff;
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.analytics-table th:first-child {
+  width: 100%;
+  text-align: left;
+}
+
+.analytics-table tbody th {
+  min-width: 0;
+  max-width: 300px;
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.analytics-table tbody th code {
+  display: block;
+  color: inherit;
+  font: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analytics-table td {
+  color: var(--ink-soft);
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+.analytics-table .analytics-table-empty {
+  padding: 20px 8px;
+  color: var(--ink-faint);
+  text-align: center;
+}
+
+.analytics-attribution-note {
+  margin: 0 0 10px;
+  color: var(--ink-faint);
+  font-size: 10px;
 }
 
 .section-title {
@@ -2519,6 +2601,10 @@ dialog::backdrop {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .analytics-ranking-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .visual-group-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2693,6 +2779,10 @@ dialog::backdrop {
   .analytics-trend-row {
     grid-template-columns: 44px minmax(60px, 1fr) 62px 54px;
     gap: 7px;
+  }
+
+  .analytics-table tbody th {
+    max-width: 210px;
   }
 
   .visual-group-grid {

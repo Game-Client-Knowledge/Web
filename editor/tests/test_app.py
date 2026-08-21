@@ -200,7 +200,12 @@ def test_active_session_uses_sliding_idle_expiration(
 def test_anonymous_visit_cookie_and_admin_analytics(
     client: TestClient,
 ) -> None:
-    first = client.post("/api/analytics/visit")
+    first = client.post(
+        "/api/analytics/visit",
+        json={
+            "f": [["program/knowledge/a.md", 1, 75]],
+        },
+    )
     assert first.status_code == 204
     first_device = client.cookies.get(DEVICE_COOKIE)
     assert first_device
@@ -208,7 +213,15 @@ def test_anonymous_visit_cookie_and_admin_analytics(
     assert "httponly" in set_cookie
     assert "samesite=lax" in set_cookie
 
-    second = client.post("/api/analytics/visit")
+    second = client.post(
+        "/api/analytics/visit",
+        json={
+            "f": [
+                ["program/knowledge/a.md", 1, 25],
+                ["program/knowledge/b.md", 1, 10],
+            ],
+        },
+    )
     assert second.status_code == 204
     assert client.cookies.get(DEVICE_COOKIE) == first_device
 
@@ -234,6 +247,22 @@ def test_anonymous_visit_cookie_and_admin_analytics(
     assert today["key"] == "day"
     assert today["devices"] == 2
     assert today["visits"] == 3
+    assert today["content_views"] == 3
+    assert today["reading_seconds"] == 110
+    assert overview.json()["analytics"]["files"] == [
+        {
+            "path": "program/knowledge/a.md",
+            "views": 2,
+            "reading_seconds": 100,
+            "average_seconds": 50,
+        },
+        {
+            "path": "program/knowledge/b.md",
+            "views": 1,
+            "reading_seconds": 10,
+            "average_seconds": 10,
+        },
+    ]
 
     with client.app.state.db.connect() as connection:
         rows = connection.execute(
@@ -243,9 +272,35 @@ def test_anonymous_visit_cookie_and_admin_analytics(
             ORDER BY visit_count DESC
             """
         ).fetchall()
+        content_rows = connection.execute(
+            """
+            SELECT path, view_count, reading_seconds
+            FROM content_analytics_daily
+            ORDER BY path
+            """
+        ).fetchall()
+        content_columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(content_analytics_daily)"
+            ).fetchall()
+        }
     assert [row["visit_count"] for row in rows] == [2, 1]
     assert all(len(row["device_hash"]) == 64 for row in rows)
     assert all(first_device not in row["device_hash"] for row in rows)
+    assert [dict(row) for row in content_rows] == [
+        {
+            "path": "program/knowledge/a.md",
+            "view_count": 2,
+            "reading_seconds": 100,
+        },
+        {
+            "path": "program/knowledge/b.md",
+            "view_count": 1,
+            "reading_seconds": 10,
+        },
+    ]
+    assert "device_hash" not in content_columns
 
 
 def test_local_user_can_create_isolated_topic_draft(client: TestClient) -> None:

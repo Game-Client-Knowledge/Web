@@ -309,6 +309,12 @@
           button.dataset.codeFile === path
         );
       });
+      window.GCK_ACTIVE_CODE_SOURCE = file.sourcePath;
+      window.dispatchEvent(
+        new CustomEvent("gck:code-file-view", {
+          detail: { path: file.sourcePath }
+        })
+      );
     } catch (error) {
       setStatus(error.message);
     }

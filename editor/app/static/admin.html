@@ -94,7 +94,7 @@
       <div class="section-title">
         <div>
           <h2 id="analyticsTitle">访问统计</h2>
-          <p>匿名设备 Cookie 与页面访问次数，按中国标准时间汇总。</p>
+          <p>匿名设备、文件阅览与有效时长，按中国标准时间汇总。</p>
         </div>
         <span class="count-badge">匿名统计</span>
       </div>
@@ -111,6 +111,51 @@
         </summary>
         <div id="analyticsTrend" class="analytics-trend"></div>
       </details>
+      <div class="analytics-ranking-grid">
+        <details class="analytics-details analytics-ranking">
+          <summary>
+            <span>文件阅览</span>
+            <small>次数 / 有效时长</small>
+            <i data-lucide="chevron-down" aria-hidden="true"></i>
+          </summary>
+          <div class="analytics-table-wrap">
+            <table class="analytics-table">
+              <thead>
+                <tr>
+                  <th scope="col">文件</th>
+                  <th scope="col">阅览</th>
+                  <th scope="col">总时长</th>
+                  <th scope="col">平均</th>
+                </tr>
+              </thead>
+              <tbody id="analyticsFileRows"></tbody>
+            </table>
+          </div>
+        </details>
+        <details class="analytics-details analytics-ranking">
+          <summary>
+            <span>贡献获阅览</span>
+            <small>贡献文件 / 获阅览</small>
+            <i data-lucide="chevron-down" aria-hidden="true"></i>
+          </summary>
+          <div class="analytics-table-wrap">
+            <table class="analytics-table">
+              <thead>
+                <tr>
+                  <th scope="col">贡献者</th>
+                  <th scope="col">文件</th>
+                  <th scope="col">获阅览</th>
+                  <th scope="col">阅读时长</th>
+                </tr>
+              </thead>
+              <tbody id="analyticsContributorRows"></tbody>
+            </table>
+          </div>
+          <p class="analytics-attribution-note">
+            同一文件的阅览会计入该文件的每位贡献者。
+          </p>
+        </details>
+      </div>
     </section>
 
     <section id="editing" class="admin-section admin-panel" hidden>

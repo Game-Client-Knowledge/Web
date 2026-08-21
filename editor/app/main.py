@@ -37,6 +37,7 @@ from .analytics import (
     analytics_dashboard,
     device_hash,
     new_device_token,
+    normalize_content_entries,
     record_visit,
     valid_device_token,
 )
@@ -1675,6 +1676,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/analytics/visit")
     async def analytics_visit(request: Request) -> Response:
+        content_entries = []
+        body = await request.body()
+        if body and len(body) <= 24 * 1024:
+            try:
+                payload = json.loads(body)
+            except (TypeError, ValueError):
+                payload = {}
+            if isinstance(payload, dict):
+                content_entries = normalize_content_entries(
+                    payload.get("f")
+                )
         raw_device = request.cookies.get(DEVICE_COOKIE)
         new_device = not valid_device_token(raw_device)
         if new_device:
@@ -1686,7 +1698,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             else f"analytics:device:{anonymous_device_hash}"
         )
         if rate_limiter.allow(limiter_key, 120, 60):
-            record_visit(db, anonymous_device_hash)
+            record_visit(
+                db,
+                anonymous_device_hash,
+                content_entries=content_entries,
+            )
         response = Response(status_code=204)
         if new_device:
             response.set_cookie(

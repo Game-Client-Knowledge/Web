@@ -682,6 +682,9 @@
         contentRoutes: {{ catalog.sourceRoutes | json | safe }},
         workspaceEntries: {{ catalog.workspaceEntries | json | safe }},
         contributors: {{ catalog.contributors | json | safe }},
+        {% if track or pageKind == "contribute" %}
+        analyticsPath: {% if track %}{{ track.sourceRelative | json | safe }}{% else %}{{ catalog.contribution.sourceRelative | json | safe }}{% endif %},
+        {% endif %}
         editorContext: {
           pageKind: {{ (pageKind or "default") | json | safe }},
           sourcePath: {% if document %}{{ document.sourceRelative | json | safe }}{% elif module %}{{ module.sourceRelative | json | safe }}{% else %}null{% endif %},

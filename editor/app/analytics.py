@@ -4,16 +4,26 @@ import hashlib
 import re
 import secrets
 import sqlite3
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .database import Database
+from .security import validate_content_path
 
 
 DEVICE_COOKIE = "gck_analytics_device"
 DEVICE_COOKIE_MAX_AGE = 2 * 365 * 24 * 60 * 60
 CHINA_TIMEZONE = timezone(timedelta(hours=8))
 DEVICE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
+MAX_CONTENT_ENTRIES = 64
+MAX_CONTENT_VIEWS_PER_REQUEST = 64
+MAX_READING_SECONDS_PER_REQUEST = 6 * 60 * 60
+ANALYTICS_ROOT_FILES = {
+    "CONTRIBUTING.md",
+    "planning/README.md",
+    "program/README.md",
+}
 
 PERIODS = (
     ("day", "今日", 1),
@@ -43,10 +53,52 @@ def local_day(now: datetime | None = None) -> str:
     return instant.astimezone(CHINA_TIMEZONE).date().isoformat()
 
 
+def normalize_content_entries(value: Any) -> list[tuple[str, int, int]]:
+    if not isinstance(value, list):
+        return []
+    merged: dict[str, list[int]] = {}
+    remaining_views = MAX_CONTENT_VIEWS_PER_REQUEST
+    remaining_seconds = MAX_READING_SECONDS_PER_REQUEST
+    for item in value[:MAX_CONTENT_ENTRIES]:
+        if remaining_views <= 0:
+            break
+        if (
+            not isinstance(item, list)
+            or len(item) != 3
+            or isinstance(item[1], bool)
+            or isinstance(item[2], bool)
+        ):
+            continue
+        try:
+            raw_path = str(item[0]).strip().replace("\\", "/")
+            path = (
+                raw_path
+                if raw_path in ANALYTICS_ROOT_FILES
+                else validate_content_path(raw_path)
+            )
+            views = max(0, min(32, int(item[1])))
+            seconds = max(0, min(remaining_seconds, int(item[2])))
+        except (TypeError, ValueError):
+            continue
+        views = min(views, remaining_views)
+        if not views:
+            continue
+        current = merged.setdefault(path, [0, 0])
+        current[0] += views
+        current[1] += seconds
+        remaining_views -= views
+        remaining_seconds -= seconds
+    return [
+        (path, totals[0], totals[1])
+        for path, totals in merged.items()
+    ]
+
+
 def record_visit(
     db: Database,
     anonymous_device_hash: str,
     *,
+    content_entries: Iterable[tuple[str, int, int]] = (),
     now: datetime | None = None,
 ) -> None:
     instant = now or datetime.now(timezone.utc)
@@ -72,6 +124,30 @@ def record_visit(
                 timestamp,
             ),
         )
+        for path, views, reading_seconds in content_entries:
+            connection.execute(
+                """
+                INSERT INTO content_analytics_daily(
+                    day, path, view_count, reading_seconds,
+                    first_seen_at, last_seen_at
+                )
+                VALUES(?, ?, ?, ?, ?, ?)
+                ON CONFLICT(day, path) DO UPDATE SET
+                    view_count = view_count + excluded.view_count,
+                    reading_seconds = (
+                        reading_seconds + excluded.reading_seconds
+                    ),
+                    last_seen_at = excluded.last_seen_at
+                """,
+                (
+                    day,
+                    path,
+                    views,
+                    reading_seconds,
+                    timestamp,
+                    timestamp,
+                ),
+            )
 
 
 def _period_metrics(
@@ -105,6 +181,30 @@ def _period_metrics(
     }
 
 
+def _period_content_metrics(
+    connection: sqlite3.Connection,
+    start_day: str | None,
+    end_day: str,
+) -> dict[str, int]:
+    query = """
+        SELECT
+            COALESCE(SUM(view_count), 0) AS content_views,
+            COALESCE(SUM(reading_seconds), 0) AS reading_seconds
+        FROM content_analytics_daily
+    """
+    if start_day is None:
+        row = connection.execute(query).fetchone()
+    else:
+        row = connection.execute(
+            query + " WHERE day BETWEEN ? AND ?",
+            (start_day, end_day),
+        ).fetchone()
+    return {
+        "content_views": int(row["content_views"] or 0),
+        "reading_seconds": int(row["reading_seconds"] or 0),
+    }
+
+
 def analytics_dashboard(
     db: Database,
     *,
@@ -135,6 +235,11 @@ def analytics_dashboard(
                         start_day,
                         end_day,
                     ),
+                    **_period_content_metrics(
+                        connection,
+                        start_day,
+                        end_day,
+                    ),
                 }
             )
         rows = connection.execute(
@@ -149,6 +254,62 @@ def analytics_dashboard(
             ORDER BY day
             """,
             (trend_start.isoformat(), end_day),
+        ).fetchall()
+        content_rows = connection.execute(
+            """
+            WITH paths AS (
+                SELECT path FROM content_revisions
+                UNION
+                SELECT path FROM content_analytics_daily
+            )
+            SELECT
+                paths.path,
+                COALESCE(SUM(ca.view_count), 0) AS views,
+                COALESCE(SUM(ca.reading_seconds), 0) AS reading_seconds
+            FROM paths
+            LEFT JOIN content_analytics_daily ca
+                ON ca.path = paths.path
+            GROUP BY paths.path
+            ORDER BY views DESC, reading_seconds DESC, paths.path
+            """
+        ).fetchall()
+        contributor_rows = connection.execute(
+            """
+            WITH paths AS (
+                SELECT path FROM content_revisions
+                UNION
+                SELECT path FROM content_analytics_daily
+            ),
+            file_totals AS (
+                SELECT
+                    paths.path,
+                    COALESCE(SUM(ca.view_count), 0) AS views,
+                    COALESCE(
+                        SUM(ca.reading_seconds),
+                        0
+                    ) AS reading_seconds
+                FROM paths
+                LEFT JOIN content_analytics_daily ca
+                    ON ca.path = paths.path
+                GROUP BY paths.path
+            )
+            SELECT
+                dc.contributor_id,
+                MAX(dc.contributor_name) AS contributor_name,
+                COUNT(DISTINCT dc.path) AS file_count,
+                COALESCE(SUM(file_totals.views), 0) AS views,
+                COALESCE(
+                    SUM(file_totals.reading_seconds),
+                    0
+                ) AS reading_seconds
+            FROM document_contributors dc
+            JOIN file_totals ON file_totals.path = dc.path
+            GROUP BY dc.contributor_id
+            ORDER BY
+                views DESC,
+                reading_seconds DESC,
+                contributor_name COLLATE NOCASE
+            """
         ).fetchall()
     by_day = {
         row["day"]: {
@@ -166,10 +327,34 @@ def analytics_dashboard(
                 **by_day.get(day, {"devices": 0, "visits": 0}),
             }
         )
+    files = [
+        {
+            "path": row["path"],
+            "views": int(row["views"] or 0),
+            "reading_seconds": int(row["reading_seconds"] or 0),
+            "average_seconds": round(
+                int(row["reading_seconds"] or 0) /
+                max(1, int(row["views"] or 0))
+            ),
+        }
+        for row in content_rows
+    ]
+    contributors = [
+        {
+            "id": row["contributor_id"],
+            "name": row["contributor_name"],
+            "file_count": int(row["file_count"] or 0),
+            "views": int(row["views"] or 0),
+            "reading_seconds": int(row["reading_seconds"] or 0),
+        }
+        for row in contributor_rows
+    ]
 
     return {
         "timezone": "Asia/Shanghai",
         "generated_at": instant.astimezone(timezone.utc).isoformat(),
         "periods": periods,
         "daily": daily,
+        "files": files,
+        "contributors": contributors,
     }

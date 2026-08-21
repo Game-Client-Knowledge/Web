@@ -225,6 +225,16 @@ CREATE TABLE IF NOT EXISTS site_analytics_daily (
     PRIMARY KEY(day, device_hash)
 );
 
+CREATE TABLE IF NOT EXISTS content_analytics_daily (
+    day TEXT NOT NULL,
+    path TEXT NOT NULL,
+    view_count INTEGER NOT NULL DEFAULT 0,
+    reading_seconds INTEGER NOT NULL DEFAULT 0,
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL,
+    PRIMARY KEY(day, path)
+);
+
 CREATE TABLE IF NOT EXISTS comment_mentions (
     comment_id INTEGER NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -300,6 +310,8 @@ CREATE INDEX IF NOT EXISTS idx_comment_events_path
 ON comment_events(path, id);
 CREATE INDEX IF NOT EXISTS idx_site_analytics_day
 ON site_analytics_daily(day);
+CREATE INDEX IF NOT EXISTS idx_content_analytics_path
+ON content_analytics_daily(path, day);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_application_pending
 ON admin_applications(user_id) WHERE status = 'pending';
 """

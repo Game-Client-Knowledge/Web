@@ -18,6 +18,15 @@ const starFormulaEngine = window.GCK_STAR_FORMULA_ENGINE;
 const byId = (id) => document.getElementById(id);
 const numberFormatter = new Intl.NumberFormat("zh-CN");
 
+function formatDuration(value) {
+  const seconds = Math.max(0, Math.round(Number(value) || 0));
+  if (seconds < 60) return `${seconds} 秒`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} 分 ${seconds % 60} 秒`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours} 小时 ${minutes % 60} 分`;
+}
+
 function setupAdminNavigation() {
   const links = Array.from(document.querySelectorAll(".admin-nav a"));
   const targets = links
@@ -291,8 +300,12 @@ function renderIntegrations(settings) {
 function renderAnalytics(analytics) {
   const periodGrid = byId("analyticsPeriodGrid");
   const trend = byId("analyticsTrend");
+  const fileRows = byId("analyticsFileRows");
+  const contributorRows = byId("analyticsContributorRows");
   periodGrid.replaceChildren();
   trend.replaceChildren();
+  fileRows.replaceChildren();
+  contributorRows.replaceChildren();
 
   for (const period of analytics?.periods || []) {
     const card = document.createElement("article");
@@ -306,7 +319,18 @@ function renderAnalytics(analytics) {
     deviceLabel.textContent = "独立设备";
     const visits = document.createElement("p");
     visits.textContent = `${formatNumber(period.visits)} 次访问`;
-    card.append(title, devices, deviceLabel, visits);
+    const engagement = document.createElement("small");
+    engagement.className = "analytics-period-engagement";
+    engagement.textContent =
+      `${formatNumber(period.content_views)} 次文件阅览 · ` +
+      `${formatDuration(period.reading_seconds)}`;
+    card.append(
+      title,
+      devices,
+      deviceLabel,
+      visits,
+      engagement
+    );
     periodGrid.append(card);
   }
 
@@ -333,6 +357,57 @@ function renderAnalytics(analytics) {
     visits.textContent = `${formatNumber(item.visits)} 次`;
     row.append(day, bar, devices, visits);
     trend.append(row);
+  }
+
+  function emptyRow(target, message) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 4;
+    cell.className = "analytics-table-empty";
+    cell.textContent = message;
+    row.append(cell);
+    target.append(row);
+  }
+
+  for (const file of analytics?.files || []) {
+    const row = document.createElement("tr");
+    const path = document.createElement("th");
+    path.scope = "row";
+    const code = document.createElement("code");
+    code.textContent = file.path;
+    code.title = file.path;
+    path.append(code);
+    const views = document.createElement("td");
+    views.textContent = formatNumber(file.views);
+    const reading = document.createElement("td");
+    reading.textContent = formatDuration(file.reading_seconds);
+    const average = document.createElement("td");
+    average.textContent = formatDuration(file.average_seconds);
+    row.append(path, views, reading, average);
+    fileRows.append(row);
+  }
+  if (!fileRows.children.length) {
+    emptyRow(fileRows, "暂无文件阅览数据");
+  }
+
+  for (const contributor of analytics?.contributors || []) {
+    const row = document.createElement("tr");
+    const name = document.createElement("th");
+    name.scope = "row";
+    name.textContent = contributor.name;
+    const files = document.createElement("td");
+    files.textContent = formatNumber(contributor.file_count);
+    const views = document.createElement("td");
+    views.textContent = formatNumber(contributor.views);
+    const reading = document.createElement("td");
+    reading.textContent = formatDuration(
+      contributor.reading_seconds
+    );
+    row.append(name, files, views, reading);
+    contributorRows.append(row);
+  }
+  if (!contributorRows.children.length) {
+    emptyRow(contributorRows, "暂无贡献阅览数据");
   }
 }
 
