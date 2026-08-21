@@ -415,7 +415,16 @@
           const ringDr = (r - profile.ringRadius) / profile.ringWidth;
           ring = profile.ringGain * Math.exp(-ringDr * ringDr);
         }
-        const intensity = Math.min(1, core + wing + ring);
+        // Force the procedural halo to reach true transparency before the
+        // square sprite boundary. Without this radial feather, very large
+        // hypergiant sprites reveal the rotated atlas tile as a polygon.
+        const edgeProgress = Math.max(
+          0,
+          Math.min(1, (r - 0.72) / 0.26)
+        );
+        const edgeFeather =
+          1 - edgeProgress * edgeProgress * (3 - 2 * edgeProgress);
+        const intensity = Math.min(1, core + wing + ring) * edgeFeather;
         // Color travels from the white-hot core to the tier tint with radius.
         const t = Math.min(1, r * colorFalloff);
         const index = (y * size + x) * 4;

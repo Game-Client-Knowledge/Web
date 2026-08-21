@@ -81,6 +81,11 @@ assert.match(source, /uniform float uLayerKind;/);
 assert.match(source, /float coronaMask =/);
 assert.match(source, /vEffect\.z \* coronaMask \* turbulence/);
 assert.match(source, /projectedSize \*= 1\.0 \+ pulse \* pulseWeight;/);
+assert.match(source, /float haloEdge = 1\.0 - smoothstep\(0\.36, 0\.49, radius\);/);
+assert.match(
+  source,
+  /alpha \*= mix\(haloEdge, 1\.0, step\(0\.5, uLayerKind\)\);/
+);
 assert.match(source, /backgroundLayer\.material\.uniforms\.uTime/);
 assert.match(source, /uniform float uBrightness;/);
 assert.match(source, /uniform float uDustBrightness;/);
@@ -118,6 +123,11 @@ for (const tier of [
 assert.match(mapSource, /variabilityAmplitude: 0\.052/);
 assert.match(mapSource, /coronaStrength: 0\.56/);
 assert.match(mapSource, /function tierMotion\(star, profile, time\)/);
+assert.match(mapSource, /const edgeProgress = Math\.max\(/);
+assert.match(
+  mapSource,
+  /const intensity = Math\.min\(1, core \+ wing \+ ring\) \* edgeFeather;/
+);
 assert.match(source, /const CONTRIBUTION_SPACE_DURATION = 1300;/);
 assert.match(source, /const STRUCTURE_TRANSITION_DURATION = 900;/);
 assert.match(source, /const CONTRIBUTION_SPACE_RADIUS = 165;/);
