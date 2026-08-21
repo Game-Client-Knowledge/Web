@@ -220,6 +220,7 @@ CREATE TABLE IF NOT EXISTS site_analytics_daily (
     day TEXT NOT NULL,
     device_hash TEXT NOT NULL,
     visit_count INTEGER NOT NULL DEFAULT 1,
+    star_map_seconds INTEGER NOT NULL DEFAULT 0,
     first_seen_at TEXT NOT NULL,
     last_seen_at TEXT NOT NULL,
     PRIMARY KEY(day, device_hash)
@@ -343,6 +344,20 @@ class Database:
     def initialize(self, settings: Settings) -> None:
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            analytics_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(site_analytics_daily)"
+                ).fetchall()
+            }
+            if "star_map_seconds" not in analytics_columns:
+                connection.execute(
+                    """
+                    ALTER TABLE site_analytics_daily
+                    ADD COLUMN star_map_seconds
+                    INTEGER NOT NULL DEFAULT 0
+                    """
+                )
             columns = {
                 row["name"]
                 for row in connection.execute(

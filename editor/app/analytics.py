@@ -94,11 +94,24 @@ def normalize_content_entries(value: Any) -> list[tuple[str, int, int]]:
     ]
 
 
+def normalize_star_map_seconds(value: Any) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        return max(
+            0,
+            min(MAX_READING_SECONDS_PER_REQUEST, int(value)),
+        )
+    except (TypeError, ValueError):
+        return 0
+
+
 def record_visit(
     db: Database,
     anonymous_device_hash: str,
     *,
     content_entries: Iterable[tuple[str, int, int]] = (),
+    star_map_seconds: int = 0,
     now: datetime | None = None,
 ) -> None:
     instant = now or datetime.now(timezone.utc)
@@ -110,16 +123,21 @@ def record_visit(
         connection.execute(
             """
             INSERT INTO site_analytics_daily(
-                day, device_hash, visit_count, first_seen_at, last_seen_at
+                day, device_hash, visit_count, star_map_seconds,
+                first_seen_at, last_seen_at
             )
-            VALUES(?, ?, 1, ?, ?)
+            VALUES(?, ?, 1, ?, ?, ?)
             ON CONFLICT(day, device_hash) DO UPDATE SET
                 visit_count = visit_count + 1,
+                star_map_seconds = (
+                    star_map_seconds + excluded.star_map_seconds
+                ),
                 last_seen_at = excluded.last_seen_at
             """,
             (
                 day,
                 anonymous_device_hash,
+                star_map_seconds,
                 timestamp,
                 timestamp,
             ),
@@ -160,7 +178,8 @@ def _period_metrics(
             """
             SELECT
                 COUNT(DISTINCT device_hash) AS devices,
-                COALESCE(SUM(visit_count), 0) AS visits
+                COALESCE(SUM(visit_count), 0) AS visits,
+                COALESCE(SUM(star_map_seconds), 0) AS star_map_seconds
             FROM site_analytics_daily
             """
         ).fetchone()
@@ -169,7 +188,8 @@ def _period_metrics(
             """
             SELECT
                 COUNT(DISTINCT device_hash) AS devices,
-                COALESCE(SUM(visit_count), 0) AS visits
+                COALESCE(SUM(visit_count), 0) AS visits,
+                COALESCE(SUM(star_map_seconds), 0) AS star_map_seconds
             FROM site_analytics_daily
             WHERE day BETWEEN ? AND ?
             """,
@@ -178,6 +198,7 @@ def _period_metrics(
     return {
         "devices": int(row["devices"] or 0),
         "visits": int(row["visits"] or 0),
+        "star_map_seconds": int(row["star_map_seconds"] or 0),
     }
 
 

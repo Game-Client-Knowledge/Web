@@ -55,9 +55,11 @@ assert.match(html, /id="analyticsContributorRows"/);
 assert.match(html, /贡献获阅览/);
 assert.match(javascript, /formatDuration/);
 assert.match(javascript, /period\.content_views/);
+assert.match(javascript, /period\.star_map_seconds/);
 assert.match(javascript, /contributor\.reading_seconds/);
 assert.match(css, /\.analytics-ranking-grid/);
 assert.match(css, /\.analytics-table-wrap/);
+assert.match(css, /\.analytics-period-star-map/);
 assert.doesNotMatch(
   html,
   /<details class="analytics-details"\s+open/,

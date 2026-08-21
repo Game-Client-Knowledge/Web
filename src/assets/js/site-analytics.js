@@ -58,6 +58,9 @@
     const entries = new Map();
     let activePath = "";
     let segmentStartedAt = null;
+    let starMapExpanded = false;
+    let starMapStartedAt = null;
+    let starMapMilliseconds = 0;
     let started = false;
     let sent = false;
 
@@ -89,6 +92,22 @@
       }
     }
 
+    function settleStarMap(timestamp) {
+      if (!starMapExpanded || starMapStartedAt === null) return;
+      starMapMilliseconds = Math.min(
+        MAX_READING_SECONDS * 1000,
+        starMapMilliseconds +
+          Math.max(0, timestamp - starMapStartedAt)
+      );
+      starMapStartedAt = null;
+    }
+
+    function resumeStarMap(timestamp) {
+      if (starMapExpanded && visible()) {
+        starMapStartedAt = timestamp;
+      }
+    }
+
     function activateContent(value) {
       const path = normalizePath(value);
       if (!started || !path || path === activePath) return false;
@@ -113,6 +132,10 @@
         entryFor(initialPath).views = 1;
         resume(now());
       }
+      starMapExpanded =
+        documentRef?.body?.dataset?.contributionSpaceState ===
+        "expanded";
+      resumeStarMap(now());
       return true;
     }
 
@@ -120,7 +143,9 @@
       if (!started || sent) return;
       const timestamp = now();
       settle(timestamp);
+      settleStarMap(timestamp);
       resume(timestamp);
+      resumeStarMap(timestamp);
     }
 
     function compactEntries() {
@@ -140,15 +165,28 @@
         .slice(0, 64);
     }
 
+    function starMapSeconds() {
+      return Math.min(
+        MAX_READING_SECONDS,
+        Math.round(starMapMilliseconds / 1000)
+      );
+    }
+
     function flush() {
       if (sent || !started || typeof fetchImpl !== "function") {
         return false;
       }
-      settle(now());
+      const timestamp = now();
+      settle(timestamp);
+      settleStarMap(timestamp);
       sent = true;
       const contentEntries = compactEntries();
-      const body = contentEntries.length
-        ? JSON.stringify({ f: contentEntries })
+      const starSeconds = starMapSeconds();
+      const payload = {};
+      if (contentEntries.length) payload.f = contentEntries;
+      if (starSeconds) payload.s = starSeconds;
+      const body = Object.keys(payload).length
+        ? JSON.stringify(payload)
         : undefined;
       const request = {
         method: "POST",
@@ -177,6 +215,16 @@
       activateContent(event?.detail?.path);
     }
 
+    function contributionSpaceChanged(event) {
+      if (!started || sent) return;
+      const expanded = event?.detail?.phase === "expanded";
+      if (expanded === starMapExpanded) return;
+      const timestamp = now();
+      settleStarMap(timestamp);
+      starMapExpanded = expanded;
+      resumeStarMap(timestamp);
+    }
+
     documentRef?.addEventListener?.(
       "visibilitychange",
       visibilityChanged
@@ -189,6 +237,10 @@
     windowRef?.addEventListener?.(
       "gck:code-file-view",
       codeFileViewed
+    );
+    windowRef?.addEventListener?.(
+      "gck:contribution-space-state",
+      contributionSpaceChanged
     );
 
     if (documentRef?.prerendering) {
@@ -207,7 +259,8 @@
       wasSent: function () {
         return sent;
       },
-      contentEntries: compactEntries
+      contentEntries: compactEntries,
+      starMapSeconds
     };
   }
 

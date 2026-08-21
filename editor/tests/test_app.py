@@ -204,6 +204,7 @@ def test_anonymous_visit_cookie_and_admin_analytics(
         "/api/analytics/visit",
         json={
             "f": [["program/knowledge/a.md", 1, 75]],
+            "s": 40,
         },
     )
     assert first.status_code == 204
@@ -220,6 +221,7 @@ def test_anonymous_visit_cookie_and_admin_analytics(
                 ["program/knowledge/a.md", 1, 25],
                 ["program/knowledge/b.md", 1, 10],
             ],
+            "s": 35,
         },
     )
     assert second.status_code == 204
@@ -249,6 +251,7 @@ def test_anonymous_visit_cookie_and_admin_analytics(
     assert today["visits"] == 3
     assert today["content_views"] == 3
     assert today["reading_seconds"] == 110
+    assert today["star_map_seconds"] == 75
     assert overview.json()["analytics"]["files"] == [
         {
             "path": "program/knowledge/a.md",
@@ -267,7 +270,7 @@ def test_anonymous_visit_cookie_and_admin_analytics(
     with client.app.state.db.connect() as connection:
         rows = connection.execute(
             """
-            SELECT device_hash, visit_count
+            SELECT device_hash, visit_count, star_map_seconds
             FROM site_analytics_daily
             ORDER BY visit_count DESC
             """
@@ -286,6 +289,7 @@ def test_anonymous_visit_cookie_and_admin_analytics(
             ).fetchall()
         }
     assert [row["visit_count"] for row in rows] == [2, 1]
+    assert [row["star_map_seconds"] for row in rows] == [75, 0]
     assert all(len(row["device_hash"]) == 64 for row in rows)
     assert all(first_device not in row["device_hash"] for row in rows)
     assert [dict(row) for row in content_rows] == [
@@ -301,6 +305,32 @@ def test_anonymous_visit_cookie_and_admin_analytics(
         },
     ]
     assert "device_hash" not in content_columns
+
+
+def test_analytics_migrates_star_map_duration_column(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    with sqlite3.connect(settings.db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE site_analytics_daily (
+                day TEXT NOT NULL,
+                device_hash TEXT NOT NULL,
+                visit_count INTEGER NOT NULL DEFAULT 1,
+                first_seen_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                PRIMARY KEY(day, device_hash)
+            )
+            """
+        )
+    app = create_app(settings)
+    with app.state.db.connect() as connection:
+        columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(site_analytics_daily)"
+            ).fetchall()
+        }
+    assert "star_map_seconds" in columns
 
 
 def test_local_user_can_create_isolated_topic_draft(client: TestClient) -> None:

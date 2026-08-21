@@ -38,6 +38,7 @@ from .analytics import (
     device_hash,
     new_device_token,
     normalize_content_entries,
+    normalize_star_map_seconds,
     record_visit,
     valid_device_token,
 )
@@ -1677,6 +1678,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/analytics/visit")
     async def analytics_visit(request: Request) -> Response:
         content_entries = []
+        star_map_seconds = 0
         body = await request.body()
         if body and len(body) <= 24 * 1024:
             try:
@@ -1686,6 +1688,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if isinstance(payload, dict):
                 content_entries = normalize_content_entries(
                     payload.get("f")
+                )
+                star_map_seconds = normalize_star_map_seconds(
+                    payload.get("s")
                 )
         raw_device = request.cookies.get(DEVICE_COOKIE)
         new_device = not valid_device_token(raw_device)
@@ -1702,6 +1707,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 db,
                 anonymous_device_hash,
                 content_entries=content_entries,
+                star_map_seconds=star_map_seconds,
             )
         response = Response(status_code=204)
         if new_device:

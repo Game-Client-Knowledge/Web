@@ -70,11 +70,25 @@ documentRef.dispatch("visibilitychange");
 clock = 6100;
 documentRef.visibilityState = "visible";
 documentRef.dispatch("visibilitychange");
-clock = 8100;
+clock = 7000;
+windowRef.dispatch("gck:contribution-space-state", {
+  phase: "expanded"
+});
+clock = 8000;
+documentRef.visibilityState = "hidden";
+documentRef.dispatch("visibilitychange");
+clock = 10000;
+documentRef.visibilityState = "visible";
+documentRef.dispatch("visibilitychange");
+clock = 12000;
+windowRef.dispatch("gck:contribution-space-state", {
+  phase: "closing"
+});
+clock = 13000;
 windowRef.dispatch("gck:code-file-view", {
   path: "program/code/demo/main.cpp"
 });
-clock = 11100;
+clock = 16000;
 assert.equal(controller.flush(), true);
 assert.equal(controller.flush(), false);
 assert.equal(calls.length, 1);
@@ -89,11 +103,13 @@ assert.deepEqual(calls[0].options, {
   },
   body: JSON.stringify({
     f: [
-      ["program/knowledge/topic.md", 1, 5],
+      ["program/knowledge/topic.md", 1, 8],
       ["program/code/demo/main.cpp", 1, 3]
-    ]
+    ],
+    s: 3
   })
 });
+assert.equal(controller.starMapSeconds(), 3);
 
 const prerenderCalls = [];
 let prerenderClock = 500;

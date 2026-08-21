@@ -1718,6 +1718,14 @@ dialog::backdrop {
   line-height: 1.45;
 }
 
+.analytics-period-card > .analytics-period-star-map {
+  margin-top: 5px;
+  color: #66517f;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+}
+
 .analytics-details {
   margin-top: 18px;
   border-top: 1px solid var(--line);

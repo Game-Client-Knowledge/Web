@@ -324,12 +324,17 @@ function renderAnalytics(analytics) {
     engagement.textContent =
       `${formatNumber(period.content_views)} 次文件阅览 · ` +
       `${formatDuration(period.reading_seconds)}`;
+    const starMap = document.createElement("small");
+    starMap.className = "analytics-period-star-map";
+    starMap.textContent =
+      `星图 ${formatDuration(period.star_map_seconds)}`;
     card.append(
       title,
       devices,
       deviceLabel,
       visits,
-      engagement
+      engagement,
+      starMap
     );
     periodGrid.append(card);
   }

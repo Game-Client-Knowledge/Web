@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from app.analytics import (
     analytics_dashboard,
     normalize_content_entries,
+    normalize_star_map_seconds,
     record_visit,
 )
 from app.database import Database, SCHEMA
@@ -74,6 +75,7 @@ def test_analytics_dashboard_aggregates_devices_and_visits(
         db,
         "device-a",
         content_entries=[("program/knowledge/a.md", 1, 120)],
+        star_map_seconds=45,
         now=now,
     )
     record_visit(
@@ -83,6 +85,7 @@ def test_analytics_dashboard_aggregates_devices_and_visits(
             ("program/knowledge/a.md", 1, 60),
             ("program/knowledge/b.md", 1, 30),
         ],
+        star_map_seconds=30,
         now=now + timedelta(minutes=1),
     )
     record_visit(
@@ -124,6 +127,7 @@ def test_analytics_dashboard_aggregates_devices_and_visits(
     today = dashboard["periods"][0]
     assert today["content_views"] == 4
     assert today["reading_seconds"] == 300
+    assert today["star_map_seconds"] == 75
     assert dashboard["files"] == [
         {
             "path": "program/knowledge/a.md",
@@ -193,3 +197,6 @@ def test_normalize_content_entries_is_compact_and_bounded() -> None:
     assert len(bounded) == 2
     assert sum(item[1] for item in bounded) == 64
     assert sum(item[2] for item in bounded) == 6 * 60 * 60
+    assert normalize_star_map_seconds(75) == 75
+    assert normalize_star_map_seconds(True) == 0
+    assert normalize_star_map_seconds(100_000) == 6 * 60 * 60
