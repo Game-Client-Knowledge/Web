@@ -23,7 +23,8 @@ const defaultVisualSettings = {
   home_intro_assembly_duration_ms: 1680,
   home_intro_hold_duration_ms: 630,
   home_intro_lock_scroll: true,
-  home_intro_contributor_limit: 8
+  home_intro_contributor_limit: 8,
+  home_content_idle_timeout_seconds: 300
 };
 
 if (!executablePath) {
@@ -713,6 +714,48 @@ async function inspectPage(browser, scenario) {
   }
 
   if (scenario.homeStatistics) {
+    const identityFixture = await page.evaluate((activeVisualSettings) => {
+      const contributors =
+        window.GCK_CONTRIBUTION_STATS?.scopes?.find(
+          (scope) => scope.key === "all"
+        )?.contributors || [];
+      const aliases = contributors.slice(0, 2).map((item) => item.id);
+      const revision = window.GCK_CONFIG?.contentVersion || "";
+      window.dispatchEvent(
+        new CustomEvent("gck:visual-settings", {
+          detail: {
+            ...activeVisualSettings,
+            contribution_graph: {
+              version: 2,
+              revision,
+              identity_aliases: {
+                "user:visual-merged": aliases
+              },
+              links: [
+                {
+                  contributor_id: "user:visual-merged",
+                  contributor_name: "Visual Merged User",
+                  last_contributed_at: "2026-08-21T00:00:00Z"
+                }
+              ]
+            }
+          }
+        })
+      );
+      return {
+        aliases,
+        expectedCount: Math.max(0, contributors.length - 1)
+      };
+    }, visualSettings);
+    await page.waitForFunction((expectedCount) => {
+      return (
+        Number(
+          document.querySelector(
+            '.intro-stats [data-contribution-count="all"]'
+          )?.textContent.replace(/[^\d]/g, "")
+        ) === expectedCount
+      );
+    }, identityFixture.expectedCount);
     const initial = await page.evaluate(() => {
       const stats = Array.from(
         document.querySelectorAll(".intro-stats dd")
@@ -723,6 +766,20 @@ async function inspectPage(browser, scenario) {
       return {
         stats,
         rows,
+        rowIds: Array.from(
+          document.querySelectorAll("[data-contribution-rows] tr")
+        ).map((row) => row.dataset.contributorId || ""),
+        contributorCount: Number(
+          document.querySelector(
+            '.intro-stats [data-contribution-count="all"]'
+          )?.textContent.replace(/[^\d]/g, "")
+        ),
+        pageStatus: document
+          .querySelector("[data-contribution-page-status]")
+          ?.textContent.trim(),
+        pageSize: document.querySelector(
+          "[data-contribution-page-size]"
+        )?.value,
         scope: document.querySelector("[data-contribution-scope-title]")
           ?.textContent.trim(),
         horizontalOverflow:
@@ -733,12 +790,91 @@ async function inspectPage(browser, scenario) {
     assert(
       initial.stats.length === 4 &&
         initial.stats.every(Boolean) &&
-        initial.rows.length > 0 &&
+        initial.rows.length === Math.min(3, identityFixture.expectedCount) &&
+        initial.rowIds[0] === "user:visual-merged" &&
+        new Set(initial.rowIds).size === initial.rowIds.length &&
+        initial.contributorCount === identityFixture.expectedCount &&
+        initial.pageStatus?.includes(
+          `1-${Math.min(3, identityFixture.expectedCount)} / ` +
+            identityFixture.expectedCount
+        ) &&
+        initial.pageSize === "3" &&
         initial.scope === "全部赛道" &&
         initial.horizontalOverflow === 0,
       `${scenario.name}: initial contribution statistics are invalid ` +
         JSON.stringify(initial)
     );
+    if (identityFixture.expectedCount > 3) {
+      const firstPageIds = initial.rowIds;
+      await page.locator("[data-contribution-page-next]").click();
+      await page.waitForFunction(() => {
+        return document
+          .querySelector("[data-contribution-page-status]")
+          ?.textContent.includes("第 2 /");
+      });
+      const nextPage = await page.evaluate(() => {
+        return {
+          ids: Array.from(
+            document.querySelectorAll("[data-contribution-rows] tr")
+          ).map((row) => row.dataset.contributorId || ""),
+          status: document
+            .querySelector("[data-contribution-page-status]")
+            ?.textContent.trim()
+        };
+      });
+      assert(
+        nextPage.ids.length > 0 &&
+          nextPage.ids.every((id) => !firstPageIds.includes(id)) &&
+          nextPage.status?.includes("第 2 /"),
+        `${scenario.name}: contribution pagination failed ` +
+          JSON.stringify(nextPage)
+      );
+    }
+    await page
+      .locator("[data-contribution-page-size]")
+      .selectOption("10");
+    await page
+      .locator("[data-contribution-total-limit]")
+      .selectOption("all");
+    await page.locator("[data-contribution-sort]").selectOption("name");
+    await page.waitForFunction((expectedCount) => {
+      return (
+        document.querySelectorAll("[data-contribution-rows] tr").length ===
+        expectedCount
+      );
+    }, identityFixture.expectedCount);
+    const ascendingNames = await page.evaluate(() => {
+      return Array.from(
+        document.querySelectorAll("[data-contribution-rows] th span:last-child")
+      ).map((item) => item.textContent.trim());
+    });
+    const expectedAscending = ascendingNames.slice().sort((left, right) => {
+      return left.localeCompare(right, "zh-CN", {
+        numeric: true,
+        sensitivity: "base"
+      });
+    });
+    assert(
+      JSON.stringify(ascendingNames) === JSON.stringify(expectedAscending),
+      `${scenario.name}: ascending contributor sort failed`
+    );
+    await page.locator("[data-contribution-sort-direction]").click();
+    const descendingNames = await page.evaluate(() => {
+      return Array.from(
+        document.querySelectorAll("[data-contribution-rows] th span:last-child")
+      ).map((item) => item.textContent.trim());
+    });
+    assert(
+      JSON.stringify(descendingNames) ===
+        JSON.stringify(expectedAscending.slice().reverse()),
+      `${scenario.name}: descending contributor sort failed`
+    );
+    await page.locator(".contribution-ledger").screenshot({
+      path: path.join(
+        outputDirectory,
+        `${scenario.name}-contribution-controls.png`
+      )
+    });
     await page.locator('[data-contribution-scope="planning"]').click();
     await page.waitForFunction(() => {
       return document

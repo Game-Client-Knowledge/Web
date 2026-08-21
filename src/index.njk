@@ -74,7 +74,9 @@ permalink: index.html
       </div>
       <div>
         <dt>贡献者</dt>
-        <dd>{{ overallStats.contributorCount | formatNumber }}</dd>
+        <dd data-contribution-count="all">
+          {{ overallStats.contributorCount | formatNumber }}
+        </dd>
       </div>
     </dl>
   </div>
@@ -148,22 +150,74 @@ permalink: index.html
     <div class="contribution-scope-summary">
       <strong data-contribution-scope-title>{{ overallStats.title }}</strong>
       <span data-contribution-scope-summary>
-        {{ overallStats.contributorCount }} 位贡献者 ·
+        <span data-contribution-count="all">
+          {{ overallStats.contributorCount }}
+        </span>
+        位贡献者 ·
         {{ overallStats.fileCount | formatNumber }} 个文本资源
       </span>
+    </div>
+
+    <div class="contribution-list-controls">
+      <label>
+        <span>每页</span>
+        <select
+          data-contribution-page-size
+          aria-label="每页贡献者人数"
+        >
+          <option value="3" selected>3 人</option>
+          <option value="5">5 人</option>
+          <option value="10">10 人</option>
+          <option value="20">20 人</option>
+        </select>
+      </label>
+      <label>
+        <span>人数</span>
+        <select
+          data-contribution-total-limit
+          aria-label="最多显示贡献者人数"
+        >
+          <option value="5">前 5 人</option>
+          <option value="10" selected>前 10 人</option>
+          <option value="25">前 25 人</option>
+          <option value="all">全部</option>
+        </select>
+      </label>
+      <label class="contribution-sort-control">
+        <span>排序</span>
+        <select data-contribution-sort aria-label="贡献者排序字段">
+          <option value="total" selected>变更合计</option>
+          <option value="added">新增行</option>
+          <option value="modified">更改行</option>
+          <option value="deleted">删除行</option>
+          <option value="recent">最近贡献</option>
+          <option value="name">名称</option>
+        </select>
+      </label>
+      <button
+        class="icon-button contribution-sort-direction"
+        type="button"
+        data-contribution-sort-direction
+        aria-label="当前降序，切换为升序"
+        title="降序"
+      >
+        <i data-lucide="arrow-down-wide-narrow" aria-hidden="true"></i>
+      </button>
     </div>
 
     <div class="contribution-table-wrap" tabindex="0">
       <table class="contribution-table">
         <thead>
           <tr>
-            <th scope="col">贡献者</th>
-            <th scope="col">新增</th>
-            <th scope="col">
+            <th scope="col" data-contribution-sort-column="name">贡献者</th>
+            <th scope="col" data-contribution-sort-column="added">新增</th>
+            <th scope="col" data-contribution-sort-column="modified">
               <abbr title="同一文件中成对出现的新增与删除行">更改</abbr>
             </th>
-            <th scope="col">删除</th>
-            <th scope="col">变更合计</th>
+            <th scope="col" data-contribution-sort-column="deleted">删除</th>
+            <th scope="col" data-contribution-sort-column="total">
+              变更合计
+            </th>
           </tr>
         </thead>
         <tbody data-contribution-rows>
@@ -202,7 +256,7 @@ permalink: index.html
         </tbody>
         <tfoot>
           <tr>
-            <th scope="row">合计</th>
+            <th scope="row">全部贡献合计</th>
             <td class="line-added" data-contribution-total="added">
               {% if overallStats.lineTotals.added %}+{{ overallStats.lineTotals.added | formatNumber }}{% else %}0{% endif %}
             </td>
@@ -225,6 +279,29 @@ permalink: index.html
         </tfoot>
       </table>
     </div>
+    <nav class="contribution-pagination" aria-label="贡献者分页">
+      <button
+        class="icon-button"
+        type="button"
+        data-contribution-page-previous
+        aria-label="上一页"
+        title="上一页"
+      >
+        <i data-lucide="arrow-left" aria-hidden="true"></i>
+      </button>
+      <span data-contribution-page-status aria-live="polite">
+        第 1 / 1 页
+      </span>
+      <button
+        class="icon-button"
+        type="button"
+        data-contribution-page-next
+        aria-label="下一页"
+        title="下一页"
+      >
+        <i data-lucide="arrow-right" aria-hidden="true"></i>
+      </button>
+    </nav>
   </div>
 </section>
 
@@ -261,7 +338,10 @@ permalink: index.html
             <span class="track-statline">
               {{ track.statistics.characterCount | formatNumber }} 字 ·
               {{ track.statistics.lineCount | formatNumber }} 行 ·
-              {{ track.statistics.contributorCount }} 位贡献者
+              <span data-contribution-count="{{ track.key }}">
+                {{ track.statistics.contributorCount }}
+              </span>
+              位贡献者
             </span>
           {% endif %}
           <i data-lucide="arrow-up-right" aria-hidden="true"></i>

@@ -9,6 +9,12 @@ const {
   lineStatsFromNumstat,
   trackForHistoryPath
 } = require("../lib/content-statistics");
+const {
+  mergeContributors,
+  paginateContributors,
+  recentContributors,
+  sortContributors
+} = require("../src/assets/js/home-statistics");
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "gck-statistics-"));
 const cachePath = path.join(root, "cache", "statistics.json");
@@ -40,6 +46,141 @@ assert.notEqual(
   aliasIdentities[2].contributorId,
   "equal display names with different emails must stay independent"
 );
+
+const identityGraph = {
+  version: 2,
+  revision: "test-revision",
+  identity_aliases: {
+    "user:1": ["identity:a", "identity:b"],
+    "user:2": ["identity:c"]
+  },
+  links: [
+    {
+      contributor_id: "user:1",
+      contributor_name: "Canonical User",
+      last_contributed_at: "2026-08-20T00:00:00Z"
+    },
+    {
+      contributor_id: "user:2",
+      contributor_name: "Other User",
+      last_contributed_at: "2026-08-20T00:00:00Z"
+    }
+  ]
+};
+const mergedAccounts = mergeContributors(
+  [
+    {
+      id: "identity:a",
+      name: "Old Git Name",
+      added: 12,
+      modified: 3,
+      deleted: 1,
+      commitCount: 2,
+      lastContributedAt: "2026-08-18T00:00:00Z"
+    },
+    {
+      id: "identity:b",
+      name: "New Git Name",
+      added: 7,
+      modified: 2,
+      deleted: 0,
+      commitCount: 1,
+      lastContributedAt: "2026-08-19T00:00:00Z"
+    },
+    {
+      id: "identity:c",
+      name: "Old Git Name",
+      added: 4,
+      modified: 0,
+      deleted: 0,
+      commitCount: 1,
+      lastContributedAt: "2026-08-17T00:00:00Z"
+    }
+  ],
+  identityGraph
+);
+assert.deepEqual(
+  mergedAccounts.map((item) => item.id).sort(),
+  ["user:1", "user:2"],
+  "verified aliases must collapse to their website accounts"
+);
+const canonicalUser = mergedAccounts.find((item) => item.id === "user:1");
+assert.equal(canonicalUser.name, "Canonical User");
+assert.equal(canonicalUser.added, 19);
+assert.equal(canonicalUser.modified, 5);
+assert.equal(canonicalUser.deleted, 1);
+assert.equal(canonicalUser.commitCount, 3);
+assert.equal(
+  mergeContributors(
+    [
+      { id: "separate:a", name: "Same Name", added: 1 },
+      { id: "separate:b", name: "Same Name", added: 2 }
+    ],
+    null
+  ).length,
+  2,
+  "equal names without a stable alias must remain separate"
+);
+assert.equal(
+  sortContributors(mergedAccounts, "total", "desc")[0].id,
+  "user:1"
+);
+assert.equal(
+  sortContributors(mergedAccounts, "name", "asc")[0].name,
+  "Canonical User"
+);
+assert.deepEqual(
+  paginateContributors(
+    [
+      { id: "1" },
+      { id: "2" },
+      { id: "3" },
+      { id: "4" },
+      { id: "5" }
+    ],
+    2,
+    4,
+    2
+  ),
+  {
+    items: [{ id: "3" }, { id: "4" }],
+    page: 2,
+    pageCount: 2,
+    start: 2,
+    total: 5,
+    limitedTotal: 4
+  }
+);
+const recentMerged = recentContributors(
+  {
+    recentEvents: [
+      {
+        timestamp: "2026-08-20T00:00:00Z",
+        trackKey: "program",
+        contributorId: "identity:a",
+        contributorName: "Old Git Name",
+        added: 2,
+        modified: 0,
+        deleted: 0
+      },
+      {
+        timestamp: "2026-08-20T01:00:00Z",
+        trackKey: "program",
+        contributorId: "identity:b",
+        contributorName: "New Git Name",
+        added: 3,
+        modified: 1,
+        deleted: 0
+      }
+    ]
+  },
+  "program",
+  identityGraph,
+  new Date("2026-08-21T00:00:00Z").getTime()
+);
+assert.equal(recentMerged.length, 1);
+assert.equal(recentMerged[0].name, "Canonical User");
+assert.equal(recentMerged[0].added, 5);
 
 function git(args, environment = {}) {
   return execFileSync("git", args, {
