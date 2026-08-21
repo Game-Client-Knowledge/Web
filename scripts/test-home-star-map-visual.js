@@ -89,9 +89,15 @@ async function runScenario(browser, scenario) {
       }
     ],
     home_star_brightness_tiers: [
-      { id: "brown", name: "褐矮星", min_brightness: 5 },
-      { id: "yellow", name: "黄矮星", min_brightness: 50 },
-      { id: "blue", name: "蓝巨星", min_brightness: 80 }
+      { id: "brown-dwarf", name: "褐矮星", min_brightness: 5 },
+      { id: "yellow-dwarf", name: "黄矮星", min_brightness: 50 },
+      { id: "blue-giant", name: "蓝巨星", min_brightness: 80 },
+      {
+        id: "blue-supergiant",
+        name: "蓝超巨星",
+        min_brightness: 92
+      },
+      { id: "hypergiant", name: "特超巨星", min_brightness: 98 }
     ]
   };
   await context.addInitScript((settings) => {
@@ -269,7 +275,7 @@ async function runScenario(browser, scenario) {
   assert.match(coverage, /关系/);
   assert.match(coverage, /星体等级/);
   assert.match(coverage, /黄矮星/);
-  assert.match(coverage, /起点亮度/);
+  assert.match(coverage, /基础亮度/);
   const selectionMetrics = await page.evaluate(() => {
     const canvas = document.querySelector("[data-knowledge-field]");
     return {

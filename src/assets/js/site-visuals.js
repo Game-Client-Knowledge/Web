@@ -19,7 +19,12 @@
     home_star_portal_expanded_structure: "3d-drift",
     home_star_portal_rotation_speed: 2.6,
     home_star_portal_size_percent: 34,
-    home_star_portal_brightness_percent: 42
+    home_star_portal_brightness_percent: 42,
+    home_star_3d_background_star_count: 3200,
+    home_star_3d_dust_fraction_percent: 60,
+    home_star_3d_background_brightness_percent: 220,
+    home_star_3d_dust_brightness_percent: 260,
+    home_star_3d_background_size_percent: 160
   };
   const HOME_INTRO_SETTINGS_CACHE = "gck-home-intro-settings";
   let releaseHomeIntro;
@@ -279,6 +284,16 @@
             settings.home_star_3d_spike_max_css_size,
           home_star_3d_pulse_max_css_size:
             settings.home_star_3d_pulse_max_css_size,
+          home_star_3d_background_star_count:
+            settings.home_star_3d_background_star_count,
+          home_star_3d_dust_fraction_percent:
+            settings.home_star_3d_dust_fraction_percent,
+          home_star_3d_background_brightness_percent:
+            settings.home_star_3d_background_brightness_percent,
+          home_star_3d_dust_brightness_percent:
+            settings.home_star_3d_dust_brightness_percent,
+          home_star_3d_background_size_percent:
+            settings.home_star_3d_background_size_percent,
           home_star_brightness_rules:
             settings.home_star_brightness_rules,
           home_star_brightness_tiers:

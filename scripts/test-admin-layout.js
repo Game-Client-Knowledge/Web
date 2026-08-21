@@ -15,6 +15,14 @@ const javascript = fs.readFileSync(
   path.join(root, "editor/app/static/admin.js"),
   "utf8"
 );
+const serverSource = fs.readFileSync(
+  path.join(root, "editor/app/main.py"),
+  "utf8"
+);
+const databaseSource = fs.readFileSync(
+  path.join(root, "editor/app/database.py"),
+  "utf8"
+);
 const commentAgentConfig = fs.readFileSync(
   path.join(root, "editor/app/comment_agent_config.py"),
   "utf8"
@@ -98,11 +106,20 @@ for (const field of [
   "home_star_3d_halo_max_css_size",
   "home_star_3d_core_max_css_size",
   "home_star_3d_spike_max_css_size",
-  "home_star_3d_pulse_max_css_size"
+  "home_star_3d_pulse_max_css_size",
+  "home_star_3d_background_star_count",
+  "home_star_3d_dust_fraction_percent",
+  "home_star_3d_background_brightness_percent",
+  "home_star_3d_dust_brightness_percent",
+  "home_star_3d_background_size_percent"
 ]) {
   assert.match(html, new RegExp(`name="${field}"`));
+  assert.match(javascript, new RegExp(field));
+  assert.match(serverSource, new RegExp(field));
+  assert.match(databaseSource, new RegExp(field));
 }
 assert.match(html, /主动点亮星体效果/);
+assert.match(html, /3D 深空背景/);
 assert.match(html, /<h3 id="contributionPortalTitle">贡献空间<\/h3>/);
 assert.match(html, /自动旋转速率（°\/秒）/);
 assert.match(html, /微缩结构/);
@@ -195,6 +212,8 @@ assert.match(javascript, /function renderStarFormulaReference\(\)/);
 assert.match(javascript, /starFormulaEngine\.validateFormula/);
 assert.match(javascript, /home_star_brightness_tiers/);
 assert.match(javascript, /home_star_3d_halo_max_css_size/);
+assert.match(javascript, /home_star_3d_background_star_count/);
+assert.match(javascript, /home_star_3d_dust_brightness_percent/);
 assert.match(javascript, /home_star_experience_mode/);
 assert.match(javascript, /home_star_portal_collapsed_structure/);
 assert.match(javascript, /home_star_portal_expanded_structure/);

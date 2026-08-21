@@ -60,7 +60,48 @@ const baseSettings = {
   home_star_3d_halo_max_css_size: 200,
   home_star_3d_core_max_css_size: 36,
   home_star_3d_spike_max_css_size: 240,
-  home_star_3d_pulse_max_css_size: 36
+  home_star_3d_pulse_max_css_size: 36,
+  home_star_3d_background_star_count: 3200,
+  home_star_3d_dust_fraction_percent: 60,
+  home_star_3d_background_brightness_percent: 220,
+  home_star_3d_dust_brightness_percent: 260,
+  home_star_3d_background_size_percent: 160,
+  home_star_brightness_tiers: [
+    { id: "brown-dwarf", name: "褐矮星", min_brightness: 5 },
+    { id: "red-dwarf", name: "红矮星", min_brightness: 25 },
+    { id: "yellow-dwarf", name: "黄矮星", min_brightness: 50 },
+    { id: "blue-giant", name: "蓝巨星", min_brightness: 80 }
+  ]
+};
+const luminousTierSettings = {
+  home_star_brightness_rules: [
+    {
+      id: "visual-supergiant-documents",
+      name: "Visual supergiant documents",
+      enabled: true,
+      target: "document",
+      formula: "95"
+    },
+    {
+      id: "visual-hypergiant-contributors",
+      name: "Visual hypergiant contributors",
+      enabled: true,
+      target: "contributor",
+      formula: "100"
+    }
+  ],
+  home_star_brightness_tiers: [
+    { id: "brown-dwarf", name: "褐矮星", min_brightness: 5 },
+    { id: "red-dwarf", name: "红矮星", min_brightness: 25 },
+    { id: "yellow-dwarf", name: "黄矮星", min_brightness: 50 },
+    { id: "blue-giant", name: "蓝巨星", min_brightness: 80 },
+    {
+      id: "blue-supergiant",
+      name: "蓝超巨星",
+      min_brightness: 92
+    },
+    { id: "hypergiant", name: "特超巨星", min_brightness: 98 }
+  ]
 };
 
 async function openPage(browser, options) {
@@ -126,7 +167,8 @@ async function inspectStructure(browser, structure) {
     settings: {
       home_star_render_mode: structure,
       home_star_experience_mode: "immersive",
-      home_star_relation_visibility: "hidden"
+      home_star_relation_visibility: "hidden",
+      ...luminousTierSettings
     }
   });
   const metrics = await page.evaluate(() => {
@@ -139,6 +181,14 @@ async function inspectStructure(browser, structure) {
     const finite = debug.stars.every((star) => {
       return [star.x, star.y, star.z].every(Number.isFinite);
     });
+    const tierCounts = debug.stars.reduce((counts, star) => {
+      const id = star.brightnessTier?.id || "none";
+      counts[id] = (counts[id] || 0) + 1;
+      return counts;
+    }, {});
+    const effects = Array.from(
+      debug.layers.haloLayer.geometry.attributes.aEffect.array
+    );
     return {
       finite,
       axes,
@@ -147,8 +197,26 @@ async function inspectStructure(browser, structure) {
       map: canvas.dataset.starMap,
       backgroundStars: Number(canvas.dataset.backgroundStarCount),
       backgroundDust: Number(canvas.dataset.backgroundDustCount),
+      backgroundBrightness: Number(canvas.dataset.backgroundBrightness),
+      dustBrightness: Number(canvas.dataset.dustBrightness),
+      backgroundSizeScale: Number(canvas.dataset.backgroundSizeScale),
       visualProfile: canvas.dataset.visualProfile,
       backgroundTime: debug.backgroundLayer.material.uniforms.uTime.value,
+      animatedStars: Number(canvas.dataset.animatedStarCount),
+      blueSupergiants: Number(canvas.dataset.blueSupergiantCount),
+      hypergiants: Number(canvas.dataset.hypergiantCount),
+      tierCounts,
+      maximumVariability: Math.max(
+        ...effects.filter((_, index) => index % 4 === 0)
+      ),
+      maximumCorona: Math.max(
+        ...effects.filter((_, index) => index % 4 === 2)
+      ),
+      layerKinds: [
+        debug.layers.haloLayer.material.uniforms.uLayerKind.value,
+        debug.layers.coreLayer.material.uniforms.uLayerKind.value,
+        debug.layers.spikeLayer.material.uniforms.uLayerKind.value
+      ],
       width: canvas.width,
       height: canvas.height
     };
@@ -162,10 +230,25 @@ async function inspectStructure(browser, structure) {
   assert.equal(metrics.calls, 4, `${structure}: WebGL draw calls changed`);
   assert.ok(metrics.structures.includes(structure));
   assert.equal(metrics.map, `contribution-${structure}`);
-  assert.equal(metrics.backgroundStars, 2800);
-  assert.equal(metrics.backgroundDust, 1540);
+  assert.equal(metrics.backgroundStars, 3200);
+  assert.equal(metrics.backgroundDust, 1920);
+  assert.equal(metrics.backgroundBrightness, 2.2);
+  assert.equal(metrics.dustBrightness, 2.6);
+  assert.equal(metrics.backgroundSizeScale, 1.6);
   assert.equal(metrics.visualProfile, "deep-field");
   assert.equal(metrics.backgroundTime, 0);
+  assert.equal(
+    metrics.animatedStars,
+    metrics.tierCounts["blue-supergiant"] +
+      metrics.tierCounts.hypergiant
+  );
+  assert.ok(metrics.blueSupergiants > 100);
+  assert.ok(metrics.hypergiants > 0);
+  assert.equal(metrics.blueSupergiants, metrics.tierCounts["blue-supergiant"]);
+  assert.equal(metrics.hypergiants, metrics.tierCounts.hypergiant);
+  assert.ok(Math.abs(metrics.maximumVariability - 0.052) < 0.0001);
+  assert.ok(Math.abs(metrics.maximumCorona - 0.56) < 0.0001);
+  assert.deepEqual(metrics.layerKinds, [0, 1, 2]);
   assert.ok(metrics.width > 0 && metrics.height > 0);
   assert.deepEqual(errors, [], `${structure}: browser errors`);
 
@@ -296,6 +379,87 @@ async function inspectContributorIdentityMerge(browser) {
   await context.close();
   console.log(
     "contributor-identity: registered alias and external Git author preserved"
+  );
+}
+
+async function inspectLuminousTierAnimation(browser) {
+  const { context, page, errors } = await openPage(browser, {
+    viewport: { width: 1440, height: 1000 },
+    reducedMotion: "no-preference",
+    settings: {
+      home_star_render_mode: "3d-spiral",
+      home_star_experience_mode: "immersive",
+      home_star_relation_visibility: "hidden",
+      ...luminousTierSettings
+    }
+  });
+  const firstTime = await page.evaluate(() => {
+    return window.__GCK_STAR3D_DEBUG.layers.haloLayer.material.uniforms.uTime
+      .value;
+  });
+  await page.waitForTimeout(180);
+  const metrics = await page.evaluate(() => {
+    const debug = window.__GCK_STAR3D_DEBUG;
+    const effects = Array.from(
+      debug.layers.haloLayer.geometry.attributes.aEffect.array
+    );
+    return {
+      time: debug.layers.haloLayer.material.uniforms.uTime.value,
+      calls: debug.renderer.info.render.calls,
+      animated: Number(debug.renderer.domElement.dataset.animatedStarCount),
+      nonzeroEffects: effects.filter((value) => value !== 0).length
+    };
+  });
+  assert.ok(metrics.time > firstTime, "luminous tier animation time stalled");
+  assert.equal(metrics.calls, 4, "luminous tier animation changed draw calls");
+  assert.ok(metrics.animated > 100, "luminous tiers were not animated");
+  assert.ok(metrics.nonzeroEffects > 100, "tier effect attributes are empty");
+  assert.deepEqual(errors, [], "luminous tier animation: browser errors");
+  await context.close();
+  console.log(
+    `luminous-tier-animation: animated=${metrics.animated}, ` +
+      `drawCalls=${metrics.calls}`
+  );
+}
+
+async function inspectDeepSpaceSettings(browser) {
+  const { context, page, errors } = await openPage(browser, {
+    viewport: { width: 1440, height: 1000 },
+    settings: {
+      home_star_render_mode: "3d-nebula",
+      home_star_experience_mode: "immersive",
+      home_star_relation_visibility: "hidden",
+      home_star_3d_background_star_count: 1800,
+      home_star_3d_dust_fraction_percent: 75,
+      home_star_3d_background_brightness_percent: 185,
+      home_star_3d_dust_brightness_percent: 310,
+      home_star_3d_background_size_percent: 135
+    }
+  });
+  const metrics = await page.evaluate(() => {
+    const debug = window.__GCK_STAR3D_DEBUG;
+    const canvas = debug.renderer.domElement;
+    return {
+      calls: debug.renderer.info.render.calls,
+      stars: Number(canvas.dataset.backgroundStarCount),
+      dust: Number(canvas.dataset.backgroundDustCount),
+      brightness: debug.backgroundLayer.material.uniforms.uBrightness.value,
+      dustBrightness:
+        debug.backgroundLayer.material.uniforms.uDustBrightness.value,
+      sizeScale: debug.backgroundLayer.material.uniforms.uSizeScale.value
+    };
+  });
+  assert.equal(metrics.calls, 4, "deep-space settings changed draw calls");
+  assert.equal(metrics.stars, 1800);
+  assert.equal(metrics.dust, 1350);
+  assert.equal(metrics.brightness, 1.85);
+  assert.equal(metrics.dustBrightness, 3.1);
+  assert.equal(metrics.sizeScale, 1.35);
+  assert.deepEqual(errors, [], "deep-space settings: browser errors");
+  await context.close();
+  console.log(
+    `deep-space-settings: stars=${metrics.stars}, dust=${metrics.dust}, ` +
+      `drawCalls=${metrics.calls}`
   );
 }
 
@@ -890,6 +1054,8 @@ async function inspectScrolledPortalOpening(browser, name, viewport) {
       screenshots.push(await inspectStructure(browser, structure));
     }
     await inspectContributorIdentityMerge(browser);
+    await inspectLuminousTierAnimation(browser);
+    await inspectDeepSpaceSettings(browser);
     screenshots.push(
       ...await inspectPortal(
         browser,

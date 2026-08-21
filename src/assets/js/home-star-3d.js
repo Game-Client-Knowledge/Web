@@ -62,8 +62,11 @@
   });
   const POINT_SIZE_SOFT_KNEE = 0.62;
   const SECONDARY_SPIKE_FRACTION = 0.06;
-  const BACKGROUND_STAR_COUNT = 2800;
-  const BACKGROUND_DUST_FRACTION = 0.55;
+  const DEFAULT_BACKGROUND_STAR_COUNT = 3200;
+  const DEFAULT_BACKGROUND_DUST_FRACTION = 0.6;
+  const DEFAULT_BACKGROUND_BRIGHTNESS = 2.2;
+  const DEFAULT_DUST_BRIGHTNESS = 2.6;
+  const DEFAULT_BACKGROUND_SIZE_SCALE = 1.6;
   const DRIFT_SPEED_MULTIPLIER = 2.4;
   const SPIKE_ART_SCALE = 2.1;
   const CONTENT_EXPOSURE = 0.28;
@@ -929,6 +932,42 @@
         120
       )
     });
+    const backgroundStarCount = Math.round(
+      boundedSetting(
+        "home_star_3d_background_star_count",
+        DEFAULT_BACKGROUND_STAR_COUNT,
+        0,
+        10000
+      )
+    );
+    const backgroundDustFraction =
+      boundedSetting(
+        "home_star_3d_dust_fraction_percent",
+        DEFAULT_BACKGROUND_DUST_FRACTION * 100,
+        0,
+        100
+      ) / 100;
+    const backgroundBrightness =
+      boundedSetting(
+        "home_star_3d_background_brightness_percent",
+        DEFAULT_BACKGROUND_BRIGHTNESS * 100,
+        0,
+        400
+      ) / 100;
+    const dustBrightness =
+      boundedSetting(
+        "home_star_3d_dust_brightness_percent",
+        DEFAULT_DUST_BRIGHTNESS * 100,
+        0,
+        500
+      ) / 100;
+    const backgroundSizeScale =
+      boundedSetting(
+        "home_star_3d_background_size_percent",
+        DEFAULT_BACKGROUND_SIZE_SCALE * 100,
+        25,
+        300
+      ) / 100;
     const portalRotationRadiansPerMs =
       boundedSetting(
         "home_star_portal_rotation_speed",
@@ -960,11 +999,13 @@
       "attribute float aTile;",
       "attribute float aRot;",
       "attribute float aPhase;",
+      "attribute vec4 aEffect;",
       "attribute vec3 aColor;",
       "varying float vAlpha;",
       "varying float vTile;",
       "varying float vRot;",
       "varying float vPhase;",
+      "varying vec4 vEffect;",
       "varying vec3 vColor;",
       "varying vec2 vScreenUv;",
       "uniform float uScale;",
@@ -973,17 +1014,25 @@
       "uniform float uMaxCssSize;",
       "uniform float uSoftKneeRatio;",
       "uniform float uPortalScale;",
+      "uniform float uLayerKind;",
+      "uniform float uTime;",
       "uniform vec2 uScreenOffset;",
       "void main() {",
       "  vAlpha = aAlpha;",
       "  vTile = aTile;",
-      "  vRot = aRot;",
+      "  vRot = aRot + uTime * aEffect.w;",
       "  vPhase = aPhase;",
+      "  vEffect = aEffect;",
       "  vColor = aColor;",
       "  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);",
       "  float safeDepth = max(-mvPosition.z, uMinDepth);",
       "  float projectedSize =",
       "    aSize * uPortalScale * (uScale / safeDepth);",
+      "  float pulse = sin(uTime * aEffect.y + aPhase) * aEffect.x;",
+      "  float pulseWeight = uLayerKind < 0.5",
+      "    ? 1.0",
+      "    : (uLayerKind < 1.5 ? 0.28 : 0.65);",
+      "  projectedSize *= 1.0 + pulse * pulseWeight;",
       "  float sizeCap = uMaxCssSize * uPixelRatio;",
       "  float sizeKnee = sizeCap * uSoftKneeRatio;",
       "  float compressedSize = projectedSize;",
@@ -1006,6 +1055,7 @@
       "varying float vTile;",
       "varying float vRot;",
       "varying float vPhase;",
+      "varying vec4 vEffect;",
       "varying vec3 vColor;",
       "varying vec2 vScreenUv;",
       "uniform vec4 uContentRect0;",
@@ -1048,8 +1098,23 @@
       "  vec2 atlasUv = vec2((vTile + uv.x) / uTiles, uv.y);",
       "  vec4 tex = texture2D(uAtlas, atlasUv);",
       "  float twinkle =",
-      "    0.94 + 0.06 * sin(uTime * (0.72 + mod(vPhase, 1.31)) + vPhase);",
-      "  float alpha = tex.a * vAlpha * twinkle;",
+      "    0.98 + 0.02 * sin(uTime * (0.72 + mod(vPhase, 1.31)) + vPhase);",
+      "  float variability =",
+      "    1.0 + sin(uTime * vEffect.y + vPhase) * vEffect.x * 1.8;",
+      "  vec2 centered = uv - vec2(0.5);",
+      "  float radius = length(centered);",
+      "  float angle = atan(centered.y, centered.x);",
+      "  float turbulence =",
+      "    sin(angle * 7.0 + uTime * 0.34 + vPhase) * 0.22 +",
+      "    sin(angle * 13.0 - uTime * 0.21 - vPhase) * 0.12;",
+      "  float coronaMask =",
+      "    smoothstep(0.08, 0.3, radius) *",
+      "    (1.0 - smoothstep(0.3, 0.7, radius));",
+      "  float corona = max(",
+      "    0.58,",
+      "    1.0 + vEffect.z * coronaMask * turbulence",
+      "  );",
+      "  float alpha = tex.a * vAlpha * twinkle * variability * corona;",
       "  float contentMask = max(",
       "    rectMask(vScreenUv, uContentRect0),",
       "    max(",
@@ -1061,6 +1126,8 @@
       "  alpha *= uPortalBrightness;",
       "  if (alpha < 0.004) discard;",
       "  vec3 emitted = tex.rgb * vColor * (0.94 + tex.a * 0.16);",
+      "  emitted += vec3(0.08, 0.19, 0.34) *",
+      "    max(0.0, turbulence) * coronaMask * vEffect.z;",
       "  gl_FragColor = vec4(emitted, alpha);",
       "}"
     ].join("\n");
@@ -1068,7 +1135,8 @@
     function createPointLayer(
       count,
       maxCssSize,
-      contentExposure = CONTENT_EXPOSURE
+      contentExposure = CONTENT_EXPOSURE,
+      layerKind = 0
     ) {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute(
@@ -1096,6 +1164,10 @@
         new THREE.BufferAttribute(new Float32Array(count), 1)
       );
       geometry.setAttribute(
+        "aEffect",
+        new THREE.BufferAttribute(new Float32Array(count * 4), 4)
+      );
+      geometry.setAttribute(
         "aColor",
         new THREE.BufferAttribute(new Float32Array(count * 3), 3)
       );
@@ -1112,6 +1184,7 @@
               strategy.camera === "flat" ? 1 : POINT_SIZE_SOFT_KNEE
           },
           uPortalScale: { value: 1 },
+          uLayerKind: { value: layerKind },
           uContentRect0: {
             value: new Float32Array([-2, -2, -2, -2])
           },
@@ -1145,13 +1218,14 @@
 
     function createBackgroundStarLayer() {
       const count =
-        strategy.camera === "flat" ? 0 : BACKGROUND_STAR_COUNT;
-      const dustCount = Math.round(count * BACKGROUND_DUST_FRACTION);
+        strategy.camera === "flat" ? 0 : backgroundStarCount;
+      const dustCount = Math.round(count * backgroundDustFraction);
       const geometry = new THREE.BufferGeometry();
       const positions = new Float32Array(count * 3);
       const sizes = new Float32Array(count);
       const alphas = new Float32Array(count);
       const phases = new Float32Array(count);
+      const dustWeights = new Float32Array(count);
       const colors = new Float32Array(count * 3);
       const backgroundRandom = seededRandom(
         hashSeed(`${sourceGraph.revision}:background-stars-3d`)
@@ -1162,7 +1236,8 @@
         let y;
         let z;
         if (dust) {
-          const radius = 1450 + backgroundRandom() * 360;
+          const radius =
+            620 + 1260 * Math.pow(backgroundRandom(), 0.72);
           const theta = backgroundRandom() * Math.PI * 2;
           x = Math.cos(theta) * radius;
           y =
@@ -1172,10 +1247,10 @@
               backgroundRandom() -
               1.5
             ) *
-            138;
+            112;
           z = Math.sin(theta) * radius;
-          const tiltZ = 0.24;
-          const tiltX = -0.12;
+          const tiltZ = 0.42;
+          const tiltX = -0.28;
           const tiltedX = x * Math.cos(tiltZ) - y * Math.sin(tiltZ);
           const tiltedY = x * Math.sin(tiltZ) + y * Math.cos(tiltZ);
           x = tiltedX;
@@ -1202,6 +1277,7 @@
         positions[index * 3 + 1] = y;
         positions[index * 3 + 2] = z;
         phases[index] = backgroundRandom() * Math.PI * 2;
+        dustWeights[index] = dust ? 1 : 0;
         const temperature = backgroundRandom();
         const color = temperature < 0.22
           ? [1, 0.72 + temperature * 0.45, 0.58]
@@ -1227,6 +1303,10 @@
         new THREE.BufferAttribute(phases, 1)
       );
       geometry.setAttribute(
+        "aDust",
+        new THREE.BufferAttribute(dustWeights, 1)
+      );
+      geometry.setAttribute(
         "aColor",
         new THREE.BufferAttribute(colors, 3)
       );
@@ -1235,18 +1315,24 @@
           uScale: { value: 1 },
           uPixelRatio: { value: 1 },
           uOpacity: { value: 1 },
-          uTime: { value: 0 }
+          uTime: { value: 0 },
+          uBrightness: { value: backgroundBrightness },
+          uDustBrightness: { value: dustBrightness },
+          uSizeScale: { value: backgroundSizeScale }
         },
         vertexShader: [
           "attribute float aSize;",
           "attribute float aAlpha;",
           "attribute float aPhase;",
+          "attribute float aDust;",
           "attribute vec3 aColor;",
           "varying float vAlpha;",
           "varying float vSparkle;",
+          "varying float vDust;",
           "varying vec3 vColor;",
           "uniform float uScale;",
           "uniform float uPixelRatio;",
+          "uniform float uSizeScale;",
           "uniform float uTime;",
           "void main() {",
           "  float pulse = 0.78 + 0.22 * sin(",
@@ -1254,13 +1340,16 @@
           "  );",
           "  vAlpha = aAlpha * pulse;",
           "  vSparkle = smoothstep(2.25, 4.1, aSize);",
+          "  vDust = aDust;",
           "  vColor = aColor;",
           "  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);",
-          "  float projected = aSize * (uScale / max(-mvPosition.z, 500.0));",
+          "  float projected =",
+          "    aSize * uSizeScale * (uScale / max(-mvPosition.z, 500.0));",
+          "  projected *= mix(1.0, 3.2, aDust);",
           "  gl_PointSize = clamp(",
           "    projected,",
           "    0.65 * uPixelRatio,",
-          "    6.4 * uPixelRatio",
+          "    mix(6.4, 18.0, aDust) * uPixelRatio",
           "  );",
           "  gl_Position = projectionMatrix * mvPosition;",
           "}"
@@ -1268,8 +1357,11 @@
         fragmentShader: [
           "varying float vAlpha;",
           "varying float vSparkle;",
+          "varying float vDust;",
           "varying vec3 vColor;",
           "uniform float uOpacity;",
+          "uniform float uBrightness;",
+          "uniform float uDustBrightness;",
           "void main() {",
           "  vec2 offset = gl_PointCoord - vec2(0.5);",
           "  float radius = length(offset);",
@@ -1280,7 +1372,10 @@
           "  float rayY = pow(max(0.0, 1.0 - abs(offset.y) * 28.0), 3.0)",
           "    * exp(-abs(offset.x) * 6.0);",
           "  float falloff = max(core, (rayX + rayY) * 0.24 * vSparkle);",
-          "  float alpha = falloff * vAlpha * uOpacity;",
+          "  float dustFalloff = exp(-radius * radius * 7.0) * 0.2;",
+          "  falloff = mix(falloff, max(core * 0.55, dustFalloff), vDust);",
+          "  float exposure = mix(uBrightness, uDustBrightness, vDust);",
+          "  float alpha = falloff * vAlpha * uOpacity * exposure;",
           "  if (alpha < 0.003) discard;",
           "  gl_FragColor = vec4(vColor, alpha);",
           "}"
@@ -1300,28 +1395,38 @@
     const backgroundLayer = createBackgroundStarLayer();
     const haloLayer = createPointLayer(
       stars.length,
-      pointMaxCssSize.halo
+      pointMaxCssSize.halo,
+      CONTENT_EXPOSURE,
+      0
     );
     haloLayer.renderOrder = 1;
     // Solid-ish core dots. The Canvas 2D map always draws a bright core,
     // so without this layer dim stars are almost invisible in WebGL.
     const coreLayer = createPointLayer(
       stars.length,
-      pointMaxCssSize.core
+      pointMaxCssSize.core,
+      CONTENT_EXPOSURE,
+      1
     );
     coreLayer.renderOrder = 2;
     const spikeCandidates = stars.filter((star) => {
       return tierProfile(star.brightnessTier).spikeGain > 0;
     });
     const primarySpikedStars = spikeCandidates.filter((star) => {
-      return star.brightnessTier?.id === "blue-giant";
+      return (
+        tierProfile(star.brightnessTier).variabilityAmplitude >= 0.02
+      );
     });
     const secondarySpikeLimit = Math.max(
       1,
       Math.ceil(stars.length * SECONDARY_SPIKE_FRACTION)
     );
     const secondarySpikedStars = spikeCandidates
-      .filter((star) => star.brightnessTier?.id !== "blue-giant")
+      .filter((star) => {
+        return (
+          tierProfile(star.brightnessTier).variabilityAmplitude < 0.02
+        );
+      })
       .sort((left, right) => {
         return (
           right.baseBrightness - left.baseBrightness ||
@@ -1335,22 +1440,34 @@
     ].sort((left, right) => left.index - right.index);
     const spikeLayer = createPointLayer(
       spikedStars.length,
-      pointMaxCssSize.spike
+      pointMaxCssSize.spike,
+      CONTENT_EXPOSURE,
+      2
     );
-    function assignPointPhases(layer, sourceStars) {
+    function assignPointEffects(layer, sourceStars) {
       const phases = layer.geometry.attributes.aPhase;
+      const effects = layer.geometry.attributes.aEffect;
       sourceStars.forEach((star, index) => {
+        const profile = tierProfile(star.brightnessTier);
         phases.setX(
           index,
           ((star.index + 1) * 2.399963229728653) %
             (Math.PI * 2)
         );
+        effects.setXYZW(
+          index,
+          profile.variabilityAmplitude,
+          profile.variabilitySpeed,
+          profile.coronaStrength,
+          profile.rotationSpeed
+        );
       });
       phases.needsUpdate = true;
+      effects.needsUpdate = true;
     }
-    assignPointPhases(haloLayer, stars);
-    assignPointPhases(coreLayer, stars);
-    assignPointPhases(spikeLayer, spikedStars);
+    assignPointEffects(haloLayer, stars);
+    assignPointEffects(coreLayer, stars);
+    assignPointEffects(spikeLayer, spikedStars);
     spikeLayer.renderOrder = 3;
     scene.add(backgroundLayer);
     scene.add(haloLayer);
@@ -3247,12 +3364,28 @@
       edges.filter((edge) => edge.type === "contribution").length
     );
     glCanvas.dataset.spikeCount = String(spikedStars.length);
+    glCanvas.dataset.animatedStarCount = String(
+      stars.filter((star) => {
+        return tierProfile(star.brightnessTier).variabilityAmplitude > 0;
+      }).length
+    );
+    glCanvas.dataset.blueSupergiantCount = String(
+      stars.filter((star) => {
+        return star.brightnessTier?.id === "blue-supergiant";
+      }).length
+    );
+    glCanvas.dataset.hypergiantCount = String(
+      stars.filter((star) => star.brightnessTier?.id === "hypergiant").length
+    );
     glCanvas.dataset.backgroundStarCount = String(
       backgroundLayer.geometry.attributes.position.count
     );
     glCanvas.dataset.backgroundDustCount = String(
       backgroundLayer.userData.dustCount || 0
     );
+    glCanvas.dataset.backgroundBrightness = String(backgroundBrightness);
+    glCanvas.dataset.dustBrightness = String(dustBrightness);
+    glCanvas.dataset.backgroundSizeScale = String(backgroundSizeScale);
     glCanvas.dataset.visualProfile = "deep-field";
     glCanvas.dataset.selectedCount = "0";
     glCanvas.dataset.selectedTier = "";

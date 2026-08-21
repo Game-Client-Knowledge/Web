@@ -713,6 +713,11 @@ class Database:
                 "home_star_3d_core_max_css_size": "36",
                 "home_star_3d_spike_max_css_size": "240",
                 "home_star_3d_pulse_max_css_size": "36",
+                "home_star_3d_background_star_count": "3200",
+                "home_star_3d_dust_fraction_percent": "60",
+                "home_star_3d_background_brightness_percent": "220",
+                "home_star_3d_dust_brightness_percent": "260",
+                "home_star_3d_background_size_percent": "160",
                 "home_star_active_edge_mode": "single_path",
                 "home_star_brightness_rules": json.dumps(
                     DEFAULT_STAR_BRIGHTNESS_RULES,

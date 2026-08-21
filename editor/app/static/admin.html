@@ -398,6 +398,77 @@
           鼠标跟随效果
         </label>
           </div>
+          <section
+            class="star-background-editor"
+            aria-labelledby="starBackgroundTitle"
+          >
+            <div class="subsection-heading">
+              <h3 id="starBackgroundTitle">3D 深空背景</h3>
+              <p>控制远景球壳星点与倾斜星尘带；仅影响 WebGL 3D 模式，不增加绘制层。</p>
+            </div>
+            <div class="visual-group-grid">
+              <label>
+                深空星总数
+                <input
+                  name="home_star_3d_background_star_count"
+                  type="number"
+                  min="0"
+                  max="10000"
+                  step="100"
+                  required
+                >
+                <small class="field-help">包含普通远景星和星尘带粒子；设为 0 可关闭深空背景。</small>
+              </label>
+              <label>
+                星尘带占比（%）
+                <input
+                  name="home_star_3d_dust_fraction_percent"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  required
+                >
+                <small class="field-help">决定总粒子中进入倾斜星尘带的比例。</small>
+              </label>
+              <label>
+                深空星亮度（%）
+                <input
+                  name="home_star_3d_background_brightness_percent"
+                  type="number"
+                  min="0"
+                  max="400"
+                  step="5"
+                  required
+                >
+                <small class="field-help">控制均匀远景星场曝光；100% 为原始物理强度。</small>
+              </label>
+              <label>
+                星尘带亮度（%）
+                <input
+                  name="home_star_3d_dust_brightness_percent"
+                  type="number"
+                  min="0"
+                  max="500"
+                  step="5"
+                  required
+                >
+                <small class="field-help">单独增强星尘带，使其从远景球壳中形成可辨识色带。</small>
+              </label>
+              <label>
+                深空粒子尺寸（%）
+                <input
+                  name="home_star_3d_background_size_percent"
+                  type="number"
+                  min="25"
+                  max="300"
+                  step="5"
+                  required
+                >
+                <small class="field-help">缩放远景星点与星尘颗粒的屏幕尺寸。</small>
+              </label>
+            </div>
+          </section>
         </fieldset>
 
         <fieldset

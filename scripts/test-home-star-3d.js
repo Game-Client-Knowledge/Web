@@ -34,7 +34,12 @@ for (const setting of [
   "home_star_3d_halo_max_css_size",
   "home_star_3d_core_max_css_size",
   "home_star_3d_spike_max_css_size",
-  "home_star_3d_pulse_max_css_size"
+  "home_star_3d_pulse_max_css_size",
+  "home_star_3d_background_star_count",
+  "home_star_3d_dust_fraction_percent",
+  "home_star_3d_background_brightness_percent",
+  "home_star_3d_dust_brightness_percent",
+  "home_star_3d_background_size_percent"
 ]) {
   assert.match(source, new RegExp(`"${setting}"`));
   assert.match(mapSource, new RegExp(setting));
@@ -53,8 +58,11 @@ assert.match(
   /strategy\.camera === "flat"[\s\S]*DEFAULT_ORBIT_POINT_MIN_DEPTH/
 );
 assert.match(source, /const SECONDARY_SPIKE_FRACTION = 0\.06;/);
-assert.match(source, /const BACKGROUND_STAR_COUNT = 2800;/);
-assert.match(source, /const BACKGROUND_DUST_FRACTION = 0\.55;/);
+assert.match(source, /const DEFAULT_BACKGROUND_STAR_COUNT = 3200;/);
+assert.match(source, /const DEFAULT_BACKGROUND_DUST_FRACTION = 0\.6;/);
+assert.match(source, /const DEFAULT_BACKGROUND_BRIGHTNESS = 2\.2;/);
+assert.match(source, /const DEFAULT_DUST_BRIGHTNESS = 2\.6;/);
+assert.match(source, /const DEFAULT_BACKGROUND_SIZE_SCALE = 1\.6;/);
 assert.match(source, /const DRIFT_SPEED_MULTIPLIER = 2\.4;/);
 assert.equal(
   (source.match(/\* DRIFT_SPEED_MULTIPLIER;/g) || []).length,
@@ -66,8 +74,21 @@ assert.match(source, /const CONTENT_EXPOSURE = 0\.28;/);
 assert.match(source, /initializeSmoothDrift/);
 assert.match(source, /background-stars-3d/);
 assert.match(source, /attribute float aPhase;/);
+assert.match(source, /attribute float aDust;/);
+assert.match(source, /attribute vec4 aEffect;/);
 assert.match(source, /uniform float uTime;/);
+assert.match(source, /uniform float uLayerKind;/);
+assert.match(source, /float coronaMask =/);
+assert.match(source, /vEffect\.z \* coronaMask \* turbulence/);
+assert.match(source, /projectedSize \*= 1\.0 \+ pulse \* pulseWeight;/);
 assert.match(source, /backgroundLayer\.material\.uniforms\.uTime/);
+assert.match(source, /uniform float uBrightness;/);
+assert.match(source, /uniform float uDustBrightness;/);
+assert.match(source, /uniform float uSizeScale;/);
+assert.match(
+  source,
+  /float exposure = mix\(uBrightness, uDustBrightness, vDust\);/
+);
 assert.match(source, /attribute vec3 aColor;/);
 assert.match(source, /uniform vec4 uContentRect0;/);
 assert.match(source, /home-content-hidden/);
@@ -82,6 +103,21 @@ assert.match(
 assert.match(source, /glCanvas\.dataset\.backgroundDustCount/);
 assert.match(source, /glCanvas\.dataset\.visualProfile = "deep-field"/);
 assert.match(source, /glCanvas\.dataset\.spikeCount/);
+assert.match(source, /glCanvas\.dataset\.animatedStarCount/);
+assert.match(source, /glCanvas\.dataset\.blueSupergiantCount/);
+assert.match(source, /glCanvas\.dataset\.hypergiantCount/);
+for (const tier of [
+  ["yellow-dwarf", "黄矮星"],
+  ["blue-giant", "蓝巨星"],
+  ["blue-supergiant", "蓝超巨星"],
+  ["hypergiant", "特超巨星"]
+]) {
+  assert.match(mapSource, new RegExp(`"${tier[0]}"`));
+  assert.match(mapSource, new RegExp(tier[1]));
+}
+assert.match(mapSource, /variabilityAmplitude: 0\.052/);
+assert.match(mapSource, /coronaStrength: 0\.56/);
+assert.match(mapSource, /function tierMotion\(star, profile, time\)/);
 assert.match(source, /const CONTRIBUTION_SPACE_DURATION = 1300;/);
 assert.match(source, /const STRUCTURE_TRANSITION_DURATION = 900;/);
 assert.match(source, /const CONTRIBUTION_SPACE_RADIUS = 165;/);

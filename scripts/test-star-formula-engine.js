@@ -261,11 +261,15 @@ const tiers = [
   { id: "brown", name: "褐矮星", min_brightness: 0 },
   { id: "red", name: "红矮星", min_brightness: 25 },
   { id: "yellow", name: "黄矮星", min_brightness: 50 },
-  { id: "blue", name: "蓝巨星", min_brightness: 80 }
+  { id: "blue", name: "蓝巨星", min_brightness: 80 },
+  { id: "blue-supergiant", name: "蓝超巨星", min_brightness: 92 },
+  { id: "hypergiant", name: "特超巨星", min_brightness: 98 }
 ];
 assert.equal(engine.brightnessTier(10, tiers).name, "褐矮星");
 assert.equal(engine.brightnessTier(50, tiers).name, "黄矮星");
-assert.equal(engine.brightnessTier(100, tiers).name, "蓝巨星");
+assert.equal(engine.brightnessTier(85, tiers).name, "蓝巨星");
+assert.equal(engine.brightnessTier(95, tiers).name, "蓝超巨星");
+assert.equal(engine.brightnessTier(100, tiers).name, "特超巨星");
 assert.equal(
   engine.brightnessTier(
     10,

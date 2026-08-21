@@ -21,6 +21,17 @@
   const formulaEngine = window.GCK_STAR_FORMULA_ENGINE;
   if (!formulaEngine) return;
 
+  const PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS = [
+    { id: "brown-dwarf", name: "褐矮星", min_brightness: 0 },
+    { id: "red-dwarf", name: "红矮星", min_brightness: 25 },
+    { id: "yellow-dwarf", name: "黄矮星", min_brightness: 50 },
+    { id: "blue-giant", name: "蓝巨星", min_brightness: 80 }
+  ];
+  const DEFAULT_STAR_BRIGHTNESS_TIERS = [
+    ...PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS,
+    { id: "blue-supergiant", name: "蓝超巨星", min_brightness: 92 },
+    { id: "hypergiant", name: "特超巨星", min_brightness: 98 }
+  ];
   const defaults = {
     home_background_style: "old_star_map",
     home_star_scope: "hero",
@@ -58,15 +69,15 @@
     home_star_3d_core_max_css_size: 36,
     home_star_3d_spike_max_css_size: 240,
     home_star_3d_pulse_max_css_size: 36,
+    home_star_3d_background_star_count: 3200,
+    home_star_3d_dust_fraction_percent: 60,
+    home_star_3d_background_brightness_percent: 220,
+    home_star_3d_dust_brightness_percent: 260,
+    home_star_3d_background_size_percent: 160,
     home_star_active_edge_mode: "single_path",
     home_star_brightness_rules:
       formulaEngine.DEFAULT_BRIGHTNESS_RULES.map((rule) => ({ ...rule })),
-    home_star_brightness_tiers: [
-      { id: "brown-dwarf", name: "褐矮星", min_brightness: 0 },
-      { id: "red-dwarf", name: "红矮星", min_brightness: 25 },
-      { id: "yellow-dwarf", name: "黄矮星", min_brightness: 50 },
-      { id: "blue-giant", name: "蓝巨星", min_brightness: 80 }
-    ]
+    home_star_brightness_tiers: DEFAULT_STAR_BRIGHTNESS_TIERS
   };
   const graph = window.GCK_HOME_STAR_GRAPH;
   const canvas = document.querySelector("[data-knowledge-field]");
@@ -163,7 +174,11 @@
       spikeWidth: 0.012,
       spikeLength: 0,
       spikeEight: false,
-      spikeAlpha: 0
+      spikeAlpha: 0,
+      variabilityAmplitude: 0,
+      variabilitySpeed: 0,
+      coronaStrength: 0,
+      rotationSpeed: 0
     },
     // 红矮星：温暖的橙红小火苗，光晕收敛柔和
     "red-dwarf": {
@@ -185,7 +200,11 @@
       spikeWidth: 0.012,
       spikeLength: 0,
       spikeEight: false,
-      spikeAlpha: 0
+      spikeAlpha: 0,
+      variabilityAmplitude: 0,
+      variabilitySpeed: 0,
+      coronaStrength: 0,
+      rotationSpeed: 0
     },
     // 黄矮星：类太阳暖白，明显辉光 + 纤细四芒
     "yellow-dwarf": {
@@ -207,7 +226,11 @@
       spikeWidth: 0.022,
       spikeLength: 5.0,
       spikeEight: false,
-      spikeAlpha: 0.5
+      spikeAlpha: 0.5,
+      variabilityAmplitude: 0.012,
+      variabilitySpeed: 0.72,
+      coronaStrength: 0.12,
+      rotationSpeed: 0.012
     },
     // 蓝巨星：冰蓝白炽亮星，大光晕 + 八芒 + 艾里环
     "blue-giant": {
@@ -229,7 +252,63 @@
       spikeWidth: 0.017,
       spikeLength: 8.0,
       spikeEight: true,
-      spikeAlpha: 0.75
+      spikeAlpha: 0.75,
+      variabilityAmplitude: 0.02,
+      variabilitySpeed: 0.52,
+      coronaStrength: 0.24,
+      rotationSpeed: -0.01
+    },
+    // 蓝超巨星：更扩张的恒星风光晕、双层艾里环与缓慢光变
+    "blue-supergiant": {
+      tintHex: "#b9ddff",
+      tintMix: 0.5,
+      coreMix: 0.26,
+      haloScale: 3.35,
+      haloAlphaScale: 1.75,
+      coreAlphaScale: 1.7,
+      radiusBoost: 0.88,
+      coreSigma: 0.042,
+      wingGain: 0.72,
+      wingScale: 0.3,
+      wingPower: 1.85,
+      ringGain: 0.3,
+      ringRadius: 0.35,
+      ringWidth: 0.012,
+      spikeGain: 1.16,
+      spikeWidth: 0.014,
+      spikeLength: 10.2,
+      spikeEight: true,
+      spikeAlpha: 0.86,
+      variabilityAmplitude: 0.034,
+      variabilitySpeed: 0.38,
+      coronaStrength: 0.38,
+      rotationSpeed: 0.015
+    },
+    // 特超巨星：极强恒星风、宽阔外晕与可见的低频不规则光变
+    hypergiant: {
+      tintHex: "#ddf1ff",
+      tintMix: 0.58,
+      coreMix: 0.3,
+      haloScale: 4.2,
+      haloAlphaScale: 2.05,
+      coreAlphaScale: 1.9,
+      radiusBoost: 1.16,
+      coreSigma: 0.04,
+      wingGain: 0.9,
+      wingScale: 0.34,
+      wingPower: 1.7,
+      ringGain: 0.42,
+      ringRadius: 0.37,
+      ringWidth: 0.011,
+      spikeGain: 1.32,
+      spikeWidth: 0.012,
+      spikeLength: 13.2,
+      spikeEight: true,
+      spikeAlpha: 1,
+      variabilityAmplitude: 0.052,
+      variabilitySpeed: 0.26,
+      coronaStrength: 0.56,
+      rotationSpeed: -0.018
     },
     default: {
       tintHex: null,
@@ -250,7 +329,11 @@
       spikeWidth: 0.012,
       spikeLength: 0,
       spikeEight: false,
-      spikeAlpha: 0
+      spikeAlpha: 0,
+      variabilityAmplitude: 0,
+      variabilitySpeed: 0,
+      coronaStrength: 0,
+      rotationSpeed: 0
     }
   };
 
@@ -314,9 +397,18 @@
         // Power-law wing — the long smooth tail that makes stars feel
         // photographic rather than sticker-like.
         const wingRatio = r / wingScale;
+        const angle = Math.atan2(dy, dx);
+        const coronaTurbulence =
+          1 +
+          profile.coronaStrength *
+            (
+              Math.sin(angle * 7 + r * 18) * 0.22 +
+              Math.sin(angle * 13 - r * 29) * 0.12
+            );
         const wing =
           profile.wingGain *
-          Math.pow(1 + wingRatio * wingRatio, -profile.wingPower);
+          Math.pow(1 + wingRatio * wingRatio, -profile.wingPower) *
+          Math.max(0.55, coronaTurbulence);
         // Optional first Airy ring for the brightest tiers.
         let ring = 0;
         if (profile.ringGain > 0) {
@@ -696,8 +788,30 @@
     const migratedRules = formulaEngine.migrateDefaultBrightnessRules(
       legacyMigratedRules
     );
-    const validTiers = formulaEngine.normalizeTiers(
+    const normalizedTierSource = formulaEngine.normalizeTiers(
       merged.home_star_brightness_tiers,
+      brightnessMinimum,
+      brightnessMax
+    );
+    const previousDefaultTiers = formulaEngine.normalizeTiers(
+      PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS,
+      brightnessMinimum,
+      brightnessMax
+    );
+    const usesPreviousDefaultTiers =
+      normalizedTierSource.length === previousDefaultTiers.length &&
+      normalizedTierSource.every((tier, index) => {
+        const previous = previousDefaultTiers[index];
+        return (
+          tier.id === previous.id &&
+          tier.name === previous.name &&
+          tier.min_brightness === previous.min_brightness
+        );
+      });
+    const validTiers = formulaEngine.normalizeTiers(
+      usesPreviousDefaultTiers
+        ? DEFAULT_STAR_BRIGHTNESS_TIERS
+        : merged.home_star_brightness_tiers,
       brightnessMinimum,
       brightnessMax
     );
@@ -862,6 +976,31 @@
         "home_star_3d_pulse_max_css_size",
         8,
         120
+      ),
+      home_star_3d_background_star_count: clampedSetting(
+        "home_star_3d_background_star_count",
+        0,
+        10000
+      ),
+      home_star_3d_dust_fraction_percent: clampedSetting(
+        "home_star_3d_dust_fraction_percent",
+        0,
+        100
+      ),
+      home_star_3d_background_brightness_percent: clampedSetting(
+        "home_star_3d_background_brightness_percent",
+        0,
+        400
+      ),
+      home_star_3d_dust_brightness_percent: clampedSetting(
+        "home_star_3d_dust_brightness_percent",
+        0,
+        500
+      ),
+      home_star_3d_background_size_percent: clampedSetting(
+        "home_star_3d_background_size_percent",
+        25,
+        300
       ),
       home_star_active_edge_mode: [
         "full",
@@ -1330,6 +1469,22 @@
       );
     }
 
+    function tierMotion(star, profile, time) {
+      const seconds = reducedMotion ? 0 : time * 0.001;
+      const phase =
+        ((star.index + 1) * 2.399963229728653) % (Math.PI * 2);
+      const pulse = Math.sin(
+        seconds * profile.variabilitySpeed + phase
+      );
+      return {
+        scale: 1 + pulse * profile.variabilityAmplitude,
+        alpha: 1 + pulse * profile.variabilityAmplitude * 1.8,
+        rotation:
+          (((star.index * 53) % 50) - 25) * (Math.PI / 180) +
+          seconds * profile.rotationSpeed
+      };
+    }
+
     function drawStar(star, time) {
       const brightness = currentBrightness(star, time);
       const selected = selectedIds.has(star.id);
@@ -1350,12 +1505,15 @@
         }
       );
       const profile = tierProfile(star.brightnessTier);
+      const motion = tierMotion(star, profile, time);
       const tierRadius =
-        presentation.radius * (1 + profile.radiusBoost * presentation.luminous);
+        presentation.radius *
+        (1 + profile.radiusBoost * presentation.luminous) *
+        motion.scale;
       const tierHaloRadius =
-        presentation.haloRadius * profile.haloScale;
+        presentation.haloRadius * profile.haloScale * motion.scale;
       const tierHaloAlpha =
-        presentation.haloAlpha * profile.haloAlphaScale;
+        presentation.haloAlpha * profile.haloAlphaScale * motion.alpha;
       const tierCoreAlpha =
         presentation.coreAlpha * profile.coreAlphaScale;
 
@@ -1377,7 +1535,7 @@
         context.globalCompositeOperation = previousComposite;
       }
 
-      // Diffraction spikes for higher tiers (yellow-dwarf / blue-giant). The
+      // Diffraction spikes for yellow dwarfs and brighter tiers. The
       // spike sprite is nullable — dim tiers skip this entirely. Each star
       // gets a deterministic slight rotation so the field doesn't look like
       // a stamped grid of identical crosses.
@@ -1388,11 +1546,9 @@
           tierRadius * profile.spikeLength,
           14
         );
-        const rotation =
-          (((star.index * 53) % 50) - 25) * (Math.PI / 180);
         context.save();
         context.translate(star.x, star.y);
-        context.rotate(rotation);
+        context.rotate(motion.rotation);
         context.globalCompositeOperation = "lighter";
         context.globalAlpha = Math.min(
           1,

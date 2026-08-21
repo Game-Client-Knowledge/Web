@@ -555,6 +555,14 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert payload["config"]["home_star_3d_core_max_css_size"] == 36
     assert payload["config"]["home_star_3d_spike_max_css_size"] == 240
     assert payload["config"]["home_star_3d_pulse_max_css_size"] == 36
+    assert payload["config"]["home_star_3d_background_star_count"] == 3200
+    assert payload["config"]["home_star_3d_dust_fraction_percent"] == 60
+    assert (
+        payload["config"]["home_star_3d_background_brightness_percent"]
+        == 220
+    )
+    assert payload["config"]["home_star_3d_dust_brightness_percent"] == 260
+    assert payload["config"]["home_star_3d_background_size_percent"] == 160
     assert payload["config"]["home_star_active_edge_mode"] == "single_path"
     assert [item["path"] for item in payload["drafts"]] == [
         "knowledge/cpp/bootstrap/README.md"
@@ -1561,6 +1569,11 @@ def test_admin_can_configure_client_visual_effects(
             "home_star_3d_core_max_css_size": 32,
             "home_star_3d_spike_max_css_size": 220,
             "home_star_3d_pulse_max_css_size": 30,
+            "home_star_3d_background_star_count": 1800,
+            "home_star_3d_dust_fraction_percent": 75,
+            "home_star_3d_background_brightness_percent": 185,
+            "home_star_3d_dust_brightness_percent": 310,
+            "home_star_3d_background_size_percent": 135,
             "home_star_brightness_variation_enabled": True,
             "home_star_brightness_min": 5,
             "home_star_brightness_initial": 25,
@@ -1653,6 +1666,11 @@ def test_admin_can_configure_client_visual_effects(
         "home_star_3d_core_max_css_size": 32,
         "home_star_3d_spike_max_css_size": 220,
         "home_star_3d_pulse_max_css_size": 30,
+        "home_star_3d_background_star_count": 1800,
+        "home_star_3d_dust_fraction_percent": 75,
+        "home_star_3d_background_brightness_percent": 185,
+        "home_star_3d_dust_brightness_percent": 310,
+        "home_star_3d_background_size_percent": 135,
         "home_star_brightness_variation_enabled": True,
         "home_star_brightness_min": 5,
         "home_star_brightness_initial": 25,
@@ -1747,6 +1765,11 @@ def test_admin_can_configure_client_visual_effects(
     assert config["home_star_3d_core_max_css_size"] == 32
     assert config["home_star_3d_spike_max_css_size"] == 220
     assert config["home_star_3d_pulse_max_css_size"] == 30
+    assert config["home_star_3d_background_star_count"] == 1800
+    assert config["home_star_3d_dust_fraction_percent"] == 75
+    assert config["home_star_3d_background_brightness_percent"] == 185
+    assert config["home_star_3d_dust_brightness_percent"] == 310
+    assert config["home_star_3d_background_size_percent"] == 135
     assert config["home_star_brightness_variation_enabled"] is True
     assert config["home_star_brightness_min"] == 5
     assert config["home_star_brightness_initial"] == 25
@@ -1941,6 +1964,7 @@ def test_admin_can_configure_client_visual_effects(
         json={
             "home_star_3d_min_depth": 99,
             "home_star_3d_halo_max_css_size": 601,
+            "home_star_3d_background_star_count": 10001,
         },
     )
     assert invalid_3d_size_limit.status_code == 422

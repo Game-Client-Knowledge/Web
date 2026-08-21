@@ -4,7 +4,9 @@ import pytest
 
 from app.star_formulas import (
     DEFAULT_STAR_BRIGHTNESS_RULES,
+    DEFAULT_STAR_BRIGHTNESS_TIERS,
     PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULE_SETS,
+    PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS,
     resolved_star_brightness_rules,
     resolved_star_brightness_tiers,
     validate_star_formula,
@@ -96,3 +98,32 @@ def test_tiers_are_bounded_and_sorted() -> None:
         {"id": "low", "name": "低亮", "min_brightness": 0},
         {"id": "high", "name": "高亮", "min_brightness": 90},
     ]
+
+
+def test_previous_default_tiers_gain_luminous_classes() -> None:
+    tiers = resolved_star_brightness_tiers(
+        PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS,
+        0,
+        100,
+    )
+    assert tiers == DEFAULT_STAR_BRIGHTNESS_TIERS
+    assert tiers[-2:] == [
+        {
+            "id": "blue-supergiant",
+            "name": "蓝超巨星",
+            "min_brightness": 92.0,
+        },
+        {
+            "id": "hypergiant",
+            "name": "特超巨星",
+            "min_brightness": 98.0,
+        },
+    ]
+
+
+def test_custom_tiers_are_not_replaced_by_default_migration() -> None:
+    custom = [
+        {"id": "custom-low", "name": "自定义低阶", "min_brightness": 10},
+        {"id": "custom-high", "name": "自定义高阶", "min_brightness": 90},
+    ]
+    assert resolved_star_brightness_tiers(custom, 0, 100) == custom

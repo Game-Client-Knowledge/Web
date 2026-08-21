@@ -407,6 +407,31 @@ class VisualSettingsRequest(BaseModel):
         ge=8,
         le=120,
     )
+    home_star_3d_background_star_count: int = Field(
+        default=3200,
+        ge=0,
+        le=10000,
+    )
+    home_star_3d_dust_fraction_percent: float = Field(
+        default=60,
+        ge=0,
+        le=100,
+    )
+    home_star_3d_background_brightness_percent: float = Field(
+        default=220,
+        ge=0,
+        le=400,
+    )
+    home_star_3d_dust_brightness_percent: float = Field(
+        default=260,
+        ge=0,
+        le=500,
+    )
+    home_star_3d_background_size_percent: float = Field(
+        default=160,
+        ge=25,
+        le=300,
+    )
     home_star_active_edge_mode: str = "single_path"
     home_star_brightness_rules: list[StarBrightnessRuleRequest] = Field(
         default_factory=lambda: [
@@ -1460,6 +1485,53 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     setting_float(
                         "home_star_3d_pulse_max_css_size",
                         36,
+                    ),
+                ),
+            ),
+            "home_star_3d_background_star_count": max(
+                0,
+                min(
+                    10000,
+                    setting_int("home_star_3d_background_star_count", 3200),
+                ),
+            ),
+            "home_star_3d_dust_fraction_percent": max(
+                0,
+                min(
+                    100,
+                    setting_float(
+                        "home_star_3d_dust_fraction_percent",
+                        60,
+                    ),
+                ),
+            ),
+            "home_star_3d_background_brightness_percent": max(
+                0,
+                min(
+                    400,
+                    setting_float(
+                        "home_star_3d_background_brightness_percent",
+                        220,
+                    ),
+                ),
+            ),
+            "home_star_3d_dust_brightness_percent": max(
+                0,
+                min(
+                    500,
+                    setting_float(
+                        "home_star_3d_dust_brightness_percent",
+                        260,
+                    ),
+                ),
+            ),
+            "home_star_3d_background_size_percent": max(
+                25,
+                min(
+                    300,
+                    setting_float(
+                        "home_star_3d_background_size_percent",
+                        160,
                     ),
                 ),
             ),
@@ -3903,6 +3975,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_star_3d_pulse_max_css_size": str(
                 payload.home_star_3d_pulse_max_css_size
+            ),
+            "home_star_3d_background_star_count": str(
+                payload.home_star_3d_background_star_count
+            ),
+            "home_star_3d_dust_fraction_percent": str(
+                payload.home_star_3d_dust_fraction_percent
+            ),
+            "home_star_3d_background_brightness_percent": str(
+                payload.home_star_3d_background_brightness_percent
+            ),
+            "home_star_3d_dust_brightness_percent": str(
+                payload.home_star_3d_dust_brightness_percent
+            ),
+            "home_star_3d_background_size_percent": str(
+                payload.home_star_3d_background_size_percent
             ),
             "home_star_active_edge_mode": (
                 payload.home_star_active_edge_mode
