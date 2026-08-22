@@ -39,7 +39,9 @@ for (const setting of [
   "home_star_3d_dust_fraction_percent",
   "home_star_3d_background_brightness_percent",
   "home_star_3d_dust_brightness_percent",
-  "home_star_3d_background_size_percent"
+  "home_star_3d_background_size_percent",
+  "home_star_3d_structure_fraction_percent",
+  "home_star_3d_structure_motion_percent"
 ]) {
   assert.match(source, new RegExp(`"${setting}"`));
   assert.match(mapSource, new RegExp(setting));
@@ -75,12 +77,18 @@ assert.match(source, /initializeSmoothDrift/);
 assert.match(source, /background-stars-3d/);
 assert.match(source, /attribute float aPhase;/);
 assert.match(source, /attribute float aDust;/);
+assert.match(source, /attribute float aStructure;/);
+assert.match(source, /attribute vec4 aMotion;/);
 assert.match(source, /attribute vec4 aEffect;/);
+assert.match(source, /attribute vec4 aEffect2;/);
 assert.match(source, /uniform float uTime;/);
 assert.match(source, /uniform float uLayerKind;/);
 assert.match(source, /float coronaMask =/);
 assert.match(source, /vEffect\.z \* coronaMask \* turbulence/);
-assert.match(source, /projectedSize \*= 1\.0 \+ pulse \* pulseWeight;/);
+assert.match(
+  source,
+  /projectedSize \*= 1\.0 \+ pulse \* pulseWeight \+ flare \* 0\.09;/
+);
 assert.match(source, /float haloEdge = 1\.0 - smoothstep\(0\.36, 0\.49, radius\);/);
 assert.match(
   source,
@@ -90,6 +98,12 @@ assert.match(source, /backgroundLayer\.material\.uniforms\.uTime/);
 assert.match(source, /uniform float uBrightness;/);
 assert.match(source, /uniform float uDustBrightness;/);
 assert.match(source, /uniform float uSizeScale;/);
+assert.match(source, /uniform float uMotionScale;/);
+assert.match(source, /const clusterCenters = \[/);
+assert.match(source, /const nebulaCenters = \[/);
+assert.match(source, /aStructure > 1\.5 && aStructure < 2\.5/);
+assert.match(source, /aStructure > 2\.5 && aStructure < 3\.5/);
+assert.match(source, /aStructure > 3\.5/);
 assert.match(
   source,
   /float exposure = mix\(uBrightness, uDustBrightness, vDust\);/
@@ -106,6 +120,10 @@ assert.match(
   /glCanvas\.dataset\.backgroundStarCount/
 );
 assert.match(source, /glCanvas\.dataset\.backgroundDustCount/);
+assert.match(source, /glCanvas\.dataset\.backgroundClusterCount/);
+assert.match(source, /glCanvas\.dataset\.backgroundStreamCount/);
+assert.match(source, /glCanvas\.dataset\.backgroundNebulaCount/);
+assert.match(source, /glCanvas\.dataset\.backgroundStructureMotion/);
 assert.match(source, /glCanvas\.dataset\.visualProfile = "deep-field"/);
 assert.match(source, /glCanvas\.dataset\.spikeCount/);
 assert.match(source, /glCanvas\.dataset\.animatedStarCount/);
@@ -122,6 +140,19 @@ for (const tier of [
 }
 assert.match(mapSource, /variabilityAmplitude: 0\.052/);
 assert.match(mapSource, /coronaStrength: 0\.56/);
+assert.match(mapSource, /flareStrength: 0\.28/);
+assert.match(mapSource, /temperatureShift: 0\.28/);
+assert.match(mapSource, /surfaceFlowSpeed: 0\.24/);
+for (const value of [
+  "flareStrength: 0.015",
+  "flareStrength: 0.2",
+  "flareStrength: 0.055",
+  "flareStrength: 0.09",
+  "flareStrength: 0.16",
+  "flareStrength: 0.28"
+]) {
+  assert.match(mapSource, new RegExp(value.replace(".", "\\.")));
+}
 assert.match(mapSource, /function tierMotion\(star, profile, time\)/);
 assert.match(mapSource, /const edgeProgress = Math\.max\(/);
 assert.match(

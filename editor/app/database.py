@@ -718,6 +718,8 @@ class Database:
                 "home_star_3d_background_brightness_percent": "220",
                 "home_star_3d_dust_brightness_percent": "260",
                 "home_star_3d_background_size_percent": "160",
+                "home_star_3d_structure_fraction_percent": "30",
+                "home_star_3d_structure_motion_percent": "100",
                 "home_star_active_edge_mode": "single_path",
                 "home_star_brightness_rules": json.dumps(
                     DEFAULT_STAR_BRIGHTNESS_RULES,

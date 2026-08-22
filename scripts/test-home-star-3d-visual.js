@@ -66,6 +66,8 @@ const baseSettings = {
   home_star_3d_background_brightness_percent: 220,
   home_star_3d_dust_brightness_percent: 260,
   home_star_3d_background_size_percent: 160,
+  home_star_3d_structure_fraction_percent: 30,
+  home_star_3d_structure_motion_percent: 100,
   home_star_brightness_tiers: [
     { id: "brown-dwarf", name: "褐矮星", min_brightness: 5 },
     { id: "red-dwarf", name: "红矮星", min_brightness: 25 },
@@ -200,6 +202,12 @@ async function inspectStructure(browser, structure) {
       backgroundBrightness: Number(canvas.dataset.backgroundBrightness),
       dustBrightness: Number(canvas.dataset.dustBrightness),
       backgroundSizeScale: Number(canvas.dataset.backgroundSizeScale),
+      backgroundClusters: Number(canvas.dataset.backgroundClusterCount),
+      backgroundStreams: Number(canvas.dataset.backgroundStreamCount),
+      backgroundNebulae: Number(canvas.dataset.backgroundNebulaCount),
+      backgroundStructureMotion: Number(
+        canvas.dataset.backgroundStructureMotion
+      ),
       visualProfile: canvas.dataset.visualProfile,
       backgroundTime: debug.backgroundLayer.material.uniforms.uTime.value,
       animatedStars: Number(canvas.dataset.animatedStarCount),
@@ -211,6 +219,11 @@ async function inspectStructure(browser, structure) {
       ),
       maximumCorona: Math.max(
         ...effects.filter((_, index) => index % 4 === 2)
+      ),
+      maximumFlare: Math.max(
+        ...Array.from(
+          debug.layers.haloLayer.geometry.attributes.aEffect2.array
+        ).filter((_, index) => index % 4 === 0)
       ),
       layerKinds: [
         debug.layers.haloLayer.material.uniforms.uLayerKind.value,
@@ -235,6 +248,10 @@ async function inspectStructure(browser, structure) {
   assert.equal(metrics.backgroundBrightness, 2.2);
   assert.equal(metrics.dustBrightness, 2.6);
   assert.equal(metrics.backgroundSizeScale, 1.6);
+  assert.equal(metrics.backgroundClusters, 422);
+  assert.equal(metrics.backgroundStreams, 326);
+  assert.equal(metrics.backgroundNebulae, 212);
+  assert.equal(metrics.backgroundStructureMotion, 1);
   assert.equal(metrics.visualProfile, "deep-field");
   assert.equal(metrics.backgroundTime, 0);
   assert.equal(
@@ -248,6 +265,7 @@ async function inspectStructure(browser, structure) {
   assert.equal(metrics.hypergiants, metrics.tierCounts.hypergiant);
   assert.ok(Math.abs(metrics.maximumVariability - 0.052) < 0.0001);
   assert.ok(Math.abs(metrics.maximumCorona - 0.56) < 0.0001);
+  assert.ok(Math.abs(metrics.maximumFlare - 0.28) < 0.0001);
   assert.deepEqual(metrics.layerKinds, [0, 1, 2]);
   assert.ok(metrics.width > 0 && metrics.height > 0);
   assert.deepEqual(errors, [], `${structure}: browser errors`);
@@ -403,17 +421,32 @@ async function inspectLuminousTierAnimation(browser) {
     const effects = Array.from(
       debug.layers.haloLayer.geometry.attributes.aEffect.array
     );
+    const secondaryEffects = Array.from(
+      debug.layers.haloLayer.geometry.attributes.aEffect2.array
+    );
     return {
       time: debug.layers.haloLayer.material.uniforms.uTime.value,
+      backgroundTime:
+        debug.backgroundLayer.material.uniforms.uTime.value,
       calls: debug.renderer.info.render.calls,
       animated: Number(debug.renderer.domElement.dataset.animatedStarCount),
-      nonzeroEffects: effects.filter((value) => value !== 0).length
+      nonzeroEffects: effects.filter((value) => value !== 0).length,
+      nonzeroSecondaryEffects:
+        secondaryEffects.filter((value) => value !== 0).length
     };
   });
   assert.ok(metrics.time > firstTime, "luminous tier animation time stalled");
+  assert.ok(
+    metrics.backgroundTime > firstTime,
+    "background structure animation time stalled"
+  );
   assert.equal(metrics.calls, 4, "luminous tier animation changed draw calls");
   assert.ok(metrics.animated > 100, "luminous tiers were not animated");
   assert.ok(metrics.nonzeroEffects > 100, "tier effect attributes are empty");
+  assert.ok(
+    metrics.nonzeroSecondaryEffects > 100,
+    "tier flare and temperature effects are empty"
+  );
   assert.deepEqual(errors, [], "luminous tier animation: browser errors");
   await context.close();
   console.log(
@@ -433,7 +466,9 @@ async function inspectDeepSpaceSettings(browser) {
       home_star_3d_dust_fraction_percent: 75,
       home_star_3d_background_brightness_percent: 185,
       home_star_3d_dust_brightness_percent: 310,
-      home_star_3d_background_size_percent: 135
+      home_star_3d_background_size_percent: 135,
+      home_star_3d_structure_fraction_percent: 20,
+      home_star_3d_structure_motion_percent: 145
     }
   });
   const metrics = await page.evaluate(() => {
@@ -446,7 +481,12 @@ async function inspectDeepSpaceSettings(browser) {
       brightness: debug.backgroundLayer.material.uniforms.uBrightness.value,
       dustBrightness:
         debug.backgroundLayer.material.uniforms.uDustBrightness.value,
-      sizeScale: debug.backgroundLayer.material.uniforms.uSizeScale.value
+      sizeScale: debug.backgroundLayer.material.uniforms.uSizeScale.value,
+      clusters: Number(canvas.dataset.backgroundClusterCount),
+      streams: Number(canvas.dataset.backgroundStreamCount),
+      nebulae: Number(canvas.dataset.backgroundNebulaCount),
+      motion:
+        debug.backgroundLayer.material.uniforms.uMotionScale.value
     };
   });
   assert.equal(metrics.calls, 4, "deep-space settings changed draw calls");
@@ -455,6 +495,10 @@ async function inspectDeepSpaceSettings(browser) {
   assert.equal(metrics.brightness, 1.85);
   assert.equal(metrics.dustBrightness, 3.1);
   assert.equal(metrics.sizeScale, 1.35);
+  assert.equal(metrics.clusters, 158);
+  assert.equal(metrics.streams, 122);
+  assert.equal(metrics.nebulae, 80);
+  assert.equal(metrics.motion, 1.45);
   assert.deepEqual(errors, [], "deep-space settings: browser errors");
   await context.close();
   console.log(

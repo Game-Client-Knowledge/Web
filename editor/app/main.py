@@ -432,6 +432,16 @@ class VisualSettingsRequest(BaseModel):
         ge=25,
         le=300,
     )
+    home_star_3d_structure_fraction_percent: float = Field(
+        default=30,
+        ge=0,
+        le=70,
+    )
+    home_star_3d_structure_motion_percent: float = Field(
+        default=100,
+        ge=0,
+        le=200,
+    )
     home_star_active_edge_mode: str = "single_path"
     home_star_brightness_rules: list[StarBrightnessRuleRequest] = Field(
         default_factory=lambda: [
@@ -1532,6 +1542,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     setting_float(
                         "home_star_3d_background_size_percent",
                         160,
+                    ),
+                ),
+            ),
+            "home_star_3d_structure_fraction_percent": max(
+                0,
+                min(
+                    70,
+                    setting_float(
+                        "home_star_3d_structure_fraction_percent",
+                        30,
+                    ),
+                ),
+            ),
+            "home_star_3d_structure_motion_percent": max(
+                0,
+                min(
+                    200,
+                    setting_float(
+                        "home_star_3d_structure_motion_percent",
+                        100,
                     ),
                 ),
             ),
@@ -3990,6 +4020,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_star_3d_background_size_percent": str(
                 payload.home_star_3d_background_size_percent
+            ),
+            "home_star_3d_structure_fraction_percent": str(
+                payload.home_star_3d_structure_fraction_percent
+            ),
+            "home_star_3d_structure_motion_percent": str(
+                payload.home_star_3d_structure_motion_percent
             ),
             "home_star_active_edge_mode": (
                 payload.home_star_active_edge_mode

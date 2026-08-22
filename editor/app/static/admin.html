@@ -404,7 +404,7 @@
           >
             <div class="subsection-heading">
               <h3 id="starBackgroundTitle">3D 深空背景</h3>
-              <p>控制远景球壳星点与倾斜星尘带；仅影响 WebGL 3D 模式，不增加绘制层。</p>
+              <p>控制远景星场、星尘、星团、恒星流与星云结；仅影响 WebGL 3D 模式，不增加绘制层。</p>
             </div>
             <div class="visual-group-grid">
               <label>
@@ -417,7 +417,7 @@
                   step="100"
                   required
                 >
-                <small class="field-help">包含普通远景星和星尘带粒子；设为 0 可关闭深空背景。</small>
+                <small class="field-help">包含普通远景星、星尘和特殊结构粒子；设为 0 可关闭深空背景。</small>
               </label>
               <label>
                 星尘带占比（%）
@@ -466,6 +466,30 @@
                   required
                 >
                 <small class="field-help">缩放远景星点与星尘颗粒的屏幕尺寸。</small>
+              </label>
+              <label>
+                特殊结构占比（%）
+                <input
+                  name="home_star_3d_structure_fraction_percent"
+                  type="number"
+                  min="0"
+                  max="70"
+                  step="1"
+                  required
+                >
+                <small class="field-help">将背景粒子用于球状星团、恒星流与星云结；设为 0 可关闭。</small>
+              </label>
+              <label>
+                结构动态强度（%）
+                <input
+                  name="home_star_3d_structure_motion_percent"
+                  type="number"
+                  min="0"
+                  max="200"
+                  step="5"
+                  required
+                >
+                <small class="field-help">控制星团自转、恒星流波动、星云呼吸和星尘盘旋转；设为 0 可冻结。</small>
               </label>
             </div>
           </section>

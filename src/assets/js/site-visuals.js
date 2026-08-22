@@ -24,7 +24,9 @@
     home_star_3d_dust_fraction_percent: 60,
     home_star_3d_background_brightness_percent: 220,
     home_star_3d_dust_brightness_percent: 260,
-    home_star_3d_background_size_percent: 160
+    home_star_3d_background_size_percent: 160,
+    home_star_3d_structure_fraction_percent: 30,
+    home_star_3d_structure_motion_percent: 100
   };
   const HOME_INTRO_SETTINGS_CACHE = "gck-home-intro-settings";
   let releaseHomeIntro;
@@ -294,6 +296,10 @@
             settings.home_star_3d_dust_brightness_percent,
           home_star_3d_background_size_percent:
             settings.home_star_3d_background_size_percent,
+          home_star_3d_structure_fraction_percent:
+            settings.home_star_3d_structure_fraction_percent,
+          home_star_3d_structure_motion_percent:
+            settings.home_star_3d_structure_motion_percent,
           home_star_brightness_rules:
             settings.home_star_brightness_rules,
           home_star_brightness_tiers:

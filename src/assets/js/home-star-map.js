@@ -74,6 +74,8 @@
     home_star_3d_background_brightness_percent: 220,
     home_star_3d_dust_brightness_percent: 260,
     home_star_3d_background_size_percent: 160,
+    home_star_3d_structure_fraction_percent: 30,
+    home_star_3d_structure_motion_percent: 100,
     home_star_active_edge_mode: "single_path",
     home_star_brightness_rules:
       formulaEngine.DEFAULT_BRIGHTNESS_RULES.map((rule) => ({ ...rule })),
@@ -175,10 +177,14 @@
       spikeLength: 0,
       spikeEight: false,
       spikeAlpha: 0,
-      variabilityAmplitude: 0,
-      variabilitySpeed: 0,
-      coronaStrength: 0,
-      rotationSpeed: 0
+      variabilityAmplitude: 0.006,
+      variabilitySpeed: 0.28,
+      coronaStrength: 0.025,
+      rotationSpeed: 0,
+      flareStrength: 0.015,
+      flareSpeed: 0.22,
+      temperatureShift: 0.09,
+      surfaceFlowSpeed: 0.18
     },
     // 红矮星：温暖的橙红小火苗，光晕收敛柔和
     "red-dwarf": {
@@ -201,10 +207,14 @@
       spikeLength: 0,
       spikeEight: false,
       spikeAlpha: 0,
-      variabilityAmplitude: 0,
-      variabilitySpeed: 0,
-      coronaStrength: 0,
-      rotationSpeed: 0
+      variabilityAmplitude: 0.018,
+      variabilitySpeed: 1.08,
+      coronaStrength: 0.09,
+      rotationSpeed: 0,
+      flareStrength: 0.2,
+      flareSpeed: 1.55,
+      temperatureShift: 0.16,
+      surfaceFlowSpeed: 0.72
     },
     // 黄矮星：类太阳暖白，明显辉光 + 纤细四芒
     "yellow-dwarf": {
@@ -230,7 +240,11 @@
       variabilityAmplitude: 0.012,
       variabilitySpeed: 0.72,
       coronaStrength: 0.12,
-      rotationSpeed: 0.012
+      rotationSpeed: 0.012,
+      flareStrength: 0.055,
+      flareSpeed: 0.64,
+      temperatureShift: 0.05,
+      surfaceFlowSpeed: 0.42
     },
     // 蓝巨星：冰蓝白炽亮星，大光晕 + 八芒 + 艾里环
     "blue-giant": {
@@ -256,7 +270,11 @@
       variabilityAmplitude: 0.02,
       variabilitySpeed: 0.52,
       coronaStrength: 0.24,
-      rotationSpeed: -0.01
+      rotationSpeed: -0.01,
+      flareStrength: 0.09,
+      flareSpeed: 0.82,
+      temperatureShift: 0.18,
+      surfaceFlowSpeed: 0.58
     },
     // 蓝超巨星：更扩张的恒星风光晕、双层艾里环与缓慢光变
     "blue-supergiant": {
@@ -282,7 +300,11 @@
       variabilityAmplitude: 0.034,
       variabilitySpeed: 0.38,
       coronaStrength: 0.38,
-      rotationSpeed: 0.015
+      rotationSpeed: 0.015,
+      flareStrength: 0.16,
+      flareSpeed: 0.48,
+      temperatureShift: 0.23,
+      surfaceFlowSpeed: 0.36
     },
     // 特超巨星：极强恒星风、宽阔外晕与可见的低频不规则光变
     hypergiant: {
@@ -308,7 +330,11 @@
       variabilityAmplitude: 0.052,
       variabilitySpeed: 0.26,
       coronaStrength: 0.56,
-      rotationSpeed: -0.018
+      rotationSpeed: -0.018,
+      flareStrength: 0.28,
+      flareSpeed: 0.31,
+      temperatureShift: 0.28,
+      surfaceFlowSpeed: 0.24
     },
     default: {
       tintHex: null,
@@ -333,7 +359,11 @@
       variabilityAmplitude: 0,
       variabilitySpeed: 0,
       coronaStrength: 0,
-      rotationSpeed: 0
+      rotationSpeed: 0,
+      flareStrength: 0,
+      flareSpeed: 0,
+      temperatureShift: 0,
+      surfaceFlowSpeed: 0
     }
   };
 
@@ -1011,6 +1041,16 @@
         25,
         300
       ),
+      home_star_3d_structure_fraction_percent: clampedSetting(
+        "home_star_3d_structure_fraction_percent",
+        0,
+        70
+      ),
+      home_star_3d_structure_motion_percent: clampedSetting(
+        "home_star_3d_structure_motion_percent",
+        0,
+        200
+      ),
       home_star_active_edge_mode: [
         "full",
         "minimal_tree",
@@ -1485,12 +1525,29 @@
       const pulse = Math.sin(
         seconds * profile.variabilitySpeed + phase
       );
+      const flareWave = Math.max(
+        0,
+        Math.sin(seconds * profile.flareSpeed + phase * 1.73)
+      );
+      const flare =
+        Math.pow(flareWave, 6) * profile.flareStrength;
       return {
-        scale: 1 + pulse * profile.variabilityAmplitude,
-        alpha: 1 + pulse * profile.variabilityAmplitude * 1.8,
+        scale:
+          1 +
+          pulse * profile.variabilityAmplitude +
+          flare * 0.09,
+        alpha:
+          1 +
+          pulse * profile.variabilityAmplitude * 1.8 +
+          flare * 0.3,
         rotation:
           (((star.index * 53) % 50) - 25) * (Math.PI / 180) +
-          seconds * profile.rotationSpeed
+          seconds * profile.rotationSpeed +
+          Math.sin(
+            seconds * profile.surfaceFlowSpeed + phase
+          ) *
+            profile.coronaStrength *
+            0.025
       };
     }
 

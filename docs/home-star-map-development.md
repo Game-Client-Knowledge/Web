@@ -530,6 +530,10 @@ data-background-dust-count
 data-background-brightness
 data-dust-brightness
 data-background-size-scale
+data-background-cluster-count
+data-background-stream-count
+data-background-nebula-count
+data-background-structure-motion
 data-document-count
 data-contributor-count
 data-code-system-count
@@ -601,6 +605,8 @@ Main settings:
 | `home_star_3d_background_brightness_percent` | `0..400`; far-field star exposure, default `220` |
 | `home_star_3d_dust_brightness_percent` | `0..500`; dust-band exposure, default `260` |
 | `home_star_3d_background_size_percent` | `25..300`; far-field particle size, default `160` |
+| `home_star_3d_structure_fraction_percent` | `0..70`; share of background particles used by globular clusters, stellar streams, and nebula knots, default `30` |
+| `home_star_3d_structure_motion_percent` | `0..200`; GPU motion intensity for dust, clusters, streams, and nebulae, default `100` |
 | `home_star_brightness_min` | `0..100`, not above initial or maximum |
 | `home_star_brightness_initial` | `0..100`, inside configured bounds |
 | `home_star_brightness_max` | `1..100` |
@@ -630,16 +636,26 @@ The built-in brightness tiers are:
 
 | ID | Name | Minimum | Visual treatment |
 | --- | --- | ---: | --- |
-| `brown-dwarf` | 褐矮星 | 0 | Dim red-brown core |
-| `red-dwarf` | 红矮星 | 25 | Compact warm halo |
+| `brown-dwarf` | 褐矮星 | 0 | Dim red-brown core with ember flicker |
+| `red-dwarf` | 红矮星 | 25 | Compact warm halo with brief flare peaks |
 | `yellow-dwarf` | 黄矮星 | 50 | Warm corona, subtle pulsation, four diffraction spikes |
 | `blue-giant` | 蓝巨星 | 80 | Blue-white corona, Airy ring, eight diffraction spikes |
 | `blue-supergiant` | 蓝超巨星 | 92 | Expanded stellar-wind halo and slower variability |
 | `hypergiant` | 特超巨星 | 98 | Broad turbulent corona and strongest low-frequency variability |
 
-The last four effects are generated inside the existing halo, core, and spike
-point shaders. They do not add WebGL draw calls. The previous built-in four-tier
+The effects are generated inside the existing halo, core, and spike point
+shaders. They do not add WebGL draw calls. The previous built-in four-tier
 configuration migrates automatically; a customized tier list is not replaced.
+
+Every built-in tier has a distinct time-domain profile: brown dwarfs flicker
+like embers, red dwarfs produce brief flare peaks, yellow dwarfs circulate
+their corona, blue giants scintillate in color temperature, and the two
+supergiant classes combine stellar-wind turbulence with irregular pulsation.
+
+The background point layer also reserves configurable particles for four
+globular clusters, two stellar streams, and three breathing nebula knots.
+These structures, the dust band, and the uniform deep field remain one
+`THREE.Points` object and therefore one WebGL draw call.
 
 ## 12. Development Workflows
 

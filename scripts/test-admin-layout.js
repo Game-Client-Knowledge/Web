@@ -111,7 +111,9 @@ for (const field of [
   "home_star_3d_dust_fraction_percent",
   "home_star_3d_background_brightness_percent",
   "home_star_3d_dust_brightness_percent",
-  "home_star_3d_background_size_percent"
+  "home_star_3d_background_size_percent",
+  "home_star_3d_structure_fraction_percent",
+  "home_star_3d_structure_motion_percent"
 ]) {
   assert.match(html, new RegExp(`name="${field}"`));
   assert.match(javascript, new RegExp(field));

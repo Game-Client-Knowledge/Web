@@ -67,6 +67,8 @@
   const DEFAULT_BACKGROUND_BRIGHTNESS = 2.2;
   const DEFAULT_DUST_BRIGHTNESS = 2.6;
   const DEFAULT_BACKGROUND_SIZE_SCALE = 1.6;
+  const DEFAULT_BACKGROUND_STRUCTURE_FRACTION = 0.3;
+  const DEFAULT_BACKGROUND_STRUCTURE_MOTION = 1;
   const DRIFT_SPEED_MULTIPLIER = 2.4;
   const SPIKE_ART_SCALE = 2.1;
   const CONTENT_EXPOSURE = 0.28;
@@ -968,6 +970,20 @@
         25,
         300
       ) / 100;
+    const backgroundStructureFraction =
+      boundedSetting(
+        "home_star_3d_structure_fraction_percent",
+        DEFAULT_BACKGROUND_STRUCTURE_FRACTION * 100,
+        0,
+        70
+      ) / 100;
+    const backgroundStructureMotion =
+      boundedSetting(
+        "home_star_3d_structure_motion_percent",
+        DEFAULT_BACKGROUND_STRUCTURE_MOTION * 100,
+        0,
+        200
+      ) / 100;
     const portalRotationRadiansPerMs =
       boundedSetting(
         "home_star_portal_rotation_speed",
@@ -1000,12 +1016,14 @@
       "attribute float aRot;",
       "attribute float aPhase;",
       "attribute vec4 aEffect;",
+      "attribute vec4 aEffect2;",
       "attribute vec3 aColor;",
       "varying float vAlpha;",
       "varying float vTile;",
       "varying float vRot;",
       "varying float vPhase;",
       "varying vec4 vEffect;",
+      "varying vec4 vEffect2;",
       "varying vec3 vColor;",
       "varying vec2 vScreenUv;",
       "uniform float uScale;",
@@ -1023,16 +1041,22 @@
       "  vRot = aRot + uTime * aEffect.w;",
       "  vPhase = aPhase;",
       "  vEffect = aEffect;",
+      "  vEffect2 = aEffect2;",
       "  vColor = aColor;",
       "  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);",
       "  float safeDepth = max(-mvPosition.z, uMinDepth);",
       "  float projectedSize =",
       "    aSize * uPortalScale * (uScale / safeDepth);",
       "  float pulse = sin(uTime * aEffect.y + aPhase) * aEffect.x;",
+      "  float flareWave = max(",
+      "    0.0,",
+      "    sin(uTime * aEffect2.y + aPhase * 1.73)",
+      "  );",
+      "  float flare = pow(flareWave, 6.0) * aEffect2.x;",
       "  float pulseWeight = uLayerKind < 0.5",
       "    ? 1.0",
       "    : (uLayerKind < 1.5 ? 0.28 : 0.65);",
-      "  projectedSize *= 1.0 + pulse * pulseWeight;",
+      "  projectedSize *= 1.0 + pulse * pulseWeight + flare * 0.09;",
       "  float sizeCap = uMaxCssSize * uPixelRatio;",
       "  float sizeKnee = sizeCap * uSoftKneeRatio;",
       "  float compressedSize = projectedSize;",
@@ -1056,6 +1080,7 @@
       "varying float vRot;",
       "varying float vPhase;",
       "varying vec4 vEffect;",
+      "varying vec4 vEffect2;",
       "varying vec3 vColor;",
       "varying vec2 vScreenUv;",
       "uniform vec4 uContentRect0;",
@@ -1105,9 +1130,15 @@
       "  vec2 centered = uv - vec2(0.5);",
       "  float radius = length(centered);",
       "  float angle = atan(centered.y, centered.x);",
+      "  float flowTime = uTime * (0.25 + vEffect2.w);",
       "  float turbulence =",
-      "    sin(angle * 7.0 + uTime * 0.34 + vPhase) * 0.22 +",
-      "    sin(angle * 13.0 - uTime * 0.21 - vPhase) * 0.12;",
+      "    sin(angle * 7.0 + flowTime + vPhase) * 0.22 +",
+      "    sin(angle * 13.0 - flowTime * 0.63 - vPhase) * 0.12;",
+      "  float flareWave = max(",
+      "    0.0,",
+      "    sin(uTime * vEffect2.y + vPhase * 1.73)",
+      "  );",
+      "  float flare = pow(flareWave, 6.0) * vEffect2.x;",
       "  float coronaMask =",
       "    smoothstep(0.08, 0.3, radius) *",
       "    (1.0 - smoothstep(0.3, 0.7, radius));",
@@ -1115,7 +1146,8 @@
       "    0.58,",
       "    1.0 + vEffect.z * coronaMask * turbulence",
       "  );",
-      "  float alpha = tex.a * vAlpha * twinkle * variability * corona;",
+      "  float alpha = tex.a * vAlpha * twinkle *",
+      "    (variability + flare * 0.3) * corona;",
       "  float haloEdge = 1.0 - smoothstep(0.36, 0.49, radius);",
       "  alpha *= mix(haloEdge, 1.0, step(0.5, uLayerKind));",
       "  float contentMask = max(",
@@ -1131,6 +1163,16 @@
       "  vec3 emitted = tex.rgb * vColor * (0.94 + tex.a * 0.16);",
       "  emitted += vec3(0.08, 0.19, 0.34) *",
       "    max(0.0, turbulence) * coronaMask * vEffect.z;",
+      "  float temperatureWave =",
+      "    sin(uTime * (0.55 + vEffect2.y) + vPhase * 1.91) *",
+      "      vEffect2.z + flare * vEffect2.z * 0.8;",
+      "  emitted += vec3(",
+      "    -temperatureWave * 0.05,",
+      "    abs(temperatureWave) * 0.035,",
+      "    temperatureWave * 0.18",
+      "  );",
+      "  emitted += vec3(0.2, 0.15, 0.1) * flare * tex.a;",
+      "  emitted = max(emitted, vec3(0.0));",
       "  gl_FragColor = vec4(emitted, alpha);",
       "}"
     ].join("\n");
@@ -1168,6 +1210,10 @@
       );
       geometry.setAttribute(
         "aEffect",
+        new THREE.BufferAttribute(new Float32Array(count * 4), 4)
+      );
+      geometry.setAttribute(
+        "aEffect2",
         new THREE.BufferAttribute(new Float32Array(count * 4), 4)
       );
       geometry.setAttribute(
@@ -1223,18 +1269,52 @@
       const count =
         strategy.camera === "flat" ? 0 : backgroundStarCount;
       const dustCount = Math.round(count * backgroundDustFraction);
+      const structureCount = Math.min(
+        count - dustCount,
+        Math.round(count * backgroundStructureFraction)
+      );
+      const clusterCount = Math.round(structureCount * 0.44);
+      const streamCount = Math.round(structureCount * 0.34);
+      const nebulaCount = structureCount - clusterCount - streamCount;
+      const clusterEnd = dustCount + clusterCount;
+      const streamEnd = clusterEnd + streamCount;
+      const nebulaEnd = streamEnd + nebulaCount;
       const geometry = new THREE.BufferGeometry();
       const positions = new Float32Array(count * 3);
       const sizes = new Float32Array(count);
       const alphas = new Float32Array(count);
       const phases = new Float32Array(count);
       const dustWeights = new Float32Array(count);
+      const structures = new Float32Array(count);
+      const motions = new Float32Array(count * 4);
       const colors = new Float32Array(count * 3);
       const backgroundRandom = seededRandom(
         hashSeed(`${sourceGraph.revision}:background-stars-3d`)
       );
+      const clusterCenters = [
+        [-920, 280, -620],
+        [840, 350, -760],
+        [-720, -300, 780],
+        [920, -240, 610]
+      ];
+      const nebulaCenters = [
+        [-980, -120, 360],
+        [170, 430, -920],
+        [960, 80, 420]
+      ];
+      const centeredNoise = () => {
+        return (
+          backgroundRandom() +
+          backgroundRandom() +
+          backgroundRandom() -
+          1.5
+        );
+      };
       for (let index = 0; index < count; index += 1) {
         const dust = index < dustCount;
+        const cluster = index >= dustCount && index < clusterEnd;
+        const stream = index >= clusterEnd && index < streamEnd;
+        const nebula = index >= streamEnd && index < nebulaEnd;
         let x;
         let y;
         let z;
@@ -1243,14 +1323,7 @@
             620 + 1260 * Math.pow(backgroundRandom(), 0.72);
           const theta = backgroundRandom() * Math.PI * 2;
           x = Math.cos(theta) * radius;
-          y =
-            (
-              backgroundRandom() +
-              backgroundRandom() +
-              backgroundRandom() -
-              1.5
-            ) *
-            112;
+          y = centeredNoise() * 112;
           z = Math.sin(theta) * radius;
           const tiltZ = 0.42;
           const tiltX = -0.28;
@@ -1263,6 +1336,79 @@
             0.72 + Math.pow(backgroundRandom(), 2.5) * 3.1;
           alphas[index] =
             0.055 + Math.pow(backgroundRandom(), 1.55) * 0.2;
+          structures[index] = 1;
+          motions[index * 4 + 3] =
+            (0.0024 + backgroundRandom() * 0.0018) *
+            (backgroundRandom() < 0.5 ? -1 : 1);
+        } else if (cluster) {
+          const localIndex = index - dustCount;
+          const clusterId = localIndex % clusterCenters.length;
+          const center = clusterCenters[clusterId];
+          const radius = 24 + 150 * Math.cbrt(backgroundRandom());
+          const theta = backgroundRandom() * Math.PI * 2;
+          const cosPhi = backgroundRandom() * 2 - 1;
+          const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
+          x = center[0] + radius * sinPhi * Math.cos(theta);
+          y = center[1] + radius * cosPhi * 0.74;
+          z = center[2] + radius * sinPhi * Math.sin(theta);
+          sizes[index] =
+            0.8 + Math.pow(backgroundRandom(), 2.2) * 4.4;
+          alphas[index] =
+            0.12 + Math.pow(backgroundRandom(), 1.4) * 0.34;
+          structures[index] = 2;
+          motions.set(
+            [
+              center[0],
+              center[1],
+              center[2],
+              (0.014 + clusterId * 0.002) *
+                (clusterId % 2 ? -1 : 1)
+            ],
+            index * 4
+          );
+        } else if (stream) {
+          const localIndex = index - clusterEnd;
+          const streamId = localIndex % 2;
+          const t = backgroundRandom() * 2 - 1;
+          const thickness = centeredNoise() * 42;
+          x = t * 1650 + thickness * 0.4;
+          if (streamId === 0) {
+            y = Math.sin(t * Math.PI * 1.45) * 330 + thickness;
+            z = Math.cos(t * Math.PI * 0.8) * 520 +
+              centeredNoise() * 55;
+          } else {
+            y = Math.cos(t * Math.PI * 1.2) * 270 + thickness;
+            z = Math.sin(t * Math.PI * 0.95) * 610 +
+              centeredNoise() * 55;
+          }
+          sizes[index] =
+            0.7 + Math.pow(backgroundRandom(), 2.3) * 3.4;
+          alphas[index] =
+            0.08 + Math.pow(backgroundRandom(), 1.5) * 0.26;
+          structures[index] = 3;
+          motions[index * 4 + 3] =
+            0.1 + backgroundRandom() * 0.08;
+        } else if (nebula) {
+          const localIndex = index - streamEnd;
+          const nebulaId = localIndex % nebulaCenters.length;
+          const center = nebulaCenters[nebulaId];
+          x = center[0] + centeredNoise() * 240;
+          y = center[1] + centeredNoise() * 145;
+          z = center[2] + centeredNoise() * 210;
+          sizes[index] =
+            1.4 + Math.pow(backgroundRandom(), 1.8) * 6.8;
+          alphas[index] =
+            0.035 + Math.pow(backgroundRandom(), 1.7) * 0.12;
+          structures[index] = 4;
+          motions.set(
+            [
+              center[0],
+              center[1],
+              center[2],
+              0.11 + nebulaId * 0.025
+            ],
+            index * 4
+          );
         } else {
           const radius = 1550 + backgroundRandom() * 520;
           const theta = backgroundRandom() * Math.PI * 2;
@@ -1282,11 +1428,21 @@
         phases[index] = backgroundRandom() * Math.PI * 2;
         dustWeights[index] = dust ? 1 : 0;
         const temperature = backgroundRandom();
-        const color = temperature < 0.22
-          ? [1, 0.72 + temperature * 0.45, 0.58]
-          : temperature > 0.68
-            ? [0.58, 0.78 + (1 - temperature) * 0.35, 1]
-            : [0.82, 0.93, 0.91];
+        const color = nebula
+          ? nebulaCenters[(index - streamEnd) % nebulaCenters.length][0] < 0
+            ? [0.55, 0.82, 1]
+            : [1, 0.62, 0.78]
+          : stream
+            ? temperature < 0.5
+              ? [0.52, 0.94, 0.9]
+              : [1, 0.78, 0.46]
+            : cluster
+              ? [0.72, 0.88, 1]
+              : temperature < 0.22
+                ? [1, 0.72 + temperature * 0.45, 0.58]
+                : temperature > 0.68
+                  ? [0.58, 0.78 + (1 - temperature) * 0.35, 1]
+                  : [0.82, 0.93, 0.91];
         colors.set(color, index * 3);
       }
       geometry.setAttribute(
@@ -1310,6 +1466,14 @@
         new THREE.BufferAttribute(dustWeights, 1)
       );
       geometry.setAttribute(
+        "aStructure",
+        new THREE.BufferAttribute(structures, 1)
+      );
+      geometry.setAttribute(
+        "aMotion",
+        new THREE.BufferAttribute(motions, 4)
+      );
+      geometry.setAttribute(
         "aColor",
         new THREE.BufferAttribute(colors, 3)
       );
@@ -1321,21 +1485,26 @@
           uTime: { value: 0 },
           uBrightness: { value: backgroundBrightness },
           uDustBrightness: { value: dustBrightness },
-          uSizeScale: { value: backgroundSizeScale }
+          uSizeScale: { value: backgroundSizeScale },
+          uMotionScale: { value: backgroundStructureMotion }
         },
         vertexShader: [
           "attribute float aSize;",
           "attribute float aAlpha;",
           "attribute float aPhase;",
           "attribute float aDust;",
+          "attribute float aStructure;",
+          "attribute vec4 aMotion;",
           "attribute vec3 aColor;",
           "varying float vAlpha;",
           "varying float vSparkle;",
           "varying float vDust;",
+          "varying float vStructure;",
           "varying vec3 vColor;",
           "uniform float uScale;",
           "uniform float uPixelRatio;",
           "uniform float uSizeScale;",
+          "uniform float uMotionScale;",
           "uniform float uTime;",
           "void main() {",
           "  float pulse = 0.78 + 0.22 * sin(",
@@ -1344,15 +1513,49 @@
           "  vAlpha = aAlpha * pulse;",
           "  vSparkle = smoothstep(2.25, 4.1, aSize);",
           "  vDust = aDust;",
+          "  vStructure = aStructure;",
           "  vColor = aColor;",
-          "  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);",
+          "  vec3 animatedPosition = position;",
+          "  if (aStructure > 0.5 && aStructure < 1.5) {",
+          "    float angle = uTime * aMotion.w * uMotionScale;",
+          "    float c = cos(angle);",
+          "    float s = sin(angle);",
+          "    animatedPosition.xz = mat2(c, -s, s, c) * position.xz;",
+          "  } else if (aStructure > 1.5 && aStructure < 2.5) {",
+          "    vec3 relative = position - aMotion.xyz;",
+          "    float angle = uTime * aMotion.w * uMotionScale;",
+          "    float c = cos(angle);",
+          "    float s = sin(angle);",
+          "    relative.xz = mat2(c, -s, s, c) * relative.xz;",
+          "    animatedPosition = aMotion.xyz + relative;",
+          "    animatedPosition.y += sin(uTime * 0.18 + aPhase) *",
+          "      4.0 * uMotionScale;",
+          "  } else if (aStructure > 2.5 && aStructure < 3.5) {",
+          "    animatedPosition.y += sin(",
+          "      uTime * aMotion.w + aPhase + position.x * 0.002",
+          "    ) * 18.0 * uMotionScale;",
+          "    animatedPosition.z += cos(",
+          "      uTime * aMotion.w * 0.7 + aPhase",
+          "    ) * 9.0 * uMotionScale;",
+          "  } else if (aStructure > 3.5) {",
+          "    vec3 relative = position - aMotion.xyz;",
+          "    float breathing = 1.0 + sin(",
+          "      uTime * aMotion.w + aPhase",
+          "    ) * 0.045 * uMotionScale;",
+          "    animatedPosition = aMotion.xyz + relative * breathing;",
+          "  }",
+          "  vec4 mvPosition =",
+          "    modelViewMatrix * vec4(animatedPosition, 1.0);",
           "  float projected =",
           "    aSize * uSizeScale * (uScale / max(-mvPosition.z, 500.0));",
-          "  projected *= mix(1.0, 3.2, aDust);",
+          "  float structureSize = aStructure > 3.5",
+          "    ? 4.6",
+          "    : (aStructure > 2.5 ? 1.6 : (aStructure > 1.5 ? 1.25 : 1.0));",
+          "  projected *= max(mix(1.0, 3.2, aDust), structureSize);",
           "  gl_PointSize = clamp(",
           "    projected,",
           "    0.65 * uPixelRatio,",
-          "    mix(6.4, 18.0, aDust) * uPixelRatio",
+          "    max(mix(6.4, 18.0, aDust), structureSize * 5.0) * uPixelRatio",
           "  );",
           "  gl_Position = projectionMatrix * mvPosition;",
           "}"
@@ -1361,6 +1564,7 @@
           "varying float vAlpha;",
           "varying float vSparkle;",
           "varying float vDust;",
+          "varying float vStructure;",
           "varying vec3 vColor;",
           "uniform float uOpacity;",
           "uniform float uBrightness;",
@@ -1377,7 +1581,19 @@
           "  float falloff = max(core, (rayX + rayY) * 0.24 * vSparkle);",
           "  float dustFalloff = exp(-radius * radius * 7.0) * 0.2;",
           "  falloff = mix(falloff, max(core * 0.55, dustFalloff), vDust);",
+          "  float clusterMask =",
+          "    step(1.5, vStructure) * (1.0 - step(2.5, vStructure));",
+          "  float streamMask =",
+          "    step(2.5, vStructure) * (1.0 - step(3.5, vStructure));",
+          "  float nebulaMask = step(3.5, vStructure);",
+          "  float streamFalloff = exp(-radius * radius * 14.0) * 0.38;",
+          "  float nebulaFalloff = exp(-radius * radius * 5.5) * 0.16;",
+          "  falloff = mix(falloff, max(core, falloff * 1.35), clusterMask);",
+          "  falloff = mix(falloff, streamFalloff, streamMask);",
+          "  falloff = mix(falloff, nebulaFalloff, nebulaMask);",
           "  float exposure = mix(uBrightness, uDustBrightness, vDust);",
+          "  exposure *= 1.0 + clusterMask * 0.35 +",
+          "    streamMask * 0.25 + nebulaMask * 0.5;",
           "  float alpha = falloff * vAlpha * uOpacity * exposure;",
           "  if (alpha < 0.003) discard;",
           "  gl_FragColor = vec4(vColor, alpha);",
@@ -1392,6 +1608,9 @@
       points.frustumCulled = false;
       points.renderOrder = -2;
       points.userData.dustCount = dustCount;
+      points.userData.clusterCount = clusterCount;
+      points.userData.streamCount = streamCount;
+      points.userData.nebulaCount = nebulaCount;
       return points;
     }
 
@@ -1450,6 +1669,7 @@
     function assignPointEffects(layer, sourceStars) {
       const phases = layer.geometry.attributes.aPhase;
       const effects = layer.geometry.attributes.aEffect;
+      const secondaryEffects = layer.geometry.attributes.aEffect2;
       sourceStars.forEach((star, index) => {
         const profile = tierProfile(star.brightnessTier);
         phases.setX(
@@ -1464,9 +1684,17 @@
           profile.coronaStrength,
           profile.rotationSpeed
         );
+        secondaryEffects.setXYZW(
+          index,
+          profile.flareStrength,
+          profile.flareSpeed,
+          profile.temperatureShift,
+          profile.surfaceFlowSpeed
+        );
       });
       phases.needsUpdate = true;
       effects.needsUpdate = true;
+      secondaryEffects.needsUpdate = true;
     }
     assignPointEffects(haloLayer, stars);
     assignPointEffects(coreLayer, stars);
@@ -3389,6 +3617,18 @@
     glCanvas.dataset.backgroundBrightness = String(backgroundBrightness);
     glCanvas.dataset.dustBrightness = String(dustBrightness);
     glCanvas.dataset.backgroundSizeScale = String(backgroundSizeScale);
+    glCanvas.dataset.backgroundClusterCount = String(
+      backgroundLayer.userData.clusterCount || 0
+    );
+    glCanvas.dataset.backgroundStreamCount = String(
+      backgroundLayer.userData.streamCount || 0
+    );
+    glCanvas.dataset.backgroundNebulaCount = String(
+      backgroundLayer.userData.nebulaCount || 0
+    );
+    glCanvas.dataset.backgroundStructureMotion = String(
+      backgroundStructureMotion
+    );
     glCanvas.dataset.visualProfile = "deep-field";
     glCanvas.dataset.selectedCount = "0";
     glCanvas.dataset.selectedTier = "";

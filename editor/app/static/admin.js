@@ -1198,6 +1198,10 @@ async function loadOverview() {
     String(data.settings.home_star_3d_dust_brightness_percent);
   byId("visualSettingsForm").home_star_3d_background_size_percent.value =
     String(data.settings.home_star_3d_background_size_percent);
+  byId("visualSettingsForm").home_star_3d_structure_fraction_percent.value =
+    String(data.settings.home_star_3d_structure_fraction_percent);
+  byId("visualSettingsForm").home_star_3d_structure_motion_percent.value =
+    String(data.settings.home_star_3d_structure_motion_percent);
   byId("visualSettingsForm").home_star_brightness_variation_enabled.checked =
     data.settings.home_star_brightness_variation_enabled;
   byId("visualSettingsForm").home_star_brightness_min.value =
@@ -1422,6 +1426,12 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         home_star_3d_background_size_percent: Number(
           form.home_star_3d_background_size_percent.value
         ),
+        home_star_3d_structure_fraction_percent: Number(
+          form.home_star_3d_structure_fraction_percent.value
+        ),
+        home_star_3d_structure_motion_percent: Number(
+          form.home_star_3d_structure_motion_percent.value
+        ),
         home_star_brightness_variation_enabled:
           form.home_star_brightness_variation_enabled.checked,
         home_star_brightness_min: Number(
@@ -1538,6 +1548,10 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         saved.home_star_3d_dust_brightness_percent,
       home_star_3d_background_size_percent:
         saved.home_star_3d_background_size_percent,
+      home_star_3d_structure_fraction_percent:
+        saved.home_star_3d_structure_fraction_percent,
+      home_star_3d_structure_motion_percent:
+        saved.home_star_3d_structure_motion_percent,
       home_star_brightness_variation_enabled:
         saved.home_star_brightness_variation_enabled,
       home_star_brightness_min:
