@@ -49,7 +49,6 @@
     home_star_hover_info_enabled: true,
     home_star_hover_relations_enabled: true,
     home_star_hover_relation_opacity_percent: 6,
-    home_star_hover_relation_limit: 12,
     home_star_brightness_variation_enabled: false,
     home_star_brightness_min: 0,
     home_star_brightness_initial: 10,
@@ -946,9 +945,6 @@
         1,
         25
       ),
-      home_star_hover_relation_limit: Math.round(
-        clampedSetting("home_star_hover_relation_limit", 1, 50)
-      ),
       home_star_brightness_min: brightnessMinimum,
       home_star_brightness_initial: brightnessInitial,
       home_star_brightness_max: brightnessMax,
@@ -1264,16 +1260,6 @@
     return label;
   }
 
-  function createHoverLabel() {
-    const label = document.createElement("div");
-    label.className = "star-map-label star-map-hover-label";
-    label.dataset.hover = "true";
-    label.setAttribute("role", "tooltip");
-    label.hidden = true;
-    document.body.append(label);
-    return label;
-  }
-
   function starDisplayName(star) {
     return star.kind === "document" ? star.title : star.name;
   }
@@ -1282,14 +1268,6 @@
     if (star.kind === "contributor") return "静星 · 贡献者";
     if (star.resourceKind === "code_system") return "动星 · 代码系统";
     return "动星 · 文档";
-  }
-
-  function starInformationText(star) {
-    const tier = star.brightnessTier?.name || "未分级";
-    return (
-      `${starDisplayName(star)} · ${starKindName(star)} · ${tier} · ` +
-      `亮度 ${star.baseBrightness.toFixed(1)}`
-    );
   }
 
   function createContributionMap(runtimeSettings) {
@@ -1352,7 +1330,6 @@
 
     const panel = createCoveragePanel();
     const label = createLabel();
-    const hoverLabel = createHoverLabel();
     let width = 1;
     let height = 1;
     let ratio = 1;
@@ -1369,6 +1346,9 @@
     let labelTimer = 0;
     let selectionTimer = 0;
     let hoverStar = null;
+    let hoverSelectedIds = new Set();
+    let hoverRelationPlan = null;
+    let hoverVisualEdgeIds = new Set();
 
     function positionStars(initial) {
       const contributors = stars.filter((star) => star.kind === "contributor");
@@ -1443,14 +1423,18 @@
       };
     }
 
-    function applyLineStyle(type, time) {
+    function applyLineStyle(type, time, brightnessScale = 1) {
       const style = relationStyle(type);
       context.lineWidth = style === "glow" ? 1.35 : 0.8;
       context.setLineDash(style === "dashed" ? [5, 6] : []);
       context.shadowColor =
-        style === "glow" ? `rgba(${relationColors[type]}, 0.75)` : "transparent";
+        style === "glow"
+          ? `rgba(${relationColors[type]}, ${0.75 * brightnessScale})`
+          : "transparent";
       context.shadowBlur =
-        style === "glow" ? 5 + Math.sin(time * 0.003) * 1.5 : 0;
+        style === "glow"
+          ? (5 + Math.sin(time * 0.003) * 1.5) * brightnessScale
+          : 0;
     }
 
     // Stroke one edge as a curved arc whose color fades in and out toward
@@ -1497,7 +1481,6 @@
       const visibility = runtimeSettings.home_star_relation_visibility;
       const distanceLimit = width < 700 ? 100 : 150;
       const pulses = [];
-      const hoverRelationCount = drawHoverRelations(distanceLimit);
       for (const edge of edges) {
         const source = starById.get(edge.source);
         const target = starById.get(edge.target);
@@ -1505,21 +1488,40 @@
         const highlighted = activeVisualEdgeIds.has(
           illumination.edgeId(edge)
         );
+        const hoverHighlighted =
+          !selectedRoot &&
+          hoverVisualEdgeIds.has(illumination.edgeId(edge));
         const visible =
           highlighted ||
+          hoverHighlighted ||
           visibility === "always" ||
           (visibility === "near" && distance <= distanceLimit);
         if (!visible) continue;
         const baseAlpha = highlighted
           ? 0.78
+          : hoverHighlighted
+            ? 0.78 *
+              (
+                runtimeSettings
+                  .home_star_hover_relation_opacity_percent / 100
+              )
           : visibility === "always"
             ? 0.18
             : 0.28 * (1 - distance / distanceLimit);
         // Slow per-edge breathing keeps the web of relations alive.
         const seed = hashSeed(illumination.edgeId(edge));
         const breath = 0.82 + 0.18 * Math.sin(time * 0.0007 + (seed % 628) / 100);
-        const alpha = Math.max(0.05, baseAlpha * breath);
-        applyLineStyle(edge.type, time);
+        const alpha = Math.max(
+          hoverHighlighted ? 0.003 : 0.05,
+          baseAlpha * breath
+        );
+        applyLineStyle(
+          edge.type,
+          time,
+          hoverHighlighted
+            ? runtimeSettings.home_star_hover_relation_opacity_percent / 100
+            : 1
+        );
         const curve = strokeEdge(edge, source, target, alpha);
         if (highlighted) pulses.push([edge, source, target, curve]);
       }
@@ -1528,56 +1530,9 @@
       for (const [edge, source, target, curve] of pulses) {
         drawEdgePulse(edge, source, target, curve, time);
       }
-      canvas.dataset.hoverRelationCount = String(hoverRelationCount);
-    }
-
-    function drawHoverRelations(distanceLimit) {
-      if (
-        !hoverStar ||
-        !runtimeSettings.home_star_hover_relations_enabled
-      ) {
-        return 0;
-      }
-      const neighbors = stars
-        .filter((star) => star !== hoverStar)
-        .map((star) => ({
-          star,
-          distance: Math.hypot(
-            star.x - hoverStar.x,
-            star.y - hoverStar.y
-          )
-        }))
-        .filter((item) => item.distance <= distanceLimit)
-        .sort((left, right) => left.distance - right.distance)
-        .slice(0, runtimeSettings.home_star_hover_relation_limit);
-      const opacity =
-        runtimeSettings.home_star_hover_relation_opacity_percent / 100;
-      context.save();
-      context.lineWidth = 0.55;
-      context.lineCap = "round";
-      context.setLineDash([]);
-      context.shadowBlur = 0;
-      for (const neighbor of neighbors) {
-        const alpha = Math.max(
-          opacity * 0.16,
-          opacity * (1 - neighbor.distance / distanceLimit)
-        );
-        const gradient = context.createLinearGradient(
-          hoverStar.x,
-          hoverStar.y,
-          neighbor.star.x,
-          neighbor.star.y
-        );
-        gradient.addColorStop(0, `rgba(156, 224, 205, ${alpha})`);
-        gradient.addColorStop(1, `rgba(112, 190, 171, ${alpha * 0.24})`);
-        context.strokeStyle = gradient;
-        context.beginPath();
-        context.moveTo(hoverStar.x, hoverStar.y);
-        context.lineTo(neighbor.star.x, neighbor.star.y);
-        context.stroke();
-      }
-      context.restore();
-      return neighbors.length;
+      canvas.dataset.hoverRelationCount = String(
+        !selectedRoot ? hoverVisualEdgeIds.size : 0
+      );
     }
 
     function variation(star, time) {
@@ -1861,37 +1816,6 @@
         `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
     }
 
-    function updateHoverLabel() {
-      if (
-        !runtimeSettings.home_star_hover_info_enabled ||
-        !hoverStar ||
-        labelStar
-      ) {
-        hoverLabel.hidden = true;
-        return;
-      }
-      const offset = canvasOffset();
-      hoverLabel.hidden = false;
-      const labelWidth = hoverLabel.offsetWidth || 220;
-      const labelHeight = hoverLabel.offsetHeight || 34;
-      const x = Math.max(
-        8,
-        Math.min(
-          window.innerWidth - labelWidth - 8,
-          offset.left + hoverStar.x + 12
-        )
-      );
-      const y = Math.max(
-        8,
-        Math.min(
-          window.innerHeight - labelHeight - 8,
-          offset.top + hoverStar.y - 20
-        )
-      );
-      hoverLabel.style.transform =
-        `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
-    }
-
     function draw(time) {
       context.clearRect(0, 0, width, height);
       updateVariations(time);
@@ -1899,7 +1823,6 @@
       for (const star of stars) drawStar(star, time);
       moveDocuments();
       updateLabel(time);
-      updateHoverLabel();
     }
 
     function animate(time) {
@@ -1914,8 +1837,18 @@
     }
 
     function updateCoverage() {
-      if (!selectedRoot) {
+      const hoverPreview =
+        !selectedRoot &&
+        hoverStar &&
+        runtimeSettings.home_star_hover_info_enabled;
+      const rootId = selectedRoot || (hoverPreview ? hoverStar.id : "");
+      const previewIds = selectedRoot ? selectedIds : hoverSelectedIds;
+      const previewPlan = selectedRoot
+        ? activeRelationPlan
+        : hoverRelationPlan;
+      if (!rootId || !previewPlan) {
         panel.hidden = true;
+        panel.dataset.previewMode = "";
         return;
       }
       const contributors = stars.filter(
@@ -1923,25 +1856,26 @@
       );
       const documents = stars.filter((star) => star.kind === "document");
       const litContributors = contributors.filter((star) =>
-        selectedIds.has(star.id)
+        previewIds.has(star.id)
       ).length;
       const litDocuments = documents.filter((star) =>
-        selectedIds.has(star.id)
+        previewIds.has(star.id)
       ).length;
-      const selectedStar = starById.get(selectedRoot);
+      const selectedStar = starById.get(rootId);
       panel.hidden = false;
+      panel.dataset.previewMode = selectedRoot ? "selection" : "hover";
       panel.querySelector("[data-star-coverage-name]").textContent =
         selectedStar ? starDisplayName(selectedStar) : "未选择";
       panel.querySelector("[data-star-coverage-kind]").textContent =
         selectedStar ? starKindName(selectedStar) : "";
       panel.querySelector("[data-star-coverage-tier]").textContent =
-        selectedTier?.name || "未分级";
+        selectedStar?.brightnessTier?.name || "未分级";
       panel.querySelector("[data-star-coverage-brightness]").textContent =
-        `${selectedBrightness.toFixed(1)} / ` +
+        `${selectedStar.baseBrightness.toFixed(1)} / ` +
         `${runtimeSettings.home_star_brightness_max}`;
       panel.querySelector("[data-star-coverage-total]").textContent =
-        `${selectedIds.size} / ${stars.length} · ` +
-        percentage(selectedIds.size, stars.length);
+        `${previewIds.size} / ${stars.length} · ` +
+        percentage(previewIds.size, stars.length);
       panel.querySelector("[data-star-coverage-contributors]").textContent =
         `${litContributors} / ${contributors.length} · ` +
         percentage(litContributors, contributors.length);
@@ -1949,11 +1883,11 @@
         `${litDocuments} / ${documents.length} · ` +
         percentage(litDocuments, documents.length);
       panel.querySelector("[data-star-coverage-relations]").textContent =
-        `${activeRelationPlan.coverageCount} / ` +
-        `${activeRelationPlan.totalCount} · ` +
+        `${previewPlan.coverageCount} / ` +
+        `${previewPlan.totalCount} · ` +
         percentage(
-          activeRelationPlan.coverageCount,
-          activeRelationPlan.totalCount
+          previewPlan.coverageCount,
+          previewPlan.totalCount
         );
     }
 
@@ -1964,16 +1898,17 @@
         return;
       }
       labelStar = star;
-      label.textContent = starInformationText(star);
+      const title = starDisplayName(star);
+      const tier = star.brightnessTier?.name || "未分级";
+      label.textContent =
+        `${title} · ${tier} · ${star.baseBrightness.toFixed(1)}`;
       label.dataset.starKind = star.kind;
-      hoverLabel.hidden = true;
       labelExpiresAt =
         now + runtimeSettings.home_star_label_duration_ms;
       window.clearTimeout(labelTimer);
       labelTimer = window.setTimeout(() => {
         label.hidden = true;
         labelStar = null;
-        updateHoverLabel();
       }, runtimeSettings.home_star_label_duration_ms);
       updateLabel(now);
     }
@@ -1985,7 +1920,7 @@
       selectedTier = null;
       activeRelationPlan = null;
       activeVisualEdgeIds = new Set();
-      panel.hidden = true;
+      updateCoverage();
       canvas.dataset.selectedCount = "0";
       canvas.dataset.selectedBrightness = "0";
       canvas.dataset.selectedTier = "";
@@ -1996,6 +1931,7 @@
     }
 
     function selectStar(star, now) {
+      setHoverStar(null, now);
       showLabel(star, now);
       window.clearTimeout(selectionTimer);
       selectedRoot = star.id;
@@ -2075,16 +2011,38 @@
     }
 
     function setHoverStar(star, now) {
+      if (selectedRoot) star = null;
       if (hoverStar === star) return;
       hoverStar = star;
-      canvas.dataset.hoveredStarId = star?.id || "";
-      if (star && runtimeSettings.home_star_hover_info_enabled) {
-        hoverLabel.textContent = starInformationText(star);
-        hoverLabel.dataset.starKind = star.kind;
-      } else {
-        hoverLabel.hidden = true;
+      hoverSelectedIds = new Set();
+      hoverRelationPlan = null;
+      hoverVisualEdgeIds = new Set();
+      if (star) {
+        hoverSelectedIds = illumination.illuminate(
+          stars,
+          edges,
+          star.id,
+          runtimeSettings.home_star_illumination_rule,
+          runtimeSettings.home_star_illumination_depth,
+          runtimeSettings.home_star_graph_direction
+        );
+        hoverRelationPlan = illumination.relationPlan(
+          stars,
+          edges,
+          hoverSelectedIds,
+          runtimeSettings.home_star_active_edge_mode
+        );
+        if (runtimeSettings.home_star_hover_relations_enabled) {
+          hoverVisualEdgeIds = new Set(
+            hoverRelationPlan.visualEdges.map(illumination.edgeId)
+          );
+        }
       }
-      updateHoverLabel();
+      canvas.dataset.hoveredStarId = star?.id || "";
+      canvas.dataset.hoverRelationCount = String(
+        hoverVisualEdgeIds.size
+      );
+      updateCoverage();
       if (reducedMotion) draw(now);
     }
 
@@ -2209,9 +2167,6 @@
     canvas.dataset.hoverRelationOpacity = String(
       runtimeSettings.home_star_hover_relation_opacity_percent / 100
     );
-    canvas.dataset.hoverRelationLimit = String(
-      runtimeSettings.home_star_hover_relation_limit
-    );
     canvas.dataset.hoveredStarId = "";
     canvas.dataset.hoverRelationCount = "0";
     canvas.dataset.activeEdgeMode =
@@ -2245,7 +2200,6 @@
       );
       label.removeEventListener("click", labelClick);
       label.remove();
-      hoverLabel.remove();
       panel.remove();
       document.body.classList.remove("home-stars-full", "home-stars-hero");
       if (canvas.parentElement !== hero) hero.prepend(canvas);
@@ -2312,10 +2266,8 @@
       reducedMotion,
       createCoveragePanel,
       createLabel,
-      createHoverLabel,
       starDisplayName,
       starKindName,
-      starInformationText,
       hashSeed,
       seededRandom,
       fallback2D: () => createContributionMap(runtimeSettings)

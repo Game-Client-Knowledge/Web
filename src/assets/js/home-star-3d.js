@@ -1774,14 +1774,12 @@
 
     const panel = host.createCoveragePanel();
     const label = host.createLabel();
-    const hoverLabel = host.createHoverLabel();
     let width = 1;
     let height = 1;
     let frame = 0;
     let disposed = false;
     let selectedRoot = "";
     let selectedIds = new Set();
-    let selectedBrightness = 0;
     let selectedTier = null;
     let activeRelationPlan = null;
     let activeVisualEdgeIds = new Set();
@@ -1791,6 +1789,11 @@
     let labelTimer = 0;
     let selectionTimer = 0;
     let hoverStar = null;
+    let hoverSelectedIds = new Set();
+    let hoverRelationPlan = null;
+    let hoverVisualEdgeIds = new Set();
+    let hoverNodeDepths = new Map();
+    let hoverHighlightEdges = [];
     let lastFrameAt = 0;
     let contentMaskFrame = 0;
     const portalState = {
@@ -2930,16 +2933,21 @@
       relationContext.fill();
     }
 
-    function activeEdgeDepth(edge) {
-      const sourceDepth = activeNodeDepths.get(edge.source);
-      const targetDepth = activeNodeDepths.get(edge.target);
+    function edgeDepth(edge, depths) {
+      const sourceDepth = depths.get(edge.source);
+      const targetDepth = depths.get(edge.target);
       return Math.min(
         Number.isFinite(sourceDepth) ? sourceDepth : 20,
         Number.isFinite(targetDepth) ? targetDepth : 20
       );
     }
 
-    function drawFormalRelation(edge, time, highlighted) {
+    function drawFormalRelation(
+      edge,
+      time,
+      highlighted,
+      hoverHighlighted
+    ) {
       const sourceStar = starById.get(edge.source);
       const targetStar = starById.get(edge.target);
       if (!sourceStar || !targetStar) return false;
@@ -2950,6 +2958,7 @@
       );
       if (
         !highlighted &&
+        !hoverHighlighted &&
         (
           visibility === "hidden" ||
           (visibility === "near" && worldDistance > NEAR_LIMIT)
@@ -2963,16 +2972,24 @@
       const curve = edgeCurve(edge, source, target);
       const typeColor =
         relationColors[edge.type] || relationColors.strong;
-      const depth = highlighted ? activeEdgeDepth(edge) : 0;
-      const levelGain = highlighted
+      const previewed = highlighted || hoverHighlighted;
+      const depth = highlighted
+        ? edgeDepth(edge, activeNodeDepths)
+        : hoverHighlighted
+          ? edgeDepth(edge, hoverNodeDepths)
+          : 0;
+      const levelGain = previewed
         ? Math.max(0.42, 1 - depth * 0.11)
         : 1;
-      const densityGain = highlighted
+      const previewEdgeCount = highlighted
+        ? highlightEdges.length
+        : hoverHighlightEdges.length;
+      const densityGain = previewed
         ? Math.max(
             0.28,
             Math.min(
               1,
-              Math.sqrt(90 / Math.max(90, highlightEdges.length))
+              Math.sqrt(90 / Math.max(90, previewEdgeCount))
             )
           )
         : 1;
@@ -2982,6 +2999,14 @@
       );
       const alpha = highlighted
         ? 0.88 * levelGain * densityGain
+        : hoverHighlighted
+          ? 0.88 *
+            levelGain *
+            densityGain *
+            (
+              runtimeSettings
+                .home_star_hover_relation_opacity_percent / 100
+            )
         : visibility === "always"
           ? 0.1 * ambientDensityGain
           : Math.max(
@@ -3003,7 +3028,7 @@
       gradient.addColorStop(1, `rgba(${typeColor}, ${alpha * 0.35})`);
       relationContext.save();
       relationContext.strokeStyle = gradient;
-      relationContext.lineWidth = highlighted
+      relationContext.lineWidth = previewed
         ? Math.max(
             0.7,
             (2.25 - depth * 0.16) * (0.72 + densityGain * 0.28)
@@ -3014,17 +3039,19 @@
       relationContext.lineCap = "round";
       relationContext.setLineDash(
         style === "dashed"
-          ? highlighted
+          ? previewed
             ? [9, 7]
             : [6, 8]
           : []
       );
-      relationContext.lineDashOffset = highlighted
+      relationContext.lineDashOffset = previewed
         ? -(time * 0.018 + depth * 6)
         : 0;
-      if (style === "glow" || highlighted) {
+      if (style === "glow" || previewed) {
         relationContext.shadowColor = `rgba(${typeColor}, ${alpha})`;
-        relationContext.shadowBlur = highlighted ? 8 : 4;
+        relationContext.shadowBlur = previewed
+          ? 8 * (hoverHighlighted ? 0.35 : 1)
+          : 4;
       }
       relationContext.beginPath();
       relationContext.moveTo(source.x, source.y);
@@ -3039,7 +3066,7 @@
 
       const directed = edge.type !== "strong";
       if (directed) {
-        const markerProgress = highlighted
+        const markerProgress = previewed
           ? 0.58 + ((time * 0.00016 + depth * 0.11) % 0.22)
           : 0.72;
         drawDirectionMarker(
@@ -3048,8 +3075,8 @@
           curve,
           markerProgress,
           typeColor,
-          highlighted ? alpha : alpha * 0.72,
-          highlighted ? 5.2 : 3.2
+          previewed ? alpha : alpha * 0.72,
+          previewed ? 5.2 : 3.2
         );
       }
       const pulseSeed = hashSeed(`${illumination.edgeId(edge)}:pulse`);
@@ -3086,7 +3113,8 @@
       if (
         !strategy.proximity ||
         visibility !== "near" ||
-        highlightEdges.length
+        highlightEdges.length ||
+        hoverHighlightEdges.length
       ) {
         return 0;
       }
@@ -3125,62 +3153,6 @@
       return count;
     }
 
-    function drawHoverRelations() {
-      if (
-        !hoverStar ||
-        !runtimeSettings.home_star_hover_relations_enabled
-      ) {
-        return 0;
-      }
-      const neighbors = stars
-        .filter((star) => star !== hoverStar)
-        .map((star) => ({
-          star,
-          distance: Math.hypot(
-            star.x - hoverStar.x,
-            star.y - hoverStar.y,
-            star.z - hoverStar.z
-          )
-        }))
-        .filter((item) => item.distance <= NEAR_LIMIT)
-        .sort((left, right) => left.distance - right.distance)
-        .slice(0, runtimeSettings.home_star_hover_relation_limit);
-      const source = projectRelationStar(hoverStar);
-      if (!source.visible) return 0;
-      const opacity =
-        runtimeSettings.home_star_hover_relation_opacity_percent / 100;
-      let count = 0;
-      relationContext.save();
-      relationContext.lineWidth = 0.55;
-      relationContext.lineCap = "round";
-      relationContext.setLineDash([]);
-      relationContext.shadowBlur = 0;
-      for (const neighbor of neighbors) {
-        const target = projectRelationStar(neighbor.star);
-        if (!target.visible) continue;
-        const alpha = Math.max(
-          opacity * 0.16,
-          opacity * (1 - neighbor.distance / NEAR_LIMIT)
-        );
-        const gradient = relationContext.createLinearGradient(
-          source.x,
-          source.y,
-          target.x,
-          target.y
-        );
-        gradient.addColorStop(0, `rgba(156, 224, 205, ${alpha})`);
-        gradient.addColorStop(1, `rgba(112, 190, 171, ${alpha * 0.24})`);
-        relationContext.strokeStyle = gradient;
-        relationContext.beginPath();
-        relationContext.moveTo(source.x, source.y);
-        relationContext.lineTo(target.x, target.y);
-        relationContext.stroke();
-        count += 1;
-      }
-      relationContext.restore();
-      return count;
-    }
-
     function drawRelations(time) {
       relationContext.clearRect(0, 0, width, height);
       relationProjectionCache.clear();
@@ -3193,14 +3165,22 @@
         return;
       }
       let visibleCount = drawProximityRelations();
-      const hoverRelationCount = drawHoverRelations();
-      visibleCount += hoverRelationCount;
+      let hoverRelationCount = 0;
       for (const edge of edges) {
-        const highlighted = activeVisualEdgeIds.has(
-          illumination.edgeId(edge)
-        );
-        if (drawFormalRelation(edge, time, highlighted)) {
+        const edgeId = illumination.edgeId(edge);
+        const highlighted = activeVisualEdgeIds.has(edgeId);
+        const hoverHighlighted =
+          !selectedRoot && hoverVisualEdgeIds.has(edgeId);
+        if (
+          drawFormalRelation(
+            edge,
+            time,
+            highlighted,
+            hoverHighlighted
+          )
+        ) {
           visibleCount += 1;
+          if (hoverHighlighted) hoverRelationCount += 1;
         }
       }
       relationCanvas.dataset.visibleRelationCount =
@@ -3260,46 +3240,6 @@
         `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
     }
 
-    function updateHoverLabel() {
-      if (
-        !runtimeSettings.home_star_hover_info_enabled ||
-        !hoverStar ||
-        labelStar ||
-        (
-          portalState.enabled &&
-          portalState.phase !== "expanded"
-        )
-      ) {
-        hoverLabel.hidden = true;
-        return;
-      }
-      const offset = glCanvas.getBoundingClientRect();
-      const projected = projectStar(hoverStar);
-      if (!projected.visible) {
-        hoverLabel.hidden = true;
-        return;
-      }
-      hoverLabel.hidden = false;
-      const labelWidth = hoverLabel.offsetWidth || 220;
-      const labelHeight = hoverLabel.offsetHeight || 34;
-      const x = Math.max(
-        8,
-        Math.min(
-          window.innerWidth - labelWidth - 8,
-          offset.left + projected.x + 12
-        )
-      );
-      const y = Math.max(
-        8,
-        Math.min(
-          window.innerHeight - labelHeight - 8,
-          offset.top + projected.y - 20
-        )
-      );
-      hoverLabel.style.transform =
-        `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
-    }
-
     function draw(time) {
       updateVariations(time);
       updateStructureTransition(
@@ -3333,7 +3273,6 @@
       drawRelations(time);
       renderer.render(scene, camera);
       updateLabel(time);
-      updateHoverLabel();
     }
     function animate(time) {
       frame = 0;
@@ -3357,30 +3296,41 @@
     }
 
     function updateCoverage() {
-      if (!selectedRoot) {
+      const hoverPreview =
+        !selectedRoot &&
+        hoverStar &&
+        runtimeSettings.home_star_hover_info_enabled;
+      const rootId = selectedRoot || (hoverPreview ? hoverStar.id : "");
+      const previewIds = selectedRoot ? selectedIds : hoverSelectedIds;
+      const previewPlan = selectedRoot
+        ? activeRelationPlan
+        : hoverRelationPlan;
+      if (!rootId || !previewPlan) {
         panel.hidden = true;
+        panel.dataset.previewMode = "";
         return;
       }
       const litContributors = contributors.filter((star) =>
-        selectedIds.has(star.id)
+        previewIds.has(star.id)
       ).length;
       const litDocuments = documents.filter((star) =>
-        selectedIds.has(star.id)
+        previewIds.has(star.id)
       ).length;
-      const selectedStar = starById.get(selectedRoot);
+      const selectedStar = starById.get(rootId);
       panel.hidden = false;
+      panel.dataset.previewMode = selectedRoot ? "selection" : "hover";
       panel.querySelector("[data-star-coverage-name]").textContent =
         selectedStar ? starDisplayName(selectedStar) : "未选择";
       panel.querySelector("[data-star-coverage-kind]").textContent =
         selectedStar ? starKindName(selectedStar) : "";
       panel.querySelector("[data-star-coverage-tier]").textContent =
-        selectedTier?.name || "未分级";
+        selectedStar?.brightnessTier?.name || "未分级";
       panel.querySelector("[data-star-coverage-brightness]").textContent =
-        `${selectedBrightness.toFixed(1)} / ` +
+        `${selectedStar.baseBrightness.toFixed(1)} / ` +
         `${runtimeSettings.home_star_brightness_max}`;
       panel.querySelector("[data-star-coverage-total]").textContent =
-        `${selectedIds.size} / ${stars.length} · ` +
-        percentage(selectedIds.size, stars.length);
+        `${previewIds.size} / ${stars.length} · ` +
+        percentage(previewIds.size, stars.length);
       panel.querySelector("[data-star-coverage-contributors]").textContent =
         `${litContributors} / ${contributors.length} · ` +
         percentage(litContributors, contributors.length);
@@ -3388,11 +3338,11 @@
         `${litDocuments} / ${documents.length} · ` +
         percentage(litDocuments, documents.length);
       panel.querySelector("[data-star-coverage-relations]").textContent =
-        `${activeRelationPlan.coverageCount} / ` +
-        `${activeRelationPlan.totalCount} · ` +
+        `${previewPlan.coverageCount} / ` +
+        `${previewPlan.totalCount} · ` +
         percentage(
-          activeRelationPlan.coverageCount,
-          activeRelationPlan.totalCount
+          previewPlan.coverageCount,
+          previewPlan.totalCount
         );
     }
 
@@ -3403,15 +3353,16 @@
         return;
       }
       labelStar = star;
-      label.textContent = host.starInformationText(star);
+      const title = starDisplayName(star);
+      const tier = star.brightnessTier?.name || "未分级";
+      label.textContent =
+        `${title} · ${tier} · ${star.baseBrightness.toFixed(1)}`;
       label.dataset.starKind = star.kind;
-      hoverLabel.hidden = true;
       labelExpiresAt = now + runtimeSettings.home_star_label_duration_ms;
       window.clearTimeout(labelTimer);
       labelTimer = window.setTimeout(() => {
         label.hidden = true;
         labelStar = null;
-        updateHoverLabel();
       }, runtimeSettings.home_star_label_duration_ms);
       updateLabel(now);
     }
@@ -3441,23 +3392,22 @@
     function clearSelection() {
       selectedRoot = "";
       selectedIds = new Set();
-      selectedBrightness = 0;
       selectedTier = null;
       activeRelationPlan = null;
       activeVisualEdgeIds = new Set();
       activeNodeDepths = new Map();
       highlightEdges = [];
-      panel.hidden = true;
+      updateCoverage();
       glCanvas.dataset.selectedCount = "0";
       glCanvas.dataset.selectedTier = "";
       if (reducedMotion) draw(performance.now());
     }
 
     function selectStar(star, now) {
+      setHoverStar(null, now);
       showLabel(star, now);
       window.clearTimeout(selectionTimer);
       selectedRoot = star.id;
-      selectedBrightness = star.baseBrightness;
       selectedTier = star.brightnessTier;
       selectedIds = illumination.illuminate(
         stars,
@@ -3517,16 +3467,50 @@
     }
 
     function setHoverStar(star, now) {
+      if (selectedRoot) star = null;
       if (hoverStar === star) return;
       hoverStar = star;
-      glCanvas.dataset.hoveredStarId = star?.id || "";
-      if (star && runtimeSettings.home_star_hover_info_enabled) {
-        hoverLabel.textContent = host.starInformationText(star);
-        hoverLabel.dataset.starKind = star.kind;
-      } else {
-        hoverLabel.hidden = true;
+      hoverSelectedIds = new Set();
+      hoverRelationPlan = null;
+      hoverVisualEdgeIds = new Set();
+      hoverNodeDepths = new Map();
+      hoverHighlightEdges = [];
+      if (star) {
+        hoverSelectedIds = illumination.illuminate(
+          stars,
+          edges,
+          star.id,
+          runtimeSettings.home_star_illumination_rule,
+          runtimeSettings.home_star_illumination_depth,
+          runtimeSettings.home_star_graph_direction
+        );
+        hoverRelationPlan = illumination.relationPlan(
+          stars,
+          edges,
+          hoverSelectedIds,
+          runtimeSettings.home_star_active_edge_mode
+        );
+        if (runtimeSettings.home_star_hover_relations_enabled) {
+          hoverVisualEdgeIds = new Set(
+            hoverRelationPlan.visualEdges.map(illumination.edgeId)
+          );
+          hoverHighlightEdges =
+            hoverRelationPlan.visualEdges.filter((edge) => {
+              return hoverVisualEdgeIds.has(
+                illumination.edgeId(edge)
+              );
+            });
+          hoverNodeDepths = relationDepths(
+            star.id,
+            hoverRelationPlan.coverageEdges
+          );
+        }
       }
-      updateHoverLabel();
+      glCanvas.dataset.hoveredStarId = star?.id || "";
+      glCanvas.dataset.hoverRelationCount = String(
+        hoverVisualEdgeIds.size
+      );
+      updateCoverage();
       if (reducedMotion) draw(now);
     }
 
@@ -3876,9 +3860,6 @@
     glCanvas.dataset.hoverRelationOpacity = String(
       runtimeSettings.home_star_hover_relation_opacity_percent / 100
     );
-    glCanvas.dataset.hoverRelationLimit = String(
-      runtimeSettings.home_star_hover_relation_limit
-    );
     glCanvas.dataset.hoveredStarId = "";
     glCanvas.dataset.hoverRelationCount = "0";
     glCanvas.dataset.relationRenderer = "canvas-2d";
@@ -3919,7 +3900,6 @@
       },
       backgroundLayer,
       relationCanvas,
-      hoverLabel,
       get hoverStar() {
         return hoverStar;
       },
@@ -3992,7 +3972,6 @@
       }
       label.removeEventListener("click", labelClick);
       label.remove();
-      hoverLabel.remove();
       panel.remove();
       for (const layer of [
         backgroundLayer,

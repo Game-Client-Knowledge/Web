@@ -693,7 +693,6 @@ class Database:
                 "home_star_hover_info_enabled": "1",
                 "home_star_hover_relations_enabled": "1",
                 "home_star_hover_relation_opacity_percent": "6",
-                "home_star_hover_relation_limit": "12",
                 "home_star_brightness_variation_enabled": "0",
                 "home_star_brightness_min": "0",
                 "home_star_brightness_initial": "10",

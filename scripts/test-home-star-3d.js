@@ -48,7 +48,6 @@ for (const setting of [
   "home_star_hover_info_enabled",
   "home_star_hover_relations_enabled",
   "home_star_hover_relation_opacity_percent",
-  "home_star_hover_relation_limit",
   "home_star_3d_background_brightness_percent",
   "home_star_3d_dust_brightness_percent",
   "home_star_3d_background_size_percent",
@@ -180,12 +179,11 @@ for (const value of [
   assert.match(mapSource, new RegExp(value.replace(".", "\\.")));
 }
 assert.match(mapSource, /function tierMotion\(star, profile, time\)/);
-assert.match(mapSource, /function createHoverLabel\(\)/);
-assert.match(mapSource, /function starInformationText\(star\)/);
-assert.match(mapSource, /function drawHoverRelations\(distanceLimit\)/);
-assert.match(source, /function drawHoverRelations\(\)/);
 assert.match(source, /function hoverPointerMove\(event\)/);
-assert.match(cssSource, /\.star-map-hover-label/);
+assert.match(mapSource, /let hoverRelationPlan = null;/);
+assert.match(mapSource, /panel\.dataset\.previewMode/);
+assert.match(source, /let hoverHighlightEdges = \[\];/);
+assert.match(source, /hoverVisualEdgeIds\.has\(edgeId\)/);
 assert.match(mapSource, /const edgeProgress = Math\.max\(/);
 assert.match(
   mapSource,

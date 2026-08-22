@@ -40,7 +40,6 @@ const baseSettings = {
   home_star_hover_info_enabled: true,
   home_star_hover_relations_enabled: true,
   home_star_hover_relation_opacity_percent: 6,
-  home_star_hover_relation_limit: 12,
   home_star_brightness_variation_enabled: false,
   home_star_brightness_min: 5,
   home_star_brightness_initial: 25,
@@ -518,7 +517,10 @@ async function inspectHoverPreview(browser) {
       home_star_hover_info_enabled: true,
       home_star_hover_relations_enabled: true,
       home_star_hover_relation_opacity_percent: 5,
-      home_star_hover_relation_limit: 7,
+      home_star_graph_direction: "undirected",
+      home_star_illumination_rule: "depth",
+      home_star_illumination_depth: 2,
+      home_star_active_edge_mode: "minimal_tree",
       ...luminousTierSettings
     }
   });
@@ -526,6 +528,7 @@ async function inspectHoverPreview(browser) {
     const debug = window.__GCK_STAR3D_DEBUG;
     const canvas = debug.renderer.domElement;
     const rectangle = canvas.getBoundingClientRect();
+    const illumination = window.GCK_HOME_STAR_ILLUMINATION;
     debug.camera.updateMatrixWorld();
     return debug.stars
       .map((star) => {
@@ -541,44 +544,50 @@ async function inspectHoverPreview(browser) {
         const blocked = element?.closest?.(
           "a, button, input, select, textarea, summary, [role='button']"
         );
-        const neighbors = debug.stars.filter((candidate) => {
-          if (candidate === star) return false;
-          return Math.hypot(
-            candidate.x - star.x,
-            candidate.y - star.y,
-            candidate.z - star.z
-          ) <= 170;
-        }).length;
-        return { id: star.id, x, y, blocked: Boolean(blocked), neighbors };
+        const selectedIds = illumination.illuminate(
+          debug.stars,
+          debug.edges,
+          star.id,
+          "depth",
+          2,
+          "undirected"
+        );
+        const plan = illumination.relationPlan(
+          debug.stars,
+          debug.edges,
+          selectedIds,
+          "minimal_tree"
+        );
+        const name = star.kind === "document" ? star.title : star.name;
+        return {
+          id: star.id,
+          name,
+          x,
+          y,
+          blocked: Boolean(blocked),
+          selectedCount: selectedIds.size,
+          relationCount: plan.visualCount
+        };
       })
       .filter((item) => {
         return (
           !item.blocked &&
-          item.neighbors > 0 &&
+          item.relationCount > 0 &&
           item.x >= 20 &&
           item.x <= innerWidth - 20 &&
           item.y >= 80 &&
           item.y <= innerHeight - 20
         );
       })
-      .sort((left, right) => right.neighbors - left.neighbors)[0];
+      .sort((left, right) => right.relationCount - left.relationCount)[0];
   });
   assert.ok(target, "hover preview: no visible star candidate");
   await page.mouse.move(target.x, target.y);
-  await page.waitForFunction(
-    (starId) => {
-      const canvas = window.__GCK_STAR3D_DEBUG.renderer.domElement;
-      return (
-        canvas.dataset.hoveredStarId === starId &&
-        Number(canvas.dataset.hoverRelationCount) > 0
-      );
-    },
-    target.id
-  );
+  await page.waitForTimeout(300);
   const metrics = await page.evaluate(() => {
     const debug = window.__GCK_STAR3D_DEBUG;
     const canvas = debug.renderer.domElement;
-    const hoverLabel = document.querySelector(".star-map-hover-label");
+    const panel = document.querySelector(".star-coverage-panel");
     const pixels = debug.relationCanvas
       .getContext("2d")
       .getImageData(
@@ -588,28 +597,49 @@ async function inspectHoverPreview(browser) {
         debug.relationCanvas.height
       ).data;
     let paintedPixels = 0;
+    let alphaSum = 0;
     for (let index = 3; index < pixels.length; index += 4) {
-      if (pixels[index] > 0) paintedPixels += 1;
+      if (pixels[index] > 0) {
+        paintedPixels += 1;
+        alphaSum += pixels[index];
+      }
     }
+    const panelRect = panel.getBoundingClientRect();
+    const panelStyle = getComputedStyle(panel);
     return {
       calls: debug.renderer.info.render.calls,
       hoveredStarId: canvas.dataset.hoveredStarId,
       relationCount: Number(canvas.dataset.hoverRelationCount),
-      relationLimit: Number(canvas.dataset.hoverRelationLimit),
       relationOpacity: Number(canvas.dataset.hoverRelationOpacity),
-      labelVisible: !hoverLabel.hidden,
-      labelText: hoverLabel.textContent,
-      paintedPixels
+      panelVisible: !panel.hidden,
+      panelMode: panel.dataset.previewMode,
+      panelName:
+        panel.querySelector("[data-star-coverage-name]").textContent,
+      panelTotal:
+        panel.querySelector("[data-star-coverage-total]").textContent,
+      panelRect: panelRect.toJSON(),
+      panelDisplay: panelStyle.display,
+      panelVisibility: panelStyle.visibility,
+      paintedPixels,
+      alphaSum
     };
   });
   assert.equal(metrics.calls, 4, "hover preview changed WebGL draw calls");
-  assert.equal(metrics.hoveredStarId, target.id);
-  assert.ok(metrics.relationCount > 0);
-  assert.ok(metrics.relationCount <= 7);
-  assert.equal(metrics.relationLimit, 7);
+  assert.equal(
+    metrics.hoveredStarId,
+    target.id,
+    JSON.stringify({ target, metrics, errors })
+  );
+  assert.equal(metrics.relationCount, target.relationCount);
   assert.equal(metrics.relationOpacity, 0.05);
-  assert.equal(metrics.labelVisible, true);
-  assert.match(metrics.labelText, /亮度 \d/);
+  assert.equal(metrics.panelVisible, true);
+  assert.equal(metrics.panelMode, "hover");
+  assert.equal(metrics.panelName, target.name);
+  assert.match(metrics.panelTotal, new RegExp(`^${target.selectedCount} /`));
+  assert.notEqual(metrics.panelDisplay, "none");
+  assert.equal(metrics.panelVisibility, "visible");
+  assert.ok(metrics.panelRect.right <= 1440);
+  assert.ok(metrics.panelRect.top >= 0);
   assert.ok(
     metrics.paintedPixels > 0,
     "hover preview did not paint weak relations"
@@ -619,18 +649,65 @@ async function inspectHoverPreview(browser) {
   await page.mouse.move(20, 20);
   await page.waitForFunction(() => {
     const debug = window.__GCK_STAR3D_DEBUG;
-    const label = document.querySelector(".star-map-hover-label");
+    const panel = document.querySelector(".star-coverage-panel");
     return (
       debug.renderer.domElement.dataset.hoveredStarId === "" &&
       debug.renderer.domElement.dataset.hoverRelationCount === "0" &&
-      label.hidden
+      panel.hidden
     );
   });
+  await page.mouse.move(target.x, target.y);
+  await page.waitForFunction(
+    (starId) => {
+      return (
+        window.__GCK_STAR3D_DEBUG.renderer.domElement.dataset.hoveredStarId
+        === starId
+      );
+    },
+    target.id
+  );
+  await page.mouse.click(target.x, target.y);
+  await page.waitForFunction(() => {
+    const panel = document.querySelector(".star-coverage-panel");
+    return (
+      panel.dataset.previewMode === "selection" &&
+      Number(
+        window.__GCK_STAR3D_DEBUG.relationCanvas.dataset.activeRelationCount
+      ) > 0
+    );
+  });
+  const selectedMetrics = await page.evaluate(() => {
+    const debug = window.__GCK_STAR3D_DEBUG;
+    const pixels = debug.relationCanvas
+      .getContext("2d")
+      .getImageData(
+        0,
+        0,
+        debug.relationCanvas.width,
+        debug.relationCanvas.height
+      ).data;
+    let alphaSum = 0;
+    for (let index = 3; index < pixels.length; index += 4) {
+      alphaSum += pixels[index];
+    }
+    return {
+      relationCount: Number(
+        debug.relationCanvas.dataset.activeRelationCount
+      ),
+      alphaSum
+    };
+  });
+  assert.equal(selectedMetrics.relationCount, metrics.relationCount);
+  assert.ok(
+    selectedMetrics.alphaSum > metrics.alphaSum * 3,
+    "hover relations were not substantially dimmer than click selection"
+  );
   assert.deepEqual(errors, [], "hover preview: browser errors");
   await context.close();
   console.log(
     `hover-preview: relations=${metrics.relationCount}, ` +
-      `paintedPixels=${metrics.paintedPixels}, drawCalls=${metrics.calls}`
+      `hoverAlpha=${metrics.alphaSum}, selectedAlpha=${selectedMetrics.alphaSum}, ` +
+      `drawCalls=${metrics.calls}`
   );
   return screenshot;
 }

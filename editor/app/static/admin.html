@@ -651,16 +651,16 @@
           >
             <div class="subsection-heading">
               <h3 id="starHoverPreviewTitle">星体悬停预览</h3>
-              <p>悬停信息与空间邻近弱联系仅用于浏览，不改变点击点亮结果。</p>
+              <p>复用点击点亮规则与右侧信息面板，仅降低悬停关系亮度。</p>
             </div>
             <div class="visual-group-grid">
               <label class="check-label">
                 <input name="home_star_hover_info_enabled" type="checkbox">
-                显示星体信息
+                显示右侧星体信息
               </label>
               <label class="check-label">
                 <input name="home_star_hover_relations_enabled" type="checkbox">
-                显示邻近弱联系
+                显示点亮关系预览
               </label>
               <label>
                 弱联系亮度（%）
@@ -672,19 +672,7 @@
                   step="1"
                   required
                 >
-                <small class="field-help">控制悬停邻近线的透明度，默认 6%。</small>
-              </label>
-              <label>
-                最大连接数
-                <input
-                  name="home_star_hover_relation_limit"
-                  type="number"
-                  min="1"
-                  max="50"
-                  step="1"
-                  required
-                >
-                <small class="field-help">优先连接空间距离最近的星体。</small>
+                <small class="field-help">按正常点亮关系绘制，并将整体亮度压低至该比例。</small>
               </label>
             </div>
           </section>

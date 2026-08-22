@@ -539,7 +539,6 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
         payload["config"]["home_star_hover_relation_opacity_percent"]
         == 6
     )
-    assert payload["config"]["home_star_hover_relation_limit"] == 12
     assert payload["config"]["home_star_graph_direction"] == "directed"
     assert payload["config"]["home_star_brightness_initial"] == 10
     assert payload["config"]["home_star_brightness_max"] == 100
@@ -1572,7 +1571,6 @@ def test_admin_can_configure_client_visual_effects(
             "home_star_hover_info_enabled": False,
             "home_star_hover_relations_enabled": True,
             "home_star_hover_relation_opacity_percent": 9,
-            "home_star_hover_relation_limit": 17,
             "home_star_graph_direction": "undirected",
             "home_star_illumination_rule": "reverse_depth",
             "home_star_active_edge_mode": "minimal_tree",
@@ -1682,7 +1680,6 @@ def test_admin_can_configure_client_visual_effects(
         "home_star_hover_info_enabled": False,
         "home_star_hover_relations_enabled": True,
         "home_star_hover_relation_opacity_percent": 9,
-        "home_star_hover_relation_limit": 17,
         "home_star_graph_direction": "undirected",
         "home_star_illumination_rule": "reverse_depth",
         "home_star_active_edge_mode": "minimal_tree",
@@ -1791,7 +1788,6 @@ def test_admin_can_configure_client_visual_effects(
     assert config["home_star_hover_info_enabled"] is False
     assert config["home_star_hover_relations_enabled"] is True
     assert config["home_star_hover_relation_opacity_percent"] == 9
-    assert config["home_star_hover_relation_limit"] == 17
     assert config["home_star_graph_direction"] == "undirected"
     assert (
         config["home_star_illumination_rule"]
@@ -2018,7 +2014,6 @@ def test_admin_can_configure_client_visual_effects(
         headers={"X-CSRF-Token": csrf},
         json={
             "home_star_hover_relation_opacity_percent": 26,
-            "home_star_hover_relation_limit": 51,
         },
     )
     assert invalid_hover_preview.status_code == 422

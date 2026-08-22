@@ -23,7 +23,6 @@
     home_star_hover_info_enabled: true,
     home_star_hover_relations_enabled: true,
     home_star_hover_relation_opacity_percent: 6,
-    home_star_hover_relation_limit: 12,
     home_star_3d_field_enabled: true,
     home_star_3d_field_star_count: 320,
     home_star_3d_dust_enabled: true,
@@ -255,8 +254,6 @@
             settings.home_star_hover_relations_enabled,
           home_star_hover_relation_opacity_percent:
             settings.home_star_hover_relation_opacity_percent,
-          home_star_hover_relation_limit:
-            settings.home_star_hover_relation_limit,
           home_star_graph_direction:
             settings.home_star_graph_direction,
           home_star_brightness_variation_enabled:

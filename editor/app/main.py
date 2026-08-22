@@ -319,11 +319,6 @@ class VisualSettingsRequest(BaseModel):
         ge=1,
         le=25,
     )
-    home_star_hover_relation_limit: int = Field(
-        default=12,
-        ge=1,
-        le=50,
-    )
     home_star_brightness_variation_enabled: bool = False
     home_star_brightness_min: float = Field(
         default=0.0,
@@ -1389,13 +1384,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "home_star_hover_relation_opacity_percent",
                         6,
                     ),
-                ),
-            ),
-            "home_star_hover_relation_limit": max(
-                1,
-                min(
-                    50,
-                    setting_int("home_star_hover_relation_limit", 12),
                 ),
             ),
             "home_star_brightness_variation_enabled": (
@@ -4028,9 +4016,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_star_hover_relation_opacity_percent": str(
                 payload.home_star_hover_relation_opacity_percent
-            ),
-            "home_star_hover_relation_limit": str(
-                payload.home_star_hover_relation_limit
             ),
             "home_star_brightness_variation_enabled": (
                 "1"
