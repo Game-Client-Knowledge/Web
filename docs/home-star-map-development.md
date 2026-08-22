@@ -526,12 +526,18 @@ data-animated-star-count
 data-blue-supergiant-count
 data-hypergiant-count
 data-background-star-count
+data-background-field-enabled
+data-background-field-count
+data-background-dust-enabled
 data-background-dust-count
 data-background-brightness
 data-dust-brightness
 data-background-size-scale
+data-background-cluster-enabled
 data-background-cluster-count
+data-background-stream-enabled
 data-background-stream-count
+data-background-nebula-enabled
 data-background-nebula-count
 data-background-structure-motion
 data-document-count
@@ -600,12 +606,19 @@ Main settings:
 | `home_star_3d_core_max_css_size` | `8..120` CSS px diameter |
 | `home_star_3d_spike_max_css_size` | `40..800` CSS px diameter |
 | `home_star_3d_pulse_max_css_size` | `8..120` CSS px diameter |
-| `home_star_3d_background_star_count` | `0..10000`; total far-field particle count, default `3200` |
-| `home_star_3d_dust_fraction_percent` | `0..100`; share of particles assigned to the tilted dust band, default `60` |
+| `home_star_3d_field_enabled` | Enables the uniform far-field stars |
+| `home_star_3d_field_star_count` | `0..5000`; exact uniform far-field star count, default `320` |
+| `home_star_3d_dust_enabled` | Enables the tilted dust band |
+| `home_star_3d_dust_star_count` | `0..3000`; exact dust-band particle count, default `1920` |
+| `home_star_3d_cluster_enabled` | Enables the four globular clusters |
+| `home_star_3d_cluster_star_count` | `0..800`; exact total cluster star count, default `422` |
+| `home_star_3d_stream_enabled` | Enables the two stellar streams |
+| `home_star_3d_stream_star_count` | `0..700`; exact total stream star count, default `326` |
+| `home_star_3d_nebula_enabled` | Enables the three nebula knots |
+| `home_star_3d_nebula_star_count` | `0..500`; exact total nebula particle count, default `212` |
 | `home_star_3d_background_brightness_percent` | `0..400`; far-field star exposure, default `220` |
 | `home_star_3d_dust_brightness_percent` | `0..500`; dust-band exposure, default `260` |
 | `home_star_3d_background_size_percent` | `25..300`; far-field particle size, default `160` |
-| `home_star_3d_structure_fraction_percent` | `0..70`; share of background particles used by globular clusters, stellar streams, and nebula knots, default `30` |
 | `home_star_3d_structure_motion_percent` | `0..200`; GPU motion intensity for dust, clusters, streams, and nebulae, default `100` |
 | `home_star_brightness_min` | `0..100`, not above initial or maximum |
 | `home_star_brightness_initial` | `0..100`, inside configured bounds |
@@ -638,7 +651,7 @@ The built-in brightness tiers are:
 | --- | --- | ---: | --- |
 | `brown-dwarf` | 褐矮星 | 0 | Dim red-brown core with ember flicker |
 | `red-dwarf` | 红矮星 | 25 | Compact warm halo with brief flare peaks |
-| `yellow-dwarf` | 黄矮星 | 50 | Warm corona, subtle pulsation, four diffraction spikes |
+| `yellow-dwarf` | 黄矮星 | 50 | Warm circulating corona, visible pulsation, four rotating diffraction spikes |
 | `blue-giant` | 蓝巨星 | 80 | Blue-white corona, Airy ring, eight diffraction spikes |
 | `blue-supergiant` | 蓝超巨星 | 92 | Expanded stellar-wind halo and slower variability |
 | `hypergiant` | 特超巨星 | 98 | Broad turbulent corona and strongest low-frequency variability |
@@ -647,15 +660,18 @@ The effects are generated inside the existing halo, core, and spike point
 shaders. They do not add WebGL draw calls. The previous built-in four-tier
 configuration migrates automatically; a customized tier list is not replaced.
 
-Every built-in tier has a distinct time-domain profile: brown dwarfs flicker
-like embers, red dwarfs produce brief flare peaks, yellow dwarfs circulate
-their corona, blue giants scintillate in color temperature, and the two
-supergiant classes combine stellar-wind turbulence with irregular pulsation.
+Every built-in tier has a distinct and visually detectable time-domain
+profile: brown dwarfs flicker like embers, red dwarfs produce brief flare
+peaks, yellow dwarfs circulate their corona, blue giants scintillate in color
+temperature, and the two supergiant classes combine stellar-wind turbulence
+with irregular pulsation. Halo size, core intensity, diffraction rotation,
+temperature, and corona turbulence all advance from the same shader clock.
 
-The background point layer also reserves configurable particles for four
-globular clusters, two stellar streams, and three breathing nebula knots.
-These structures, the dust band, and the uniform deep field remain one
-`THREE.Points` object and therefore one WebGL draw call.
+The uniform deep field, dust band, four globular clusters, two stellar streams,
+and three breathing nebula knots each have an independent enable switch and
+exact particle count. Their particles are concatenated into one buffer
+geometry, so all enabled background structures remain one `THREE.Points`
+object and therefore one WebGL draw call.
 
 ## 12. Development Workflows
 

@@ -1186,10 +1186,26 @@ async function loadOverview() {
     String(data.settings.home_star_3d_spike_max_css_size);
   byId("visualSettingsForm").home_star_3d_pulse_max_css_size.value =
     String(data.settings.home_star_3d_pulse_max_css_size);
-  byId("visualSettingsForm").home_star_3d_background_star_count.value =
-    String(data.settings.home_star_3d_background_star_count);
-  byId("visualSettingsForm").home_star_3d_dust_fraction_percent.value =
-    String(data.settings.home_star_3d_dust_fraction_percent);
+  byId("visualSettingsForm").home_star_3d_field_enabled.checked =
+    data.settings.home_star_3d_field_enabled;
+  byId("visualSettingsForm").home_star_3d_field_star_count.value =
+    String(data.settings.home_star_3d_field_star_count);
+  byId("visualSettingsForm").home_star_3d_dust_enabled.checked =
+    data.settings.home_star_3d_dust_enabled;
+  byId("visualSettingsForm").home_star_3d_dust_star_count.value =
+    String(data.settings.home_star_3d_dust_star_count);
+  byId("visualSettingsForm").home_star_3d_cluster_enabled.checked =
+    data.settings.home_star_3d_cluster_enabled;
+  byId("visualSettingsForm").home_star_3d_cluster_star_count.value =
+    String(data.settings.home_star_3d_cluster_star_count);
+  byId("visualSettingsForm").home_star_3d_stream_enabled.checked =
+    data.settings.home_star_3d_stream_enabled;
+  byId("visualSettingsForm").home_star_3d_stream_star_count.value =
+    String(data.settings.home_star_3d_stream_star_count);
+  byId("visualSettingsForm").home_star_3d_nebula_enabled.checked =
+    data.settings.home_star_3d_nebula_enabled;
+  byId("visualSettingsForm").home_star_3d_nebula_star_count.value =
+    String(data.settings.home_star_3d_nebula_star_count);
   byId(
     "visualSettingsForm"
   ).home_star_3d_background_brightness_percent.value =
@@ -1198,8 +1214,6 @@ async function loadOverview() {
     String(data.settings.home_star_3d_dust_brightness_percent);
   byId("visualSettingsForm").home_star_3d_background_size_percent.value =
     String(data.settings.home_star_3d_background_size_percent);
-  byId("visualSettingsForm").home_star_3d_structure_fraction_percent.value =
-    String(data.settings.home_star_3d_structure_fraction_percent);
   byId("visualSettingsForm").home_star_3d_structure_motion_percent.value =
     String(data.settings.home_star_3d_structure_motion_percent);
   byId("visualSettingsForm").home_star_brightness_variation_enabled.checked =
@@ -1411,11 +1425,30 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         home_star_3d_pulse_max_css_size: Number(
           form.home_star_3d_pulse_max_css_size.value
         ),
-        home_star_3d_background_star_count: Number(
-          form.home_star_3d_background_star_count.value
+        home_star_3d_field_enabled:
+          form.home_star_3d_field_enabled.checked,
+        home_star_3d_field_star_count: Number(
+          form.home_star_3d_field_star_count.value
         ),
-        home_star_3d_dust_fraction_percent: Number(
-          form.home_star_3d_dust_fraction_percent.value
+        home_star_3d_dust_enabled:
+          form.home_star_3d_dust_enabled.checked,
+        home_star_3d_dust_star_count: Number(
+          form.home_star_3d_dust_star_count.value
+        ),
+        home_star_3d_cluster_enabled:
+          form.home_star_3d_cluster_enabled.checked,
+        home_star_3d_cluster_star_count: Number(
+          form.home_star_3d_cluster_star_count.value
+        ),
+        home_star_3d_stream_enabled:
+          form.home_star_3d_stream_enabled.checked,
+        home_star_3d_stream_star_count: Number(
+          form.home_star_3d_stream_star_count.value
+        ),
+        home_star_3d_nebula_enabled:
+          form.home_star_3d_nebula_enabled.checked,
+        home_star_3d_nebula_star_count: Number(
+          form.home_star_3d_nebula_star_count.value
         ),
         home_star_3d_background_brightness_percent: Number(
           form.home_star_3d_background_brightness_percent.value
@@ -1425,9 +1458,6 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         ),
         home_star_3d_background_size_percent: Number(
           form.home_star_3d_background_size_percent.value
-        ),
-        home_star_3d_structure_fraction_percent: Number(
-          form.home_star_3d_structure_fraction_percent.value
         ),
         home_star_3d_structure_motion_percent: Number(
           form.home_star_3d_structure_motion_percent.value
@@ -1538,18 +1568,32 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         saved.home_star_3d_spike_max_css_size,
       home_star_3d_pulse_max_css_size:
         saved.home_star_3d_pulse_max_css_size,
-      home_star_3d_background_star_count:
-        saved.home_star_3d_background_star_count,
-      home_star_3d_dust_fraction_percent:
-        saved.home_star_3d_dust_fraction_percent,
+      home_star_3d_field_enabled:
+        saved.home_star_3d_field_enabled,
+      home_star_3d_field_star_count:
+        saved.home_star_3d_field_star_count,
+      home_star_3d_dust_enabled:
+        saved.home_star_3d_dust_enabled,
+      home_star_3d_dust_star_count:
+        saved.home_star_3d_dust_star_count,
+      home_star_3d_cluster_enabled:
+        saved.home_star_3d_cluster_enabled,
+      home_star_3d_cluster_star_count:
+        saved.home_star_3d_cluster_star_count,
+      home_star_3d_stream_enabled:
+        saved.home_star_3d_stream_enabled,
+      home_star_3d_stream_star_count:
+        saved.home_star_3d_stream_star_count,
+      home_star_3d_nebula_enabled:
+        saved.home_star_3d_nebula_enabled,
+      home_star_3d_nebula_star_count:
+        saved.home_star_3d_nebula_star_count,
       home_star_3d_background_brightness_percent:
         saved.home_star_3d_background_brightness_percent,
       home_star_3d_dust_brightness_percent:
         saved.home_star_3d_dust_brightness_percent,
       home_star_3d_background_size_percent:
         saved.home_star_3d_background_size_percent,
-      home_star_3d_structure_fraction_percent:
-        saved.home_star_3d_structure_fraction_percent,
       home_star_3d_structure_motion_percent:
         saved.home_star_3d_structure_motion_percent,
       home_star_brightness_variation_enabled:

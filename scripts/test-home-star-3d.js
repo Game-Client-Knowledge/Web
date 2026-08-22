@@ -35,15 +35,22 @@ for (const setting of [
   "home_star_3d_core_max_css_size",
   "home_star_3d_spike_max_css_size",
   "home_star_3d_pulse_max_css_size",
-  "home_star_3d_background_star_count",
-  "home_star_3d_dust_fraction_percent",
+  "home_star_3d_field_enabled",
+  "home_star_3d_field_star_count",
+  "home_star_3d_dust_enabled",
+  "home_star_3d_dust_star_count",
+  "home_star_3d_cluster_enabled",
+  "home_star_3d_cluster_star_count",
+  "home_star_3d_stream_enabled",
+  "home_star_3d_stream_star_count",
+  "home_star_3d_nebula_enabled",
+  "home_star_3d_nebula_star_count",
   "home_star_3d_background_brightness_percent",
   "home_star_3d_dust_brightness_percent",
   "home_star_3d_background_size_percent",
-  "home_star_3d_structure_fraction_percent",
   "home_star_3d_structure_motion_percent"
 ]) {
-  assert.match(source, new RegExp(`"${setting}"`));
+  assert.match(source, new RegExp(setting));
   assert.match(mapSource, new RegExp(setting));
   assert.match(visualSource, new RegExp(setting));
 }
@@ -60,8 +67,11 @@ assert.match(
   /strategy\.camera === "flat"[\s\S]*DEFAULT_ORBIT_POINT_MIN_DEPTH/
 );
 assert.match(source, /const SECONDARY_SPIKE_FRACTION = 0\.06;/);
-assert.match(source, /const DEFAULT_BACKGROUND_STAR_COUNT = 3200;/);
-assert.match(source, /const DEFAULT_BACKGROUND_DUST_FRACTION = 0\.6;/);
+assert.match(source, /field: 320,/);
+assert.match(source, /dust: 1920,/);
+assert.match(source, /cluster: 422,/);
+assert.match(source, /stream: 326,/);
+assert.match(source, /nebula: 212/);
 assert.match(source, /const DEFAULT_BACKGROUND_BRIGHTNESS = 2\.2;/);
 assert.match(source, /const DEFAULT_DUST_BRIGHTNESS = 2\.6;/);
 assert.match(source, /const DEFAULT_BACKGROUND_SIZE_SCALE = 1\.6;/);
@@ -87,8 +97,12 @@ assert.match(source, /float coronaMask =/);
 assert.match(source, /vEffect\.z \* coronaMask \* turbulence/);
 assert.match(
   source,
-  /projectedSize \*= 1\.0 \+ pulse \* pulseWeight \+ flare \* 0\.09;/
+  /1\.0 \+ pulse \* pulseGain \+ flare \* flareGain/
 );
+assert.match(source, /varying float vPulse;/);
+assert.match(source, /varying float vFlare;/);
+assert.match(source, /1\.0 \+ vPulse \* 3\.2/);
+assert.match(source, /vFlare \* 0\.75/);
 assert.match(source, /float haloEdge = 1\.0 - smoothstep\(0\.36, 0\.49, radius\);/);
 assert.match(
   source,
@@ -119,9 +133,15 @@ assert.match(
   source,
   /glCanvas\.dataset\.backgroundStarCount/
 );
+assert.match(source, /glCanvas\.dataset\.backgroundFieldCount/);
+assert.match(source, /glCanvas\.dataset\.backgroundFieldEnabled/);
+assert.match(source, /glCanvas\.dataset\.backgroundDustEnabled/);
 assert.match(source, /glCanvas\.dataset\.backgroundDustCount/);
+assert.match(source, /glCanvas\.dataset\.backgroundClusterEnabled/);
 assert.match(source, /glCanvas\.dataset\.backgroundClusterCount/);
+assert.match(source, /glCanvas\.dataset\.backgroundStreamEnabled/);
 assert.match(source, /glCanvas\.dataset\.backgroundStreamCount/);
+assert.match(source, /glCanvas\.dataset\.backgroundNebulaEnabled/);
 assert.match(source, /glCanvas\.dataset\.backgroundNebulaCount/);
 assert.match(source, /glCanvas\.dataset\.backgroundStructureMotion/);
 assert.match(source, /glCanvas\.dataset\.visualProfile = "deep-field"/);
@@ -138,18 +158,18 @@ for (const tier of [
   assert.match(mapSource, new RegExp(`"${tier[0]}"`));
   assert.match(mapSource, new RegExp(tier[1]));
 }
-assert.match(mapSource, /variabilityAmplitude: 0\.052/);
-assert.match(mapSource, /coronaStrength: 0\.56/);
-assert.match(mapSource, /flareStrength: 0\.28/);
-assert.match(mapSource, /temperatureShift: 0\.28/);
-assert.match(mapSource, /surfaceFlowSpeed: 0\.24/);
+assert.match(mapSource, /variabilityAmplitude: 0\.105/);
+assert.match(mapSource, /coronaStrength: 0\.7/);
+assert.match(mapSource, /flareStrength: 0\.42/);
+assert.match(mapSource, /temperatureShift: 0\.4/);
+assert.match(mapSource, /surfaceFlowSpeed: 0\.38/);
 for (const value of [
-  "flareStrength: 0.015",
-  "flareStrength: 0.2",
-  "flareStrength: 0.055",
-  "flareStrength: 0.09",
-  "flareStrength: 0.16",
-  "flareStrength: 0.28"
+  "flareStrength: 0.08",
+  "flareStrength: 0.38",
+  "flareStrength: 0.14",
+  "flareStrength: 0.18",
+  "flareStrength: 0.26",
+  "flareStrength: 0.42"
 ]) {
   assert.match(mapSource, new RegExp(value.replace(".", "\\.")));
 }

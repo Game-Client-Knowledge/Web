@@ -62,12 +62,16 @@
   });
   const POINT_SIZE_SOFT_KNEE = 0.62;
   const SECONDARY_SPIKE_FRACTION = 0.06;
-  const DEFAULT_BACKGROUND_STAR_COUNT = 3200;
-  const DEFAULT_BACKGROUND_DUST_FRACTION = 0.6;
+  const DEFAULT_BACKGROUND_COUNTS = Object.freeze({
+    field: 320,
+    dust: 1920,
+    cluster: 422,
+    stream: 326,
+    nebula: 212
+  });
   const DEFAULT_BACKGROUND_BRIGHTNESS = 2.2;
   const DEFAULT_DUST_BRIGHTNESS = 2.6;
   const DEFAULT_BACKGROUND_SIZE_SCALE = 1.6;
-  const DEFAULT_BACKGROUND_STRUCTURE_FRACTION = 0.3;
   const DEFAULT_BACKGROUND_STRUCTURE_MOTION = 1;
   const DRIFT_SPEED_MULTIPLIER = 2.4;
   const SPIKE_ART_SCALE = 2.1;
@@ -934,21 +938,66 @@
         120
       )
     });
-    const backgroundStarCount = Math.round(
-      boundedSetting(
-        "home_star_3d_background_star_count",
-        DEFAULT_BACKGROUND_STAR_COUNT,
-        0,
-        10000
-      )
-    );
-    const backgroundDustFraction =
-      boundedSetting(
-        "home_star_3d_dust_fraction_percent",
-        DEFAULT_BACKGROUND_DUST_FRACTION * 100,
-        0,
-        100
-      ) / 100;
+    const backgroundFieldEnabled =
+      runtimeSettings.home_star_3d_field_enabled !== false;
+    const backgroundDustEnabled =
+      runtimeSettings.home_star_3d_dust_enabled !== false;
+    const backgroundClusterEnabled =
+      runtimeSettings.home_star_3d_cluster_enabled !== false;
+    const backgroundStreamEnabled =
+      runtimeSettings.home_star_3d_stream_enabled !== false;
+    const backgroundNebulaEnabled =
+      runtimeSettings.home_star_3d_nebula_enabled !== false;
+    const backgroundFieldCount = backgroundFieldEnabled
+      ? Math.round(
+          boundedSetting(
+            "home_star_3d_field_star_count",
+            DEFAULT_BACKGROUND_COUNTS.field,
+            0,
+            5000
+          )
+        )
+      : 0;
+    const backgroundDustCount = backgroundDustEnabled
+      ? Math.round(
+          boundedSetting(
+            "home_star_3d_dust_star_count",
+            DEFAULT_BACKGROUND_COUNTS.dust,
+            0,
+            3000
+          )
+        )
+      : 0;
+    const backgroundClusterCount = backgroundClusterEnabled
+      ? Math.round(
+          boundedSetting(
+            "home_star_3d_cluster_star_count",
+            DEFAULT_BACKGROUND_COUNTS.cluster,
+            0,
+            800
+          )
+        )
+      : 0;
+    const backgroundStreamCount = backgroundStreamEnabled
+      ? Math.round(
+          boundedSetting(
+            "home_star_3d_stream_star_count",
+            DEFAULT_BACKGROUND_COUNTS.stream,
+            0,
+            700
+          )
+        )
+      : 0;
+    const backgroundNebulaCount = backgroundNebulaEnabled
+      ? Math.round(
+          boundedSetting(
+            "home_star_3d_nebula_star_count",
+            DEFAULT_BACKGROUND_COUNTS.nebula,
+            0,
+            500
+          )
+        )
+      : 0;
     const backgroundBrightness =
       boundedSetting(
         "home_star_3d_background_brightness_percent",
@@ -969,13 +1018,6 @@
         DEFAULT_BACKGROUND_SIZE_SCALE * 100,
         25,
         300
-      ) / 100;
-    const backgroundStructureFraction =
-      boundedSetting(
-        "home_star_3d_structure_fraction_percent",
-        DEFAULT_BACKGROUND_STRUCTURE_FRACTION * 100,
-        0,
-        70
       ) / 100;
     const backgroundStructureMotion =
       boundedSetting(
@@ -1022,6 +1064,8 @@
       "varying float vTile;",
       "varying float vRot;",
       "varying float vPhase;",
+      "varying float vPulse;",
+      "varying float vFlare;",
       "varying vec4 vEffect;",
       "varying vec4 vEffect2;",
       "varying vec3 vColor;",
@@ -1053,10 +1097,18 @@
       "    sin(uTime * aEffect2.y + aPhase * 1.73)",
       "  );",
       "  float flare = pow(flareWave, 6.0) * aEffect2.x;",
-      "  float pulseWeight = uLayerKind < 0.5",
-      "    ? 1.0",
-      "    : (uLayerKind < 1.5 ? 0.28 : 0.65);",
-      "  projectedSize *= 1.0 + pulse * pulseWeight + flare * 0.09;",
+      "  vPulse = pulse;",
+      "  vFlare = flare;",
+      "  float pulseGain = uLayerKind < 0.5",
+      "    ? 2.4",
+      "    : (uLayerKind < 1.5 ? 0.9 : 1.8);",
+      "  float flareGain = uLayerKind < 0.5",
+      "    ? 0.34",
+      "    : (uLayerKind < 1.5 ? 0.12 : 0.45);",
+      "  projectedSize *= max(",
+      "    0.68,",
+      "    1.0 + pulse * pulseGain + flare * flareGain",
+      "  );",
       "  float sizeCap = uMaxCssSize * uPixelRatio;",
       "  float sizeKnee = sizeCap * uSoftKneeRatio;",
       "  float compressedSize = projectedSize;",
@@ -1079,6 +1131,8 @@
       "varying float vTile;",
       "varying float vRot;",
       "varying float vPhase;",
+      "varying float vPulse;",
+      "varying float vFlare;",
       "varying vec4 vEffect;",
       "varying vec4 vEffect2;",
       "varying vec3 vColor;",
@@ -1124,30 +1178,26 @@
       "  vec2 atlasUv = vec2((vTile + uv.x) / uTiles, uv.y);",
       "  vec4 tex = texture2D(uAtlas, atlasUv);",
       "  float twinkle =",
-      "    0.98 + 0.02 * sin(uTime * (0.72 + mod(vPhase, 1.31)) + vPhase);",
+      "    0.94 + 0.06 * sin(uTime * (0.72 + mod(vPhase, 1.31)) + vPhase);",
       "  float variability =",
-      "    1.0 + sin(uTime * vEffect.y + vPhase) * vEffect.x * 1.8;",
+      "    1.0 + vPulse * 3.2;",
       "  vec2 centered = uv - vec2(0.5);",
       "  float radius = length(centered);",
       "  float angle = atan(centered.y, centered.x);",
       "  float flowTime = uTime * (0.25 + vEffect2.w);",
       "  float turbulence =",
-      "    sin(angle * 7.0 + flowTime + vPhase) * 0.22 +",
-      "    sin(angle * 13.0 - flowTime * 0.63 - vPhase) * 0.12;",
-      "  float flareWave = max(",
-      "    0.0,",
-      "    sin(uTime * vEffect2.y + vPhase * 1.73)",
-      "  );",
-      "  float flare = pow(flareWave, 6.0) * vEffect2.x;",
+      "    sin(angle * 7.0 + flowTime * 1.4 + vPhase) * 0.3 +",
+      "    sin(angle * 13.0 - flowTime * 0.82 - vPhase) * 0.18 +",
+      "    sin(radius * 42.0 - flowTime * 2.4 + vPhase) * 0.16;",
       "  float coronaMask =",
       "    smoothstep(0.08, 0.3, radius) *",
       "    (1.0 - smoothstep(0.3, 0.7, radius));",
       "  float corona = max(",
-      "    0.58,",
-      "    1.0 + vEffect.z * coronaMask * turbulence",
+      "    0.42,",
+      "    1.0 + vEffect.z * coronaMask * turbulence * 1.65",
       "  );",
       "  float alpha = tex.a * vAlpha * twinkle *",
-      "    (variability + flare * 0.3) * corona;",
+      "    (variability + vFlare * 0.75) * corona;",
       "  float haloEdge = 1.0 - smoothstep(0.36, 0.49, radius);",
       "  alpha *= mix(haloEdge, 1.0, step(0.5, uLayerKind));",
       "  float contentMask = max(",
@@ -1162,16 +1212,16 @@
       "  if (alpha < 0.004) discard;",
       "  vec3 emitted = tex.rgb * vColor * (0.94 + tex.a * 0.16);",
       "  emitted += vec3(0.08, 0.19, 0.34) *",
-      "    max(0.0, turbulence) * coronaMask * vEffect.z;",
+      "    max(0.0, turbulence) * coronaMask * vEffect.z * 1.8;",
       "  float temperatureWave =",
       "    sin(uTime * (0.55 + vEffect2.y) + vPhase * 1.91) *",
-      "      vEffect2.z + flare * vEffect2.z * 0.8;",
+      "      vEffect2.z + vFlare * vEffect2.z * 0.9;",
       "  emitted += vec3(",
-      "    -temperatureWave * 0.05,",
-      "    abs(temperatureWave) * 0.035,",
-      "    temperatureWave * 0.18",
+      "    -temperatureWave * 0.1,",
+      "    abs(temperatureWave) * 0.07,",
+      "    temperatureWave * 0.3",
       "  );",
-      "  emitted += vec3(0.2, 0.15, 0.1) * flare * tex.a;",
+      "  emitted += vec3(0.24, 0.18, 0.12) * vFlare * tex.a;",
       "  emitted = max(emitted, vec3(0.0));",
       "  gl_FragColor = vec4(emitted, alpha);",
       "}"
@@ -1266,16 +1316,22 @@
     }
 
     function createBackgroundStarLayer() {
+      const fieldCount =
+        strategy.camera === "flat" ? 0 : backgroundFieldCount;
+      const dustCount =
+        strategy.camera === "flat" ? 0 : backgroundDustCount;
+      const clusterCount =
+        strategy.camera === "flat" ? 0 : backgroundClusterCount;
+      const streamCount =
+        strategy.camera === "flat" ? 0 : backgroundStreamCount;
+      const nebulaCount =
+        strategy.camera === "flat" ? 0 : backgroundNebulaCount;
       const count =
-        strategy.camera === "flat" ? 0 : backgroundStarCount;
-      const dustCount = Math.round(count * backgroundDustFraction);
-      const structureCount = Math.min(
-        count - dustCount,
-        Math.round(count * backgroundStructureFraction)
-      );
-      const clusterCount = Math.round(structureCount * 0.44);
-      const streamCount = Math.round(structureCount * 0.34);
-      const nebulaCount = structureCount - clusterCount - streamCount;
+        fieldCount +
+        dustCount +
+        clusterCount +
+        streamCount +
+        nebulaCount;
       const clusterEnd = dustCount + clusterCount;
       const streamEnd = clusterEnd + streamCount;
       const nebulaEnd = streamEnd + nebulaCount;
@@ -1607,6 +1663,7 @@
       const points = new THREE.Points(geometry, material);
       points.frustumCulled = false;
       points.renderOrder = -2;
+      points.userData.fieldCount = fieldCount;
       points.userData.dustCount = dustCount;
       points.userData.clusterCount = clusterCount;
       points.userData.streamCount = streamCount;
@@ -3611,17 +3668,31 @@
     glCanvas.dataset.backgroundStarCount = String(
       backgroundLayer.geometry.attributes.position.count
     );
+    glCanvas.dataset.backgroundFieldEnabled = String(backgroundFieldEnabled);
+    glCanvas.dataset.backgroundFieldCount = String(
+      backgroundLayer.userData.fieldCount || 0
+    );
+    glCanvas.dataset.backgroundDustEnabled = String(backgroundDustEnabled);
     glCanvas.dataset.backgroundDustCount = String(
       backgroundLayer.userData.dustCount || 0
     );
     glCanvas.dataset.backgroundBrightness = String(backgroundBrightness);
     glCanvas.dataset.dustBrightness = String(dustBrightness);
     glCanvas.dataset.backgroundSizeScale = String(backgroundSizeScale);
+    glCanvas.dataset.backgroundClusterEnabled = String(
+      backgroundClusterEnabled
+    );
     glCanvas.dataset.backgroundClusterCount = String(
       backgroundLayer.userData.clusterCount || 0
     );
+    glCanvas.dataset.backgroundStreamEnabled = String(
+      backgroundStreamEnabled
+    );
     glCanvas.dataset.backgroundStreamCount = String(
       backgroundLayer.userData.streamCount || 0
+    );
+    glCanvas.dataset.backgroundNebulaEnabled = String(
+      backgroundNebulaEnabled
     );
     glCanvas.dataset.backgroundNebulaCount = String(
       backgroundLayer.userData.nebulaCount || 0

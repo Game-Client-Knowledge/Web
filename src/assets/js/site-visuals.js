@@ -20,12 +20,19 @@
     home_star_portal_rotation_speed: 2.6,
     home_star_portal_size_percent: 34,
     home_star_portal_brightness_percent: 42,
-    home_star_3d_background_star_count: 3200,
-    home_star_3d_dust_fraction_percent: 60,
+    home_star_3d_field_enabled: true,
+    home_star_3d_field_star_count: 320,
+    home_star_3d_dust_enabled: true,
+    home_star_3d_dust_star_count: 1920,
+    home_star_3d_cluster_enabled: true,
+    home_star_3d_cluster_star_count: 422,
+    home_star_3d_stream_enabled: true,
+    home_star_3d_stream_star_count: 326,
+    home_star_3d_nebula_enabled: true,
+    home_star_3d_nebula_star_count: 212,
     home_star_3d_background_brightness_percent: 220,
     home_star_3d_dust_brightness_percent: 260,
     home_star_3d_background_size_percent: 160,
-    home_star_3d_structure_fraction_percent: 30,
     home_star_3d_structure_motion_percent: 100
   };
   const HOME_INTRO_SETTINGS_CACHE = "gck-home-intro-settings";
@@ -286,18 +293,32 @@
             settings.home_star_3d_spike_max_css_size,
           home_star_3d_pulse_max_css_size:
             settings.home_star_3d_pulse_max_css_size,
-          home_star_3d_background_star_count:
-            settings.home_star_3d_background_star_count,
-          home_star_3d_dust_fraction_percent:
-            settings.home_star_3d_dust_fraction_percent,
+          home_star_3d_field_enabled:
+            settings.home_star_3d_field_enabled,
+          home_star_3d_field_star_count:
+            settings.home_star_3d_field_star_count,
+          home_star_3d_dust_enabled:
+            settings.home_star_3d_dust_enabled,
+          home_star_3d_dust_star_count:
+            settings.home_star_3d_dust_star_count,
+          home_star_3d_cluster_enabled:
+            settings.home_star_3d_cluster_enabled,
+          home_star_3d_cluster_star_count:
+            settings.home_star_3d_cluster_star_count,
+          home_star_3d_stream_enabled:
+            settings.home_star_3d_stream_enabled,
+          home_star_3d_stream_star_count:
+            settings.home_star_3d_stream_star_count,
+          home_star_3d_nebula_enabled:
+            settings.home_star_3d_nebula_enabled,
+          home_star_3d_nebula_star_count:
+            settings.home_star_3d_nebula_star_count,
           home_star_3d_background_brightness_percent:
             settings.home_star_3d_background_brightness_percent,
           home_star_3d_dust_brightness_percent:
             settings.home_star_3d_dust_brightness_percent,
           home_star_3d_background_size_percent:
             settings.home_star_3d_background_size_percent,
-          home_star_3d_structure_fraction_percent:
-            settings.home_star_3d_structure_fraction_percent,
           home_star_3d_structure_motion_percent:
             settings.home_star_3d_structure_motion_percent,
           home_star_brightness_rules:

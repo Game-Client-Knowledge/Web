@@ -407,29 +407,85 @@
               <p>控制远景星场、星尘、星团、恒星流与星云结；仅影响 WebGL 3D 模式，不增加绘制层。</p>
             </div>
             <div class="visual-group-grid">
-              <label>
-                深空星总数
-                <input
-                  name="home_star_3d_background_star_count"
-                  type="number"
-                  min="0"
-                  max="10000"
-                  step="100"
-                  required
-                >
-                <small class="field-help">包含普通远景星、星尘和特殊结构粒子；设为 0 可关闭深空背景。</small>
+              <label class="check-label">
+                <input name="home_star_3d_field_enabled" type="checkbox">
+                普通远景星
               </label>
               <label>
-                星尘带占比（%）
+                普通远景星数量
                 <input
-                  name="home_star_3d_dust_fraction_percent"
+                  name="home_star_3d_field_star_count"
                   type="number"
                   min="0"
-                  max="100"
+                  max="5000"
+                  step="10"
+                  required
+                >
+                <small class="field-help">均匀分布在远景球壳中的星点数量。</small>
+              </label>
+              <label class="check-label">
+                <input name="home_star_3d_dust_enabled" type="checkbox">
+                倾斜星尘带
+              </label>
+              <label>
+                星尘带星体数量
+                <input
+                  name="home_star_3d_dust_star_count"
+                  type="number"
+                  min="0"
+                  max="3000"
+                  step="10"
+                  required
+                >
+                <small class="field-help">组成倾斜盘面的星尘颗粒数量。</small>
+              </label>
+              <label class="check-label">
+                <input name="home_star_3d_cluster_enabled" type="checkbox">
+                球状星团
+              </label>
+              <label>
+                星团星体数量
+                <input
+                  name="home_star_3d_cluster_star_count"
+                  type="number"
+                  min="0"
+                  max="800"
                   step="1"
                   required
                 >
-                <small class="field-help">决定总粒子中进入倾斜星尘带的比例。</small>
+                <small class="field-help">分配到四个自转球状星团的星体总数。</small>
+              </label>
+              <label class="check-label">
+                <input name="home_star_3d_stream_enabled" type="checkbox">
+                双股恒星流
+              </label>
+              <label>
+                恒星流星体数量
+                <input
+                  name="home_star_3d_stream_star_count"
+                  type="number"
+                  min="0"
+                  max="700"
+                  step="1"
+                  required
+                >
+                <small class="field-help">分配到两条波动恒星流的星体总数。</small>
+              </label>
+              <label class="check-label">
+                <input name="home_star_3d_nebula_enabled" type="checkbox">
+                星云结
+              </label>
+              <label>
+                星云结星体数量
+                <input
+                  name="home_star_3d_nebula_star_count"
+                  type="number"
+                  min="0"
+                  max="500"
+                  step="1"
+                  required
+                >
+                <small class="field-help">分配到三个呼吸式星云结的粒子总数。</small>
               </label>
               <label>
                 深空星亮度（%）
@@ -466,18 +522,6 @@
                   required
                 >
                 <small class="field-help">缩放远景星点与星尘颗粒的屏幕尺寸。</small>
-              </label>
-              <label>
-                特殊结构占比（%）
-                <input
-                  name="home_star_3d_structure_fraction_percent"
-                  type="number"
-                  min="0"
-                  max="70"
-                  step="1"
-                  required
-                >
-                <small class="field-help">将背景粒子用于球状星团、恒星流与星云结；设为 0 可关闭。</small>
               </label>
               <label>
                 结构动态强度（%）

@@ -407,15 +407,35 @@ class VisualSettingsRequest(BaseModel):
         ge=8,
         le=120,
     )
-    home_star_3d_background_star_count: int = Field(
-        default=3200,
+    home_star_3d_field_enabled: bool = True
+    home_star_3d_field_star_count: int = Field(
+        default=320,
         ge=0,
-        le=10000,
+        le=5000,
     )
-    home_star_3d_dust_fraction_percent: float = Field(
-        default=60,
+    home_star_3d_dust_enabled: bool = True
+    home_star_3d_dust_star_count: int = Field(
+        default=1920,
         ge=0,
-        le=100,
+        le=3000,
+    )
+    home_star_3d_cluster_enabled: bool = True
+    home_star_3d_cluster_star_count: int = Field(
+        default=422,
+        ge=0,
+        le=800,
+    )
+    home_star_3d_stream_enabled: bool = True
+    home_star_3d_stream_star_count: int = Field(
+        default=326,
+        ge=0,
+        le=700,
+    )
+    home_star_3d_nebula_enabled: bool = True
+    home_star_3d_nebula_star_count: int = Field(
+        default=212,
+        ge=0,
+        le=500,
     )
     home_star_3d_background_brightness_percent: float = Field(
         default=220,
@@ -431,11 +451,6 @@ class VisualSettingsRequest(BaseModel):
         default=160,
         ge=25,
         le=300,
-    )
-    home_star_3d_structure_fraction_percent: float = Field(
-        default=30,
-        ge=0,
-        le=70,
     )
     home_star_3d_structure_motion_percent: float = Field(
         default=100,
@@ -1498,20 +1513,65 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     ),
                 ),
             ),
-            "home_star_3d_background_star_count": max(
+            "home_star_3d_field_enabled": (
+                db.setting("home_star_3d_field_enabled", "1") == "1"
+            ),
+            "home_star_3d_field_star_count": max(
                 0,
                 min(
-                    10000,
-                    setting_int("home_star_3d_background_star_count", 3200),
+                    5000,
+                    setting_int("home_star_3d_field_star_count", 320),
                 ),
             ),
-            "home_star_3d_dust_fraction_percent": max(
+            "home_star_3d_dust_enabled": (
+                db.setting("home_star_3d_dust_enabled", "1") == "1"
+            ),
+            "home_star_3d_dust_star_count": max(
                 0,
                 min(
-                    100,
-                    setting_float(
-                        "home_star_3d_dust_fraction_percent",
-                        60,
+                    3000,
+                    setting_int(
+                        "home_star_3d_dust_star_count",
+                        1920,
+                    ),
+                ),
+            ),
+            "home_star_3d_cluster_enabled": (
+                db.setting("home_star_3d_cluster_enabled", "1") == "1"
+            ),
+            "home_star_3d_cluster_star_count": max(
+                0,
+                min(
+                    800,
+                    setting_int(
+                        "home_star_3d_cluster_star_count",
+                        422,
+                    ),
+                ),
+            ),
+            "home_star_3d_stream_enabled": (
+                db.setting("home_star_3d_stream_enabled", "1") == "1"
+            ),
+            "home_star_3d_stream_star_count": max(
+                0,
+                min(
+                    700,
+                    setting_int(
+                        "home_star_3d_stream_star_count",
+                        326,
+                    ),
+                ),
+            ),
+            "home_star_3d_nebula_enabled": (
+                db.setting("home_star_3d_nebula_enabled", "1") == "1"
+            ),
+            "home_star_3d_nebula_star_count": max(
+                0,
+                min(
+                    500,
+                    setting_int(
+                        "home_star_3d_nebula_star_count",
+                        212,
                     ),
                 ),
             ),
@@ -1542,16 +1602,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     setting_float(
                         "home_star_3d_background_size_percent",
                         160,
-                    ),
-                ),
-            ),
-            "home_star_3d_structure_fraction_percent": max(
-                0,
-                min(
-                    70,
-                    setting_float(
-                        "home_star_3d_structure_fraction_percent",
-                        30,
                     ),
                 ),
             ),
@@ -4006,11 +4056,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "home_star_3d_pulse_max_css_size": str(
                 payload.home_star_3d_pulse_max_css_size
             ),
-            "home_star_3d_background_star_count": str(
-                payload.home_star_3d_background_star_count
+            "home_star_3d_field_enabled": (
+                "1" if payload.home_star_3d_field_enabled else "0"
             ),
-            "home_star_3d_dust_fraction_percent": str(
-                payload.home_star_3d_dust_fraction_percent
+            "home_star_3d_field_star_count": str(
+                payload.home_star_3d_field_star_count
+            ),
+            "home_star_3d_dust_enabled": (
+                "1" if payload.home_star_3d_dust_enabled else "0"
+            ),
+            "home_star_3d_dust_star_count": str(
+                payload.home_star_3d_dust_star_count
+            ),
+            "home_star_3d_cluster_enabled": (
+                "1" if payload.home_star_3d_cluster_enabled else "0"
+            ),
+            "home_star_3d_cluster_star_count": str(
+                payload.home_star_3d_cluster_star_count
+            ),
+            "home_star_3d_stream_enabled": (
+                "1" if payload.home_star_3d_stream_enabled else "0"
+            ),
+            "home_star_3d_stream_star_count": str(
+                payload.home_star_3d_stream_star_count
+            ),
+            "home_star_3d_nebula_enabled": (
+                "1" if payload.home_star_3d_nebula_enabled else "0"
+            ),
+            "home_star_3d_nebula_star_count": str(
+                payload.home_star_3d_nebula_star_count
             ),
             "home_star_3d_background_brightness_percent": str(
                 payload.home_star_3d_background_brightness_percent
@@ -4020,9 +4094,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_star_3d_background_size_percent": str(
                 payload.home_star_3d_background_size_percent
-            ),
-            "home_star_3d_structure_fraction_percent": str(
-                payload.home_star_3d_structure_fraction_percent
             ),
             "home_star_3d_structure_motion_percent": str(
                 payload.home_star_3d_structure_motion_percent

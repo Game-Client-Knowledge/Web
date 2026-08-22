@@ -107,12 +107,19 @@ for (const field of [
   "home_star_3d_core_max_css_size",
   "home_star_3d_spike_max_css_size",
   "home_star_3d_pulse_max_css_size",
-  "home_star_3d_background_star_count",
-  "home_star_3d_dust_fraction_percent",
+  "home_star_3d_field_enabled",
+  "home_star_3d_field_star_count",
+  "home_star_3d_dust_enabled",
+  "home_star_3d_dust_star_count",
+  "home_star_3d_cluster_enabled",
+  "home_star_3d_cluster_star_count",
+  "home_star_3d_stream_enabled",
+  "home_star_3d_stream_star_count",
+  "home_star_3d_nebula_enabled",
+  "home_star_3d_nebula_star_count",
   "home_star_3d_background_brightness_percent",
   "home_star_3d_dust_brightness_percent",
   "home_star_3d_background_size_percent",
-  "home_star_3d_structure_fraction_percent",
   "home_star_3d_structure_motion_percent"
 ]) {
   assert.match(html, new RegExp(`name="${field}"`));
@@ -214,7 +221,11 @@ assert.match(javascript, /function renderStarFormulaReference\(\)/);
 assert.match(javascript, /starFormulaEngine\.validateFormula/);
 assert.match(javascript, /home_star_brightness_tiers/);
 assert.match(javascript, /home_star_3d_halo_max_css_size/);
-assert.match(javascript, /home_star_3d_background_star_count/);
+assert.match(javascript, /home_star_3d_field_star_count/);
+assert.match(javascript, /home_star_3d_dust_star_count/);
+assert.match(javascript, /home_star_3d_cluster_star_count/);
+assert.match(javascript, /home_star_3d_stream_star_count/);
+assert.match(javascript, /home_star_3d_nebula_star_count/);
 assert.match(javascript, /home_star_3d_dust_brightness_percent/);
 assert.match(javascript, /home_star_experience_mode/);
 assert.match(javascript, /home_star_portal_collapsed_structure/);

@@ -69,12 +69,19 @@
     home_star_3d_core_max_css_size: 36,
     home_star_3d_spike_max_css_size: 240,
     home_star_3d_pulse_max_css_size: 36,
-    home_star_3d_background_star_count: 3200,
-    home_star_3d_dust_fraction_percent: 60,
+    home_star_3d_field_enabled: true,
+    home_star_3d_field_star_count: 320,
+    home_star_3d_dust_enabled: true,
+    home_star_3d_dust_star_count: 1920,
+    home_star_3d_cluster_enabled: true,
+    home_star_3d_cluster_star_count: 422,
+    home_star_3d_stream_enabled: true,
+    home_star_3d_stream_star_count: 326,
+    home_star_3d_nebula_enabled: true,
+    home_star_3d_nebula_star_count: 212,
     home_star_3d_background_brightness_percent: 220,
     home_star_3d_dust_brightness_percent: 260,
     home_star_3d_background_size_percent: 160,
-    home_star_3d_structure_fraction_percent: 30,
     home_star_3d_structure_motion_percent: 100,
     home_star_active_edge_mode: "single_path",
     home_star_brightness_rules:
@@ -177,14 +184,14 @@
       spikeLength: 0,
       spikeEight: false,
       spikeAlpha: 0,
-      variabilityAmplitude: 0.006,
-      variabilitySpeed: 0.28,
-      coronaStrength: 0.025,
-      rotationSpeed: 0,
-      flareStrength: 0.015,
-      flareSpeed: 0.22,
-      temperatureShift: 0.09,
-      surfaceFlowSpeed: 0.18
+      variabilityAmplitude: 0.025,
+      variabilitySpeed: 0.7,
+      coronaStrength: 0.12,
+      rotationSpeed: 0.015,
+      flareStrength: 0.08,
+      flareSpeed: 0.5,
+      temperatureShift: 0.12,
+      surfaceFlowSpeed: 0.35
     },
     // 红矮星：温暖的橙红小火苗，光晕收敛柔和
     "red-dwarf": {
@@ -207,14 +214,14 @@
       spikeLength: 0,
       spikeEight: false,
       spikeAlpha: 0,
-      variabilityAmplitude: 0.018,
-      variabilitySpeed: 1.08,
-      coronaStrength: 0.09,
-      rotationSpeed: 0,
-      flareStrength: 0.2,
-      flareSpeed: 1.55,
-      temperatureShift: 0.16,
-      surfaceFlowSpeed: 0.72
+      variabilityAmplitude: 0.055,
+      variabilitySpeed: 1.2,
+      coronaStrength: 0.25,
+      rotationSpeed: 0.02,
+      flareStrength: 0.38,
+      flareSpeed: 1.75,
+      temperatureShift: 0.22,
+      surfaceFlowSpeed: 1.1
     },
     // 黄矮星：类太阳暖白，明显辉光 + 纤细四芒
     "yellow-dwarf": {
@@ -237,14 +244,14 @@
       spikeLength: 5.0,
       spikeEight: false,
       spikeAlpha: 0.5,
-      variabilityAmplitude: 0.012,
-      variabilitySpeed: 0.72,
-      coronaStrength: 0.12,
-      rotationSpeed: 0.012,
-      flareStrength: 0.055,
-      flareSpeed: 0.64,
-      temperatureShift: 0.05,
-      surfaceFlowSpeed: 0.42
+      variabilityAmplitude: 0.04,
+      variabilitySpeed: 0.8,
+      coronaStrength: 0.3,
+      rotationSpeed: 0.045,
+      flareStrength: 0.14,
+      flareSpeed: 0.9,
+      temperatureShift: 0.1,
+      surfaceFlowSpeed: 0.7
     },
     // 蓝巨星：冰蓝白炽亮星，大光晕 + 八芒 + 艾里环
     "blue-giant": {
@@ -267,14 +274,14 @@
       spikeLength: 8.0,
       spikeEight: true,
       spikeAlpha: 0.75,
-      variabilityAmplitude: 0.02,
-      variabilitySpeed: 0.52,
-      coronaStrength: 0.24,
-      rotationSpeed: -0.01,
-      flareStrength: 0.09,
-      flareSpeed: 0.82,
-      temperatureShift: 0.18,
-      surfaceFlowSpeed: 0.58
+      variabilityAmplitude: 0.055,
+      variabilitySpeed: 0.65,
+      coronaStrength: 0.4,
+      rotationSpeed: -0.04,
+      flareStrength: 0.18,
+      flareSpeed: 1.05,
+      temperatureShift: 0.26,
+      surfaceFlowSpeed: 0.9
     },
     // 蓝超巨星：更扩张的恒星风光晕、双层艾里环与缓慢光变
     "blue-supergiant": {
@@ -297,14 +304,14 @@
       spikeLength: 10.2,
       spikeEight: true,
       spikeAlpha: 0.86,
-      variabilityAmplitude: 0.034,
-      variabilitySpeed: 0.38,
-      coronaStrength: 0.38,
-      rotationSpeed: 0.015,
-      flareStrength: 0.16,
-      flareSpeed: 0.48,
-      temperatureShift: 0.23,
-      surfaceFlowSpeed: 0.36
+      variabilityAmplitude: 0.075,
+      variabilitySpeed: 0.45,
+      coronaStrength: 0.52,
+      rotationSpeed: 0.032,
+      flareStrength: 0.26,
+      flareSpeed: 0.62,
+      temperatureShift: 0.34,
+      surfaceFlowSpeed: 0.55
     },
     // 特超巨星：极强恒星风、宽阔外晕与可见的低频不规则光变
     hypergiant: {
@@ -327,14 +334,14 @@
       spikeLength: 13.2,
       spikeEight: true,
       spikeAlpha: 1,
-      variabilityAmplitude: 0.052,
-      variabilitySpeed: 0.26,
-      coronaStrength: 0.56,
-      rotationSpeed: -0.018,
-      flareStrength: 0.28,
-      flareSpeed: 0.31,
-      temperatureShift: 0.28,
-      surfaceFlowSpeed: 0.24
+      variabilityAmplitude: 0.105,
+      variabilitySpeed: 0.31,
+      coronaStrength: 0.7,
+      rotationSpeed: -0.027,
+      flareStrength: 0.42,
+      flareSpeed: 0.4,
+      temperatureShift: 0.4,
+      surfaceFlowSpeed: 0.38
     },
     default: {
       tintHex: null,
@@ -1016,15 +1023,40 @@
         8,
         120
       ),
-      home_star_3d_background_star_count: clampedSetting(
-        "home_star_3d_background_star_count",
+      home_star_3d_field_enabled:
+        merged.home_star_3d_field_enabled !== false,
+      home_star_3d_field_star_count: clampedSetting(
+        "home_star_3d_field_star_count",
         0,
-        10000
+        5000
       ),
-      home_star_3d_dust_fraction_percent: clampedSetting(
-        "home_star_3d_dust_fraction_percent",
+      home_star_3d_dust_enabled:
+        merged.home_star_3d_dust_enabled !== false,
+      home_star_3d_dust_star_count: clampedSetting(
+        "home_star_3d_dust_star_count",
         0,
-        100
+        3000
+      ),
+      home_star_3d_cluster_enabled:
+        merged.home_star_3d_cluster_enabled !== false,
+      home_star_3d_cluster_star_count: clampedSetting(
+        "home_star_3d_cluster_star_count",
+        0,
+        800
+      ),
+      home_star_3d_stream_enabled:
+        merged.home_star_3d_stream_enabled !== false,
+      home_star_3d_stream_star_count: clampedSetting(
+        "home_star_3d_stream_star_count",
+        0,
+        700
+      ),
+      home_star_3d_nebula_enabled:
+        merged.home_star_3d_nebula_enabled !== false,
+      home_star_3d_nebula_star_count: clampedSetting(
+        "home_star_3d_nebula_star_count",
+        0,
+        500
       ),
       home_star_3d_background_brightness_percent: clampedSetting(
         "home_star_3d_background_brightness_percent",
@@ -1040,11 +1072,6 @@
         "home_star_3d_background_size_percent",
         25,
         300
-      ),
-      home_star_3d_structure_fraction_percent: clampedSetting(
-        "home_star_3d_structure_fraction_percent",
-        0,
-        70
       ),
       home_star_3d_structure_motion_percent: clampedSetting(
         "home_star_3d_structure_motion_percent",
@@ -1534,12 +1561,12 @@
       return {
         scale:
           1 +
-          pulse * profile.variabilityAmplitude +
-          flare * 0.09,
+          pulse * profile.variabilityAmplitude * 1.7 +
+          flare * 0.18,
         alpha:
           1 +
-          pulse * profile.variabilityAmplitude * 1.8 +
-          flare * 0.3,
+          pulse * profile.variabilityAmplitude * 3.2 +
+          flare * 0.75,
         rotation:
           (((star.index * 53) % 50) - 25) * (Math.PI / 180) +
           seconds * profile.rotationSpeed +
@@ -1547,7 +1574,7 @@
             seconds * profile.surfaceFlowSpeed + phase
           ) *
             profile.coronaStrength *
-            0.025
+            0.06
       };
     }
 
@@ -1581,7 +1608,9 @@
       const tierHaloAlpha =
         presentation.haloAlpha * profile.haloAlphaScale * motion.alpha;
       const tierCoreAlpha =
-        presentation.coreAlpha * profile.coreAlphaScale;
+        presentation.coreAlpha *
+        profile.coreAlphaScale *
+        Math.max(0.62, motion.alpha);
 
       // Halo — pre-rendered radial gradient, tier-tinted. We composite with
       // "lighter" so overlapping stars accumulate to true bright zones instead
@@ -1633,7 +1662,10 @@
       }
 
       context.fillStyle = star.color;
-      context.globalAlpha = presentation.alpha;
+      context.globalAlpha = Math.min(
+        1,
+        presentation.alpha * Math.max(0.62, motion.alpha)
+      );
       context.beginPath();
       context.arc(
         star.x,
