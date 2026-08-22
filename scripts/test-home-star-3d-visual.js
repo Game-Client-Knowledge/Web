@@ -37,6 +37,10 @@ const baseSettings = {
   home_star_strong_relation_style: "solid",
   home_star_reference_relation_style: "dashed",
   home_star_contributor_relation_style: "glow",
+  home_star_hover_info_enabled: true,
+  home_star_hover_relations_enabled: true,
+  home_star_hover_relation_opacity_percent: 6,
+  home_star_hover_relation_limit: 12,
   home_star_brightness_variation_enabled: false,
   home_star_brightness_min: 5,
   home_star_brightness_initial: 25,
@@ -501,6 +505,134 @@ async function inspectLuminousTierAnimation(browser) {
     `luminous-tier-animation: animated=${metrics.animated}, ` +
       `changedPixels=${metrics.changedPixels}, drawCalls=${metrics.calls}`
   );
+}
+
+async function inspectHoverPreview(browser) {
+  const { context, page, errors } = await openPage(browser, {
+    viewport: { width: 1440, height: 1000 },
+    reducedMotion: "no-preference",
+    settings: {
+      home_star_render_mode: "2d-webgl",
+      home_star_experience_mode: "immersive",
+      home_star_relation_visibility: "hidden",
+      home_star_hover_info_enabled: true,
+      home_star_hover_relations_enabled: true,
+      home_star_hover_relation_opacity_percent: 5,
+      home_star_hover_relation_limit: 7,
+      ...luminousTierSettings
+    }
+  });
+  const target = await page.evaluate(() => {
+    const debug = window.__GCK_STAR3D_DEBUG;
+    const canvas = debug.renderer.domElement;
+    const rectangle = canvas.getBoundingClientRect();
+    debug.camera.updateMatrixWorld();
+    return debug.stars
+      .map((star) => {
+        const vector = new window.GCK_STAR3D.Vector3(
+          star.x,
+          star.y,
+          star.z
+        );
+        vector.project(debug.camera);
+        const x = rectangle.left + (vector.x + 1) * rectangle.width / 2;
+        const y = rectangle.top + (1 - vector.y) * rectangle.height / 2;
+        const element = document.elementFromPoint(x, y);
+        const blocked = element?.closest?.(
+          "a, button, input, select, textarea, summary, [role='button']"
+        );
+        const neighbors = debug.stars.filter((candidate) => {
+          if (candidate === star) return false;
+          return Math.hypot(
+            candidate.x - star.x,
+            candidate.y - star.y,
+            candidate.z - star.z
+          ) <= 170;
+        }).length;
+        return { id: star.id, x, y, blocked: Boolean(blocked), neighbors };
+      })
+      .filter((item) => {
+        return (
+          !item.blocked &&
+          item.neighbors > 0 &&
+          item.x >= 20 &&
+          item.x <= innerWidth - 20 &&
+          item.y >= 80 &&
+          item.y <= innerHeight - 20
+        );
+      })
+      .sort((left, right) => right.neighbors - left.neighbors)[0];
+  });
+  assert.ok(target, "hover preview: no visible star candidate");
+  await page.mouse.move(target.x, target.y);
+  await page.waitForFunction(
+    (starId) => {
+      const canvas = window.__GCK_STAR3D_DEBUG.renderer.domElement;
+      return (
+        canvas.dataset.hoveredStarId === starId &&
+        Number(canvas.dataset.hoverRelationCount) > 0
+      );
+    },
+    target.id
+  );
+  const metrics = await page.evaluate(() => {
+    const debug = window.__GCK_STAR3D_DEBUG;
+    const canvas = debug.renderer.domElement;
+    const hoverLabel = document.querySelector(".star-map-hover-label");
+    const pixels = debug.relationCanvas
+      .getContext("2d")
+      .getImageData(
+        0,
+        0,
+        debug.relationCanvas.width,
+        debug.relationCanvas.height
+      ).data;
+    let paintedPixels = 0;
+    for (let index = 3; index < pixels.length; index += 4) {
+      if (pixels[index] > 0) paintedPixels += 1;
+    }
+    return {
+      calls: debug.renderer.info.render.calls,
+      hoveredStarId: canvas.dataset.hoveredStarId,
+      relationCount: Number(canvas.dataset.hoverRelationCount),
+      relationLimit: Number(canvas.dataset.hoverRelationLimit),
+      relationOpacity: Number(canvas.dataset.hoverRelationOpacity),
+      labelVisible: !hoverLabel.hidden,
+      labelText: hoverLabel.textContent,
+      paintedPixels
+    };
+  });
+  assert.equal(metrics.calls, 4, "hover preview changed WebGL draw calls");
+  assert.equal(metrics.hoveredStarId, target.id);
+  assert.ok(metrics.relationCount > 0);
+  assert.ok(metrics.relationCount <= 7);
+  assert.equal(metrics.relationLimit, 7);
+  assert.equal(metrics.relationOpacity, 0.05);
+  assert.equal(metrics.labelVisible, true);
+  assert.match(metrics.labelText, /亮度 \d/);
+  assert.ok(
+    metrics.paintedPixels > 0,
+    "hover preview did not paint weak relations"
+  );
+  const screenshot = path.join(outputDirectory, "hover-preview.png");
+  await page.screenshot({ path: screenshot, fullPage: false });
+  await page.mouse.move(20, 20);
+  await page.waitForFunction(() => {
+    const debug = window.__GCK_STAR3D_DEBUG;
+    const label = document.querySelector(".star-map-hover-label");
+    return (
+      debug.renderer.domElement.dataset.hoveredStarId === "" &&
+      debug.renderer.domElement.dataset.hoverRelationCount === "0" &&
+      label.hidden
+    );
+  });
+  assert.deepEqual(errors, [], "hover preview: browser errors");
+  await context.close();
+  console.log(
+    `hover-preview: relations=${metrics.relationCount}, ` +
+      `paintedPixels=${metrics.paintedPixels}, drawCalls=${metrics.calls}`
+  );
+  return screenshot;
 }
 
 async function inspectDeepSpaceSettings(browser) {
@@ -1166,6 +1298,7 @@ async function inspectScrolledPortalOpening(browser, name, viewport) {
     }
     await inspectContributorIdentityMerge(browser);
     await inspectLuminousTierAnimation(browser);
+    screenshots.push(await inspectHoverPreview(browser));
     await inspectDeepSpaceSettings(browser);
     screenshots.push(
       ...await inspectPortal(

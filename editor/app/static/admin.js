@@ -1152,6 +1152,16 @@ async function loadOverview() {
     data.settings.home_star_reference_relation_style;
   byId("visualSettingsForm").home_star_contributor_relation_style.value =
     data.settings.home_star_contributor_relation_style;
+  byId("visualSettingsForm").home_star_hover_info_enabled.checked =
+    data.settings.home_star_hover_info_enabled;
+  byId("visualSettingsForm").home_star_hover_relations_enabled.checked =
+    data.settings.home_star_hover_relations_enabled;
+  byId(
+    "visualSettingsForm"
+  ).home_star_hover_relation_opacity_percent.value =
+    String(data.settings.home_star_hover_relation_opacity_percent);
+  byId("visualSettingsForm").home_star_hover_relation_limit.value =
+    String(data.settings.home_star_hover_relation_limit);
   byId("visualSettingsForm").home_star_graph_direction.value =
     data.settings.home_star_graph_direction;
   byId("visualSettingsForm").home_star_illumination_rule.value =
@@ -1380,6 +1390,16 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
           form.home_star_reference_relation_style.value,
         home_star_contributor_relation_style:
           form.home_star_contributor_relation_style.value,
+        home_star_hover_info_enabled:
+          form.home_star_hover_info_enabled.checked,
+        home_star_hover_relations_enabled:
+          form.home_star_hover_relations_enabled.checked,
+        home_star_hover_relation_opacity_percent: Number(
+          form.home_star_hover_relation_opacity_percent.value
+        ),
+        home_star_hover_relation_limit: Number(
+          form.home_star_hover_relation_limit.value
+        ),
         home_star_graph_direction:
           form.home_star_graph_direction.value,
         home_star_illumination_rule:
@@ -1536,6 +1556,14 @@ byId("visualSettingsForm").addEventListener("submit", async (event) => {
         saved.home_star_reference_relation_style,
       home_star_contributor_relation_style:
         saved.home_star_contributor_relation_style,
+      home_star_hover_info_enabled:
+        saved.home_star_hover_info_enabled,
+      home_star_hover_relations_enabled:
+        saved.home_star_hover_relations_enabled,
+      home_star_hover_relation_opacity_percent:
+        saved.home_star_hover_relation_opacity_percent,
+      home_star_hover_relation_limit:
+        saved.home_star_hover_relation_limit,
       home_star_graph_direction:
         saved.home_star_graph_direction,
       home_star_illumination_rule:

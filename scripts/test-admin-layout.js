@@ -97,6 +97,10 @@ for (const field of [
   "home_star_selected_halo_alpha_boost",
   "home_star_selected_glow_scale",
   "home_star_selected_contributor_line_width",
+  "home_star_hover_info_enabled",
+  "home_star_hover_relations_enabled",
+  "home_star_hover_relation_opacity_percent",
+  "home_star_hover_relation_limit",
   "home_star_portal_collapsed_structure",
   "home_star_portal_expanded_structure",
   "home_star_portal_rotation_speed",
@@ -128,6 +132,8 @@ for (const field of [
   assert.match(databaseSource, new RegExp(field));
 }
 assert.match(html, /主动点亮星体效果/);
+assert.match(html, /星体悬停预览/);
+assert.match(html, /显示邻近弱联系/);
 assert.match(html, /3D 深空背景/);
 assert.match(html, /<h3 id="contributionPortalTitle">贡献空间<\/h3>/);
 assert.match(html, /自动旋转速率（°\/秒）/);

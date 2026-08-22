@@ -554,6 +554,12 @@ data-selected-brightness
 data-selected-relation-count
 data-selected-relation-coverage
 data-active-visual-edge-count
+data-hovered-star-id
+data-hover-relation-count
+data-hover-info-enabled
+data-hover-relations-enabled
+data-hover-relation-opacity
+data-hover-relation-limit
 data-star-structure
 data-structure-transition
 data-structure-transition-progress
@@ -591,6 +597,10 @@ Main settings:
 | `home_star_relation_visibility` | `always`, `near`, `hidden` |
 | `home_star_graph_direction` | `directed`, `undirected` |
 | `home_star_*_relation_style` | `solid`, `dashed`, `glow` |
+| `home_star_hover_info_enabled` | Shows the star name, kind, tier, and brightness on mouse hover |
+| `home_star_hover_relations_enabled` | Shows faint spatial-neighbor links from the hovered star |
+| `home_star_hover_relation_opacity_percent` | `1..25`; maximum hover-link opacity, default `6` |
+| `home_star_hover_relation_limit` | `1..50`; nearest hover links drawn per star, default `12` |
 | `home_star_illumination_rule` | Rule IDs in section 7.1 |
 | `home_star_illumination_depth` | `1..20` |
 | `home_star_active_edge_mode` | `single_path`, `minimal_tree`, `full` |
@@ -666,6 +676,12 @@ peaks, yellow dwarfs circulate their corona, blue giants scintillate in color
 temperature, and the two supergiant classes combine stellar-wind turbulence
 with irregular pulsation. Halo size, core intensity, diffraction rotation,
 temperature, and corona turbulence all advance from the same shader clock.
+
+Mouse hover uses a separate tooltip state from click selection. It never
+changes graph illumination, coverage statistics, or document navigation.
+Optional hover links connect only the nearest spatial neighbors and are
+rendered at a capped low opacity in the existing relation Canvas, so they add
+no WebGL draw calls. Touch input continues to use the existing click behavior.
 
 The uniform deep field, dust band, four globular clusters, two stellar streams,
 and three breathing nebula knots each have an independent enable switch and

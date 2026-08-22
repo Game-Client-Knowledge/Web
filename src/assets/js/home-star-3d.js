@@ -1774,6 +1774,7 @@
 
     const panel = host.createCoveragePanel();
     const label = host.createLabel();
+    const hoverLabel = host.createHoverLabel();
     let width = 1;
     let height = 1;
     let frame = 0;
@@ -1789,6 +1790,7 @@
     let labelExpiresAt = 0;
     let labelTimer = 0;
     let selectionTimer = 0;
+    let hoverStar = null;
     let lastFrameAt = 0;
     let contentMaskFrame = 0;
     const portalState = {
@@ -1838,6 +1840,9 @@
       if (!portalPhases.includes(phase)) return;
       portalState.phase = phase;
       portalState.reason = reason || portalState.reason || "";
+      if (phase !== "expanded") {
+        setHoverStar(null, performance.now());
+      }
       document.body.classList.toggle(
         "home-contribution-space-opening",
         phase === "opening"
@@ -3120,6 +3125,62 @@
       return count;
     }
 
+    function drawHoverRelations() {
+      if (
+        !hoverStar ||
+        !runtimeSettings.home_star_hover_relations_enabled
+      ) {
+        return 0;
+      }
+      const neighbors = stars
+        .filter((star) => star !== hoverStar)
+        .map((star) => ({
+          star,
+          distance: Math.hypot(
+            star.x - hoverStar.x,
+            star.y - hoverStar.y,
+            star.z - hoverStar.z
+          )
+        }))
+        .filter((item) => item.distance <= NEAR_LIMIT)
+        .sort((left, right) => left.distance - right.distance)
+        .slice(0, runtimeSettings.home_star_hover_relation_limit);
+      const source = projectRelationStar(hoverStar);
+      if (!source.visible) return 0;
+      const opacity =
+        runtimeSettings.home_star_hover_relation_opacity_percent / 100;
+      let count = 0;
+      relationContext.save();
+      relationContext.lineWidth = 0.55;
+      relationContext.lineCap = "round";
+      relationContext.setLineDash([]);
+      relationContext.shadowBlur = 0;
+      for (const neighbor of neighbors) {
+        const target = projectRelationStar(neighbor.star);
+        if (!target.visible) continue;
+        const alpha = Math.max(
+          opacity * 0.16,
+          opacity * (1 - neighbor.distance / NEAR_LIMIT)
+        );
+        const gradient = relationContext.createLinearGradient(
+          source.x,
+          source.y,
+          target.x,
+          target.y
+        );
+        gradient.addColorStop(0, `rgba(156, 224, 205, ${alpha})`);
+        gradient.addColorStop(1, `rgba(112, 190, 171, ${alpha * 0.24})`);
+        relationContext.strokeStyle = gradient;
+        relationContext.beginPath();
+        relationContext.moveTo(source.x, source.y);
+        relationContext.lineTo(target.x, target.y);
+        relationContext.stroke();
+        count += 1;
+      }
+      relationContext.restore();
+      return count;
+    }
+
     function drawRelations(time) {
       relationContext.clearRect(0, 0, width, height);
       relationProjectionCache.clear();
@@ -3128,9 +3189,12 @@
         portalState.progress <= 0.72
       ) {
         relationCanvas.dataset.visibleRelationCount = "0";
+        glCanvas.dataset.hoverRelationCount = "0";
         return;
       }
       let visibleCount = drawProximityRelations();
+      const hoverRelationCount = drawHoverRelations();
+      visibleCount += hoverRelationCount;
       for (const edge of edges) {
         const highlighted = activeVisualEdgeIds.has(
           illumination.edgeId(edge)
@@ -3143,6 +3207,8 @@
         String(visibleCount);
       relationCanvas.dataset.activeRelationCount =
         String(highlightEdges.length);
+      glCanvas.dataset.hoverRelationCount =
+        String(hoverRelationCount);
     }
 
     function projectStar(star) {
@@ -3194,6 +3260,46 @@
         `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
     }
 
+    function updateHoverLabel() {
+      if (
+        !runtimeSettings.home_star_hover_info_enabled ||
+        !hoverStar ||
+        labelStar ||
+        (
+          portalState.enabled &&
+          portalState.phase !== "expanded"
+        )
+      ) {
+        hoverLabel.hidden = true;
+        return;
+      }
+      const offset = glCanvas.getBoundingClientRect();
+      const projected = projectStar(hoverStar);
+      if (!projected.visible) {
+        hoverLabel.hidden = true;
+        return;
+      }
+      hoverLabel.hidden = false;
+      const labelWidth = hoverLabel.offsetWidth || 220;
+      const labelHeight = hoverLabel.offsetHeight || 34;
+      const x = Math.max(
+        8,
+        Math.min(
+          window.innerWidth - labelWidth - 8,
+          offset.left + projected.x + 12
+        )
+      );
+      const y = Math.max(
+        8,
+        Math.min(
+          window.innerHeight - labelHeight - 8,
+          offset.top + projected.y - 20
+        )
+      );
+      hoverLabel.style.transform =
+        `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+    }
+
     function draw(time) {
       updateVariations(time);
       updateStructureTransition(
@@ -3227,6 +3333,7 @@
       drawRelations(time);
       renderer.render(scene, camera);
       updateLabel(time);
+      updateHoverLabel();
     }
     function animate(time) {
       frame = 0;
@@ -3296,16 +3403,15 @@
         return;
       }
       labelStar = star;
-      const title = starDisplayName(star);
-      const tier = star.brightnessTier?.name || "未分级";
-      label.textContent =
-        `${title} · ${tier} · ${star.baseBrightness.toFixed(1)}`;
+      label.textContent = host.starInformationText(star);
       label.dataset.starKind = star.kind;
+      hoverLabel.hidden = true;
       labelExpiresAt = now + runtimeSettings.home_star_label_duration_ms;
       window.clearTimeout(labelTimer);
       labelTimer = window.setTimeout(() => {
         label.hidden = true;
         labelStar = null;
+        updateHoverLabel();
       }, runtimeSettings.home_star_label_duration_ms);
       updateLabel(now);
     }
@@ -3397,13 +3503,70 @@
         const projected = projectStar(star);
         if (!projected.visible) continue;
         const distance = Math.hypot(projected.x - x, projected.y - y);
-        const limit = star.kind === "contributor" ? 14 : 10;
+        const profile = tierProfile(star.brightnessTier);
+        const limit = Math.max(
+          star.kind === "contributor" ? 14 : 10,
+          Math.min(32, 11 + profile.radiusBoost * 13)
+        );
         if (distance <= limit && distance < nearestDistance) {
           nearest = star;
           nearestDistance = distance;
         }
       }
       return nearest;
+    }
+
+    function setHoverStar(star, now) {
+      if (hoverStar === star) return;
+      hoverStar = star;
+      glCanvas.dataset.hoveredStarId = star?.id || "";
+      if (star && runtimeSettings.home_star_hover_info_enabled) {
+        hoverLabel.textContent = host.starInformationText(star);
+        hoverLabel.dataset.starKind = star.kind;
+      } else {
+        hoverLabel.hidden = true;
+      }
+      updateHoverLabel();
+      if (reducedMotion) draw(now);
+    }
+
+    function hoverPointerMove(event) {
+      if (
+        event.pointerType &&
+        event.pointerType !== "mouse"
+      ) {
+        return;
+      }
+      if (
+        !runtimeSettings.home_star_hover_info_enabled &&
+        !runtimeSettings.home_star_hover_relations_enabled
+      ) {
+        return;
+      }
+      if (
+        dragState.active ||
+        (
+          portalState.enabled &&
+          portalState.phase !== "expanded"
+        ) ||
+        event.target?.closest?.(
+          "a, button, input, select, textarea, summary, [role='button']"
+        )
+      ) {
+        setHoverStar(null, performance.now());
+        return;
+      }
+      const rectangle = glCanvas.getBoundingClientRect();
+      if (
+        event.clientX < rectangle.left ||
+        event.clientX > rectangle.right ||
+        event.clientY < rectangle.top ||
+        event.clientY > rectangle.bottom
+      ) {
+        setHoverStar(null, performance.now());
+        return;
+      }
+      setHoverStar(hitTest(event), performance.now());
     }
 
     function documentClick(event) {
@@ -3621,6 +3784,7 @@
     document.addEventListener("click", documentClick, true);
     document.addEventListener("pointerdown", pointerDown, true);
     document.addEventListener("pointermove", pointerMove, true);
+    document.addEventListener("pointermove", hoverPointerMove, true);
     document.addEventListener("pointerup", pointerUp, true);
     for (const eventName of portalBlockedEvents) {
       document.addEventListener(
@@ -3703,6 +3867,20 @@
     glCanvas.dataset.visualProfile = "deep-field";
     glCanvas.dataset.selectedCount = "0";
     glCanvas.dataset.selectedTier = "";
+    glCanvas.dataset.hoverInfoEnabled = String(
+      runtimeSettings.home_star_hover_info_enabled
+    );
+    glCanvas.dataset.hoverRelationsEnabled = String(
+      runtimeSettings.home_star_hover_relations_enabled
+    );
+    glCanvas.dataset.hoverRelationOpacity = String(
+      runtimeSettings.home_star_hover_relation_opacity_percent / 100
+    );
+    glCanvas.dataset.hoverRelationLimit = String(
+      runtimeSettings.home_star_hover_relation_limit
+    );
+    glCanvas.dataset.hoveredStarId = "";
+    glCanvas.dataset.hoverRelationCount = "0";
     glCanvas.dataset.relationRenderer = "canvas-2d";
     relationCanvas.dataset.relationRenderer = "canvas-2d";
     if (!reducedMotion) frame = window.requestAnimationFrame(animate);
@@ -3741,6 +3919,10 @@
       },
       backgroundLayer,
       relationCanvas,
+      hoverLabel,
+      get hoverStar() {
+        return hoverStar;
+      },
       layers: { haloLayer, coreLayer, spikeLayer }
     };
 
@@ -3795,6 +3977,11 @@
       document.removeEventListener("click", documentClick, true);
       document.removeEventListener("pointerdown", pointerDown, true);
       document.removeEventListener("pointermove", pointerMove, true);
+      document.removeEventListener(
+        "pointermove",
+        hoverPointerMove,
+        true
+      );
       document.removeEventListener("pointerup", pointerUp, true);
       for (const eventName of portalBlockedEvents) {
         document.removeEventListener(
@@ -3805,6 +3992,7 @@
       }
       label.removeEventListener("click", labelClick);
       label.remove();
+      hoverLabel.remove();
       panel.remove();
       for (const layer of [
         backgroundLayer,

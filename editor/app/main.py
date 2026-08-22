@@ -312,6 +312,18 @@ class VisualSettingsRequest(BaseModel):
     home_star_strong_relation_style: str = "solid"
     home_star_reference_relation_style: str = "dashed"
     home_star_contributor_relation_style: str = "solid"
+    home_star_hover_info_enabled: bool = True
+    home_star_hover_relations_enabled: bool = True
+    home_star_hover_relation_opacity_percent: float = Field(
+        default=6,
+        ge=1,
+        le=25,
+    )
+    home_star_hover_relation_limit: int = Field(
+        default=12,
+        ge=1,
+        le=50,
+    )
     home_star_brightness_variation_enabled: bool = False
     home_star_brightness_min: float = Field(
         default=0.0,
@@ -1362,6 +1374,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_star_contributor_relation_style": db.setting(
                 "home_star_contributor_relation_style", "solid"
+            ),
+            "home_star_hover_info_enabled": (
+                db.setting("home_star_hover_info_enabled", "1") == "1"
+            ),
+            "home_star_hover_relations_enabled": (
+                db.setting("home_star_hover_relations_enabled", "1") == "1"
+            ),
+            "home_star_hover_relation_opacity_percent": max(
+                1,
+                min(
+                    25,
+                    setting_float(
+                        "home_star_hover_relation_opacity_percent",
+                        6,
+                    ),
+                ),
+            ),
+            "home_star_hover_relation_limit": max(
+                1,
+                min(
+                    50,
+                    setting_int("home_star_hover_relation_limit", 12),
+                ),
             ),
             "home_star_brightness_variation_enabled": (
                 db.setting(
@@ -3984,6 +4019,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_star_contributor_relation_style": (
                 payload.home_star_contributor_relation_style
+            ),
+            "home_star_hover_info_enabled": (
+                "1" if payload.home_star_hover_info_enabled else "0"
+            ),
+            "home_star_hover_relations_enabled": (
+                "1" if payload.home_star_hover_relations_enabled else "0"
+            ),
+            "home_star_hover_relation_opacity_percent": str(
+                payload.home_star_hover_relation_opacity_percent
+            ),
+            "home_star_hover_relation_limit": str(
+                payload.home_star_hover_relation_limit
             ),
             "home_star_brightness_variation_enabled": (
                 "1"

@@ -45,6 +45,10 @@ for (const setting of [
   "home_star_3d_stream_star_count",
   "home_star_3d_nebula_enabled",
   "home_star_3d_nebula_star_count",
+  "home_star_hover_info_enabled",
+  "home_star_hover_relations_enabled",
+  "home_star_hover_relation_opacity_percent",
+  "home_star_hover_relation_limit",
   "home_star_3d_background_brightness_percent",
   "home_star_3d_dust_brightness_percent",
   "home_star_3d_background_size_percent",
@@ -147,6 +151,8 @@ assert.match(source, /glCanvas\.dataset\.backgroundStructureMotion/);
 assert.match(source, /glCanvas\.dataset\.visualProfile = "deep-field"/);
 assert.match(source, /glCanvas\.dataset\.spikeCount/);
 assert.match(source, /glCanvas\.dataset\.animatedStarCount/);
+assert.match(source, /glCanvas\.dataset\.hoveredStarId/);
+assert.match(source, /glCanvas\.dataset\.hoverRelationCount/);
 assert.match(source, /glCanvas\.dataset\.blueSupergiantCount/);
 assert.match(source, /glCanvas\.dataset\.hypergiantCount/);
 for (const tier of [
@@ -174,6 +180,12 @@ for (const value of [
   assert.match(mapSource, new RegExp(value.replace(".", "\\.")));
 }
 assert.match(mapSource, /function tierMotion\(star, profile, time\)/);
+assert.match(mapSource, /function createHoverLabel\(\)/);
+assert.match(mapSource, /function starInformationText\(star\)/);
+assert.match(mapSource, /function drawHoverRelations\(distanceLimit\)/);
+assert.match(source, /function drawHoverRelations\(\)/);
+assert.match(source, /function hoverPointerMove\(event\)/);
+assert.match(cssSource, /\.star-map-hover-label/);
 assert.match(mapSource, /const edgeProgress = Math\.max\(/);
 assert.match(
   mapSource,
