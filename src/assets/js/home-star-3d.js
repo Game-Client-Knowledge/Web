@@ -1774,6 +1774,7 @@
 
     const panel = host.createCoveragePanel();
     const label = host.createLabel();
+    const hoverLabel = host.createHoverLabel();
     let width = 1;
     let height = 1;
     let frame = 0;
@@ -3240,6 +3241,46 @@
         `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
     }
 
+    function updateHoverLabel() {
+      if (
+        !runtimeSettings.home_star_hover_info_enabled ||
+        !hoverStar ||
+        labelStar ||
+        (
+          portalState.enabled &&
+          portalState.phase !== "expanded"
+        )
+      ) {
+        hoverLabel.hidden = true;
+        return;
+      }
+      const offset = glCanvas.getBoundingClientRect();
+      const projected = projectStar(hoverStar);
+      if (!projected.visible) {
+        hoverLabel.hidden = true;
+        return;
+      }
+      hoverLabel.hidden = false;
+      const labelWidth = hoverLabel.offsetWidth || 180;
+      const labelHeight = hoverLabel.offsetHeight || 34;
+      const x = Math.max(
+        8,
+        Math.min(
+          window.innerWidth - labelWidth - 8,
+          offset.left + projected.x + 10
+        )
+      );
+      const y = Math.max(
+        8,
+        Math.min(
+          window.innerHeight - labelHeight - 8,
+          offset.top + projected.y - 18
+        )
+      );
+      hoverLabel.style.transform =
+        `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+    }
+
     function draw(time) {
       updateVariations(time);
       updateStructureTransition(
@@ -3273,6 +3314,7 @@
       drawRelations(time);
       renderer.render(scene, camera);
       updateLabel(time);
+      updateHoverLabel();
     }
     function animate(time) {
       frame = 0;
@@ -3353,16 +3395,15 @@
         return;
       }
       labelStar = star;
-      const title = starDisplayName(star);
-      const tier = star.brightnessTier?.name || "未分级";
-      label.textContent =
-        `${title} · ${tier} · ${star.baseBrightness.toFixed(1)}`;
+      label.textContent = host.starLabelText(star);
       label.dataset.starKind = star.kind;
+      hoverLabel.hidden = true;
       labelExpiresAt = now + runtimeSettings.home_star_label_duration_ms;
       window.clearTimeout(labelTimer);
       labelTimer = window.setTimeout(() => {
         label.hidden = true;
         labelStar = null;
+        updateHoverLabel();
       }, runtimeSettings.home_star_label_duration_ms);
       updateLabel(now);
     }
@@ -3510,7 +3551,14 @@
       glCanvas.dataset.hoverRelationCount = String(
         hoverVisualEdgeIds.size
       );
+      if (star && runtimeSettings.home_star_hover_info_enabled) {
+        hoverLabel.textContent = host.starLabelText(star);
+        hoverLabel.dataset.starKind = star.kind;
+      } else {
+        hoverLabel.hidden = true;
+      }
       updateCoverage();
+      updateHoverLabel();
       if (reducedMotion) draw(now);
     }
 
@@ -3900,6 +3948,7 @@
       },
       backgroundLayer,
       relationCanvas,
+      hoverLabel,
       get hoverStar() {
         return hoverStar;
       },
@@ -3972,6 +4021,7 @@
       }
       label.removeEventListener("click", labelClick);
       label.remove();
+      hoverLabel.remove();
       panel.remove();
       for (const layer of [
         backgroundLayer,

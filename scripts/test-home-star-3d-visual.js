@@ -582,12 +582,14 @@ async function inspectHoverPreview(browser) {
       .sort((left, right) => right.relationCount - left.relationCount)[0];
   });
   assert.ok(target, "hover preview: no visible star candidate");
-  await page.mouse.move(target.x, target.y);
+  await page.mouse.move(20, 80);
+  await page.mouse.move(target.x, target.y, { steps: 3 });
   await page.waitForTimeout(300);
   const metrics = await page.evaluate(() => {
     const debug = window.__GCK_STAR3D_DEBUG;
     const canvas = debug.renderer.domElement;
     const panel = document.querySelector(".star-coverage-panel");
+    const hoverLabel = document.querySelector(".star-map-hover-label");
     const pixels = debug.relationCanvas
       .getContext("2d")
       .getImageData(
@@ -620,6 +622,8 @@ async function inspectHoverPreview(browser) {
       panelRect: panelRect.toJSON(),
       panelDisplay: panelStyle.display,
       panelVisibility: panelStyle.visibility,
+      labelVisible: !hoverLabel.hidden,
+      labelText: hoverLabel.textContent,
       paintedPixels,
       alphaSum
     };
@@ -640,6 +644,8 @@ async function inspectHoverPreview(browser) {
   assert.equal(metrics.panelVisibility, "visible");
   assert.ok(metrics.panelRect.right <= 1440);
   assert.ok(metrics.panelRect.top >= 0);
+  assert.equal(metrics.labelVisible, true);
+  assert.ok(metrics.labelText.startsWith(`${target.name} ·`));
   assert.ok(
     metrics.paintedPixels > 0,
     "hover preview did not paint weak relations"
@@ -650,13 +656,15 @@ async function inspectHoverPreview(browser) {
   await page.waitForFunction(() => {
     const debug = window.__GCK_STAR3D_DEBUG;
     const panel = document.querySelector(".star-coverage-panel");
+    const hoverLabel = document.querySelector(".star-map-hover-label");
     return (
       debug.renderer.domElement.dataset.hoveredStarId === "" &&
       debug.renderer.domElement.dataset.hoverRelationCount === "0" &&
-      panel.hidden
+      panel.hidden &&
+      hoverLabel.hidden
     );
   });
-  await page.mouse.move(target.x, target.y);
+  await page.mouse.move(target.x, target.y, { steps: 3 });
   await page.waitForFunction(
     (starId) => {
       return (

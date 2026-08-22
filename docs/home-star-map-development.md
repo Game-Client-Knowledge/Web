@@ -677,10 +677,11 @@ temperature, and corona turbulence all advance from the same shader clock.
 
 Mouse hover computes the same illuminated nodes and relation plan as click
 selection, including direction, depth, and active-edge mode. It previews those
-results in the existing right-side coverage panel and relation Canvas without
-committing a selection or changing document navigation. The relation alpha is
-scaled by the hover opacity setting, and no WebGL draw calls are added. Touch
-input continues to use the existing click behavior.
+results in both the normal star title and the right-side coverage panel without
+committing a selection or changing document navigation. Relations render in
+the existing Canvas with alpha scaled by the hover opacity setting, so no
+WebGL draw calls are added. Touch input continues to use the existing click
+behavior.
 
 The uniform deep field, dust band, four globular clusters, two stellar streams,
 and three breathing nebula knots each have an independent enable switch and

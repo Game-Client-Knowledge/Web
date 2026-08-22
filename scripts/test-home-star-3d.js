@@ -179,11 +179,14 @@ for (const value of [
   assert.match(mapSource, new RegExp(value.replace(".", "\\.")));
 }
 assert.match(mapSource, /function tierMotion\(star, profile, time\)/);
+assert.match(mapSource, /function createHoverLabel\(\)/);
+assert.match(mapSource, /function starLabelText\(star\)/);
 assert.match(source, /function hoverPointerMove\(event\)/);
 assert.match(mapSource, /let hoverRelationPlan = null;/);
 assert.match(mapSource, /panel\.dataset\.previewMode/);
 assert.match(source, /let hoverHighlightEdges = \[\];/);
 assert.match(source, /hoverVisualEdgeIds\.has\(edgeId\)/);
+assert.match(cssSource, /\.star-map-hover-label/);
 assert.match(mapSource, /const edgeProgress = Math\.max\(/);
 assert.match(
   mapSource,

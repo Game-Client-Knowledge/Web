@@ -1260,6 +1260,16 @@
     return label;
   }
 
+  function createHoverLabel() {
+    const label = document.createElement("div");
+    label.className = "star-map-label star-map-hover-label";
+    label.dataset.hover = "true";
+    label.setAttribute("role", "tooltip");
+    label.hidden = true;
+    document.body.append(label);
+    return label;
+  }
+
   function starDisplayName(star) {
     return star.kind === "document" ? star.title : star.name;
   }
@@ -1268,6 +1278,14 @@
     if (star.kind === "contributor") return "静星 · 贡献者";
     if (star.resourceKind === "code_system") return "动星 · 代码系统";
     return "动星 · 文档";
+  }
+
+  function starLabelText(star) {
+    const tier = star.brightnessTier?.name || "未分级";
+    return (
+      `${starDisplayName(star)} · ${tier} · ` +
+      star.baseBrightness.toFixed(1)
+    );
   }
 
   function createContributionMap(runtimeSettings) {
@@ -1330,6 +1348,7 @@
 
     const panel = createCoveragePanel();
     const label = createLabel();
+    const hoverLabel = createHoverLabel();
     let width = 1;
     let height = 1;
     let ratio = 1;
@@ -1816,6 +1835,37 @@
         `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
     }
 
+    function updateHoverLabel() {
+      if (
+        !runtimeSettings.home_star_hover_info_enabled ||
+        !hoverStar ||
+        labelStar
+      ) {
+        hoverLabel.hidden = true;
+        return;
+      }
+      const offset = canvasOffset();
+      hoverLabel.hidden = false;
+      const labelWidth = hoverLabel.offsetWidth || 180;
+      const labelHeight = hoverLabel.offsetHeight || 34;
+      const x = Math.max(
+        8,
+        Math.min(
+          window.innerWidth - labelWidth - 8,
+          offset.left + hoverStar.x + 10
+        )
+      );
+      const y = Math.max(
+        8,
+        Math.min(
+          window.innerHeight - labelHeight - 8,
+          offset.top + hoverStar.y - 18
+        )
+      );
+      hoverLabel.style.transform =
+        `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+    }
+
     function draw(time) {
       context.clearRect(0, 0, width, height);
       updateVariations(time);
@@ -1823,6 +1873,7 @@
       for (const star of stars) drawStar(star, time);
       moveDocuments();
       updateLabel(time);
+      updateHoverLabel();
     }
 
     function animate(time) {
@@ -1898,17 +1949,16 @@
         return;
       }
       labelStar = star;
-      const title = starDisplayName(star);
-      const tier = star.brightnessTier?.name || "未分级";
-      label.textContent =
-        `${title} · ${tier} · ${star.baseBrightness.toFixed(1)}`;
+      label.textContent = starLabelText(star);
       label.dataset.starKind = star.kind;
+      hoverLabel.hidden = true;
       labelExpiresAt =
         now + runtimeSettings.home_star_label_duration_ms;
       window.clearTimeout(labelTimer);
       labelTimer = window.setTimeout(() => {
         label.hidden = true;
         labelStar = null;
+        updateHoverLabel();
       }, runtimeSettings.home_star_label_duration_ms);
       updateLabel(now);
     }
@@ -2042,7 +2092,14 @@
       canvas.dataset.hoverRelationCount = String(
         hoverVisualEdgeIds.size
       );
+      if (star && runtimeSettings.home_star_hover_info_enabled) {
+        hoverLabel.textContent = starLabelText(star);
+        hoverLabel.dataset.starKind = star.kind;
+      } else {
+        hoverLabel.hidden = true;
+      }
       updateCoverage();
+      updateHoverLabel();
       if (reducedMotion) draw(now);
     }
 
@@ -2200,6 +2257,7 @@
       );
       label.removeEventListener("click", labelClick);
       label.remove();
+      hoverLabel.remove();
       panel.remove();
       document.body.classList.remove("home-stars-full", "home-stars-hero");
       if (canvas.parentElement !== hero) hero.prepend(canvas);
@@ -2266,8 +2324,10 @@
       reducedMotion,
       createCoveragePanel,
       createLabel,
+      createHoverLabel,
       starDisplayName,
       starKindName,
+      starLabelText,
       hashSeed,
       seededRandom,
       fallback2D: () => createContributionMap(runtimeSettings)
