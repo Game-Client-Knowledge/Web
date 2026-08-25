@@ -20,10 +20,12 @@ eleventyComputed:
   <section
     class="docs-nav-unit{% if depth %} is-subunit{% endif %}"
     data-unit-depth="{{ depth }}"
+    data-workspace-key="unit:{{ unit.id }}"
   >
     <a
       class="docs-nav-unit-title"
       href="{{ unit.route | withBase }}"
+      data-workspace-key="entry:{{ unit.id }}/README.md"
       {% if unit.id == currentUnit.id or unit.id in currentUnit.ancestorIds %}aria-current="true"{% endif %}
     >
       {{ unit.title }}
@@ -40,9 +42,10 @@ eleventyComputed:
       {% if visibleDocuments.length %}
         <ol>
           {% for item in visibleDocuments %}
-            <li>
+            <li data-workspace-key="file:{{ item.sourceRelative }}">
               <a
                 href="{{ item.route | withBase }}"
+                data-workspace-key="entry:{{ item.sourceRelative }}"
                 {% if item.id == document.id %}aria-current="page"{% endif %}
               >
                 <i

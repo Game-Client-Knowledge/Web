@@ -23,6 +23,10 @@ const siteIntegration = fs.readFileSync(
   path.join(root, "src/assets/js/editor-integration.js"),
   "utf8"
 );
+const contentPages = fs.readFileSync(
+  path.join(root, "src/content-pages.njk"),
+  "utf8"
+);
 const livePreview = require(
   path.join(root, "src/assets/js/markdown-live-preview.js")
 );
@@ -50,6 +54,23 @@ assert.match(css, /\.diff-snapshot-summary\s*\{/);
 assert.match(css, /#activeEditor:not\(\[hidden\]\)\s*\{[^}]*flex:\s*1/s);
 assert.match(css, /#contentEditor\s*\{[^}]*flex:\s*1/s);
 assert.match(siteCss, /\.inline-editor-modebar\s*\{/);
+assert.match(
+  siteCss,
+  /\.docs-nav-unit-title\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+22px/s
+);
+assert.match(
+  siteCss,
+  /\.docs-nav-unit li a\s*\{[^}]*grid-template-columns:\s*14px\s+minmax\(0,\s*1fr\)\s+22px/s
+);
+assert.match(contentPages, /data-workspace-key="unit:\{\{ unit\.id \}\}"/);
+assert.match(
+  contentPages,
+  /data-workspace-key="file:\{\{ item\.sourceRelative \}\}"/
+);
+assert.match(
+  siteIntegration,
+  /if \(dataset\.workspaceKey\) return "workspace:" \+ dataset\.workspaceKey/
+);
 assert.match(
   siteIntegration,
   /previewMode\.innerHTML\s*=\s*[\s\S]*?<span>预览<\/span>/

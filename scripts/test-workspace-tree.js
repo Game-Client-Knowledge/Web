@@ -80,6 +80,11 @@ assert.equal(mihoyo.status, "M");
 assert.equal(mihoyo.documents[1].title, "一面更新");
 assert(tencent, "a local README must become a normal topic unit");
 assert.equal(tencent.status, "A");
+assert.deepEqual(
+  tree.rootUnits.map((unit) => unit.id),
+  ["interviews/mihoyo", "interviews/tencent/2026-autumn"],
+  "draft status must not reorder the reader navigation"
+);
 assert.equal(tencent.documents.length, 2);
 assert.deepEqual(
   tencent.documents.map((item) => item.status),

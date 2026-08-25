@@ -190,10 +190,6 @@
     return null;
   }
 
-  function statusPriority(status) {
-    return status === "D" ? 3 : status === "A" ? 2 : status === "M" ? 1 : 0;
-  }
-
   function aggregateUnitStatus(unit) {
     const own = unit.readme ? unit.readme.status : "";
     const childStatuses = unit.children
@@ -221,11 +217,6 @@
   }
 
   function compareUnits(left, right) {
-    const statusDifference =
-      statusPriority(right.status) - statusPriority(left.status);
-    if (statusDifference && (left.status === "A" || right.status === "A")) {
-      return statusDifference;
-    }
     return left.title.localeCompare(right.title, "zh-CN", {
       numeric: true
     });

@@ -3064,11 +3064,15 @@ body[data-editor-state="loading"] [data-account-label] {
 }
 
 .docs-nav-unit-title {
-  display: block;
+  display: grid;
+  min-height: 36px;
   padding: 7px 10px;
   color: var(--ink-soft);
   border-left: 2px solid transparent;
   border-radius: 6px;
+  align-items: center;
+  gap: 7px;
+  grid-template-columns: minmax(0, 1fr) 22px;
   font-size: 13px;
   font-weight: 650;
   line-height: 1.45;
@@ -3111,7 +3115,7 @@ body[data-editor-state="loading"] [data-account-label] {
   border-radius: 5px;
   align-items: start;
   gap: 7px;
-  grid-template-columns: 14px minmax(0, 1fr);
+  grid-template-columns: 14px minmax(0, 1fr) 22px;
   font-size: 12.5px;
   line-height: 1.5;
   text-decoration: none;

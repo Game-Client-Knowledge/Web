@@ -705,6 +705,7 @@
     if (node.nodeType === Node.TEXT_NODE) return "#text";
     if (node.nodeType !== Node.ELEMENT_NODE) return "#node";
     const dataset = node.dataset || {};
+    if (dataset.workspaceKey) return "workspace:" + dataset.workspaceKey;
     if (dataset.lucide) return "icon:" + dataset.lucide;
     if (dataset.createContext) return "create:" + dataset.createContext;
     if (dataset.deletePath) {
@@ -942,14 +943,17 @@
   function renderRootDocumentsNavigation(entries) {
     const section = document.createElement("section");
     section.className = "docs-nav-unit workspace-nav-unit";
+    section.dataset.workspaceKey = "root-documents";
     const title = document.createElement("p");
     title.className = "docs-nav-unit-title";
     title.textContent = "直属文件";
     const list = document.createElement("ol");
     entries.forEach(function (entry) {
       const item = document.createElement("li");
+      item.dataset.workspaceKey = "file:" + entry.path;
       const link = document.createElement("a");
       link.href = workspaceEntryHref(entry);
+      link.dataset.workspaceKey = "entry:" + entry.path;
       if (entryMatchesCurrentPage(entry)) {
         link.setAttribute("aria-current", "page");
       }
@@ -1048,10 +1052,12 @@
     section.className =
       "docs-nav-unit workspace-nav-unit" +
       (depth ? " is-subunit" : "");
+    section.dataset.workspaceKey = "unit:" + unit.id;
     if (unit.status) section.dataset.status = unit.status;
     const title = document.createElement("a");
     title.className = "docs-nav-unit-title";
     title.href = workspaceEntryHref(unit.readme);
+    title.dataset.workspaceKey = "entry:" + unit.readme.path;
     title.textContent = unit.title;
     if (unitContainsCurrentPage(unit)) {
       title.setAttribute("aria-current", "true");
@@ -1076,8 +1082,10 @@
       const list = document.createElement("ol");
       visibleDocuments.forEach(function (entry) {
         const item = document.createElement("li");
+        item.dataset.workspaceKey = "file:" + entry.path;
         const link = document.createElement("a");
         link.href = workspaceEntryHref(entry);
+        link.dataset.workspaceKey = "entry:" + entry.path;
         if (entryMatchesCurrentPage(entry)) {
           link.setAttribute("aria-current", "page");
         }
