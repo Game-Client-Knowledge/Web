@@ -122,14 +122,18 @@
     return window.GCK_EDITOR_BOOTSTRAP_PATH || "/bootstrap";
   }
 
-  function readIdentityCache() {
+  function readIdentityCache(options) {
+    const settings = options || {};
     try {
       const cached = JSON.parse(
         window.localStorage.getItem(IDENTITY_CACHE_KEY) || "null"
       );
       if (
         !cached ||
-        Date.now() - Number(cached.cachedAt || 0) > IDENTITY_CACHE_TTL
+        (
+          !settings.allowExpired &&
+          Date.now() - Number(cached.cachedAt || 0) > IDENTITY_CACHE_TTL
+        )
       ) {
         return null;
       }
@@ -338,8 +342,9 @@
     }
   }
 
-  function workspaceRepository() {
+  function workspaceRepository(cachedConfig) {
     const repository =
+      (cachedConfig && cachedConfig.repository) ||
       (state.config && state.config.repository) ||
       config.repository ||
       "Game-Client-Knowledge/Game-Client-Knowledge";
@@ -368,6 +373,46 @@
       current,
       changes: store.deriveChanges(base, current)
     };
+  }
+
+  function restoreCachedWorkspaceNavigation() {
+    const cached = readIdentityCache({ allowExpired: true });
+    const session = cached && cached.session;
+    const userId = session && session.user && session.user.id;
+    const store = window.GCKWorkspaceStore;
+    if (
+      !session ||
+      !session.authenticated ||
+      !session.can_edit ||
+      !userId ||
+      !store
+    ) {
+      return false;
+    }
+    const repository = workspaceRepository(cached.config);
+    const base = store.readBase(
+      window.localStorage,
+      userId,
+      repository
+    );
+    const current = store.readCurrent(
+      window.localStorage,
+      userId,
+      repository
+    );
+    if (!base || !current) return false;
+    const changes = store.deriveChanges(base, current);
+    const embeddedEntries = config.workspaceEntries || [];
+    applyWorkspaceState({
+      base: {
+        ...base,
+        entries: embeddedEntries.length ? embeddedEntries : base.entries
+      },
+      current,
+      changes
+    });
+    addDraftNavigation();
+    return true;
   }
 
   function applyWorkspaceState(workspace) {
@@ -3485,6 +3530,7 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     bindEvents();
+    restoreCachedWorkspaceNavigation();
     loadIdentity({ cacheOnly: true });
     refreshIdentityWhenIdle();
   });

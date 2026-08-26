@@ -73,6 +73,55 @@ assert.match(
 );
 assert.match(
   siteIntegration,
+  /function restoreCachedWorkspaceNavigation\(\)[\s\S]*?readIdentityCache\(\{ allowExpired: true \}\)[\s\S]*?store\.deriveChanges\(base, current\)[\s\S]*?addDraftNavigation\(\)/
+);
+assert.match(
+  siteIntegration,
+  /bindEvents\(\);\s*restoreCachedWorkspaceNavigation\(\);\s*loadIdentity\(\{ cacheOnly: true \}\)/
+);
+
+const readIdentityCacheStart = siteIntegration.indexOf(
+  "  function readIdentityCache(options) {"
+);
+const readIdentityCacheEnd = siteIntegration.indexOf(
+  "\n\n  function writeIdentityCache",
+  readIdentityCacheStart
+);
+assert(
+  readIdentityCacheStart >= 0 &&
+    readIdentityCacheEnd > readIdentityCacheStart
+);
+const cachedIdentity = {
+  config: { repository: "owner/content" },
+  session: { authenticated: true, can_edit: true, user: { id: 7 } }
+};
+const readIdentityCache = Function(
+  "window",
+  "IDENTITY_CACHE_KEY",
+  "IDENTITY_CACHE_TTL",
+  siteIntegration.slice(readIdentityCacheStart, readIdentityCacheEnd) +
+    "\nreturn readIdentityCache;"
+)(
+  {
+    localStorage: {
+      getItem() {
+        return JSON.stringify({
+          cachedAt: Date.now() - 10 * 60 * 1000,
+          payload: cachedIdentity
+        });
+      }
+    }
+  },
+  "identity",
+  5 * 60 * 1000
+);
+assert.equal(readIdentityCache(), null);
+assert.deepEqual(
+  readIdentityCache({ allowExpired: true }),
+  cachedIdentity
+);
+assert.match(
+  siteIntegration,
   /previewMode\.innerHTML\s*=\s*[\s\S]*?<span>预览<\/span>/
 );
 assert.match(
