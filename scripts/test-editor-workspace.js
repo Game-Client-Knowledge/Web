@@ -67,6 +67,14 @@ assert.match(
   contentPages,
   /data-workspace-key="file:\{\{ item\.sourceRelative \}\}"/
 );
+const baseLayout = fs.readFileSync(
+  path.join(root, "src/_includes/layouts/base.njk"),
+  "utf8"
+);
+assert.match(baseLayout, /data-update-announcement-dialog/);
+assert.match(baseLayout, /data-update-announcement-content/);
+assert.match(siteCss, /\.update-announcement-dialog\s*\{/);
+assert.match(siteCss, /\.update-announcement-group\[data-status="added"\]/);
 assert.match(
   siteIntegration,
   /if \(dataset\.workspaceKey\) return "workspace:" \+ dataset\.workspaceKey/
@@ -119,6 +127,14 @@ assert.equal(readIdentityCache(), null);
 assert.deepEqual(
   readIdentityCache({ allowExpired: true }),
   cachedIdentity
+);
+assert.match(
+  siteIntegration,
+  /\/repository\/update-announcement\?from_revision=/
+);
+assert.match(
+  siteIntegration,
+  /openOnboardingIfNeeded\(\);\s*checkForUpdateAnnouncement\(\)/
 );
 assert.match(
   siteIntegration,

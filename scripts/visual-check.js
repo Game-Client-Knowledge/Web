@@ -134,6 +134,8 @@ async function inspectPage(browser, scenario) {
   let draftAttempts = 0;
   let draftDeletes = 0;
   let previewAttempts = 0;
+  let updateAnnouncementRequests = 0;
+  let updateAnnouncementRevision = "";
   const draftWrites = [];
   const visualSettings = {
     ...defaultVisualSettings,
@@ -218,6 +220,47 @@ async function inspectPage(browser, scenario) {
       body: JSON.stringify({})
     });
   });
+  await context.route(
+    "**/editor/api/repository/update-announcement**",
+    (route) => {
+      updateAnnouncementRequests += 1;
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          from_revision: "a".repeat(40),
+          to_revision: updateAnnouncementRevision,
+          total_commits: 2,
+          truncated: false,
+          commits: [
+            {
+              sha: "c".repeat(40),
+              message: "补充 ECS 调度章节",
+              author: "visual-author",
+              committed_at: "2026-08-26T08:00:00Z"
+            }
+          ],
+          files: [
+            {
+              path: "program/knowledge/ecs/11-scheduler.md",
+              previous_path: "",
+              status: "added",
+              additions: 42,
+              deletions: 0,
+              changes: 42
+            },
+            {
+              path: "program/knowledge/ecs/02-core-model.md",
+              previous_path: "",
+              status: "modified",
+              additions: 8,
+              deletions: 3,
+              changes: 11
+            }
+          ]
+        })
+      });
+    }
+  );
   await context.route("**/editor/api/repository/delete-tree**", (route) => {
     const url = new URL(route.request().url());
     const path = url.searchParams.get("path");
@@ -302,6 +345,65 @@ async function inspectPage(browser, scenario) {
     waitUntil: scenario.bootstrapDelay ? "domcontentloaded" : "networkidle"
   });
   await page.waitForFunction(() => document.body.dataset.visualType);
+  if (scenario.updateAnnouncement) {
+    updateAnnouncementRevision = await page.evaluate(() => {
+      return window.GCK_CONFIG.contentRevision;
+    });
+    await page.evaluate(() => {
+      window.localStorage.setItem(
+        "gck-content-version:v1:100",
+        "a".repeat(40)
+      );
+    });
+    await page.reload({ waitUntil: "networkidle" });
+    const announcement = page.locator("[data-update-announcement-dialog]");
+    await announcement.waitFor({ state: "visible" });
+    const updateLayout = await announcement.evaluate((dialog) => {
+      return {
+        title: dialog.querySelector("h2")?.textContent,
+        text: dialog.textContent.replace(/\s+/g, " ").trim(),
+        overflow: dialog.scrollWidth - dialog.clientWidth
+      };
+    });
+    assert(
+      updateLayout.title === "知识库已更新" &&
+        updateLayout.text.includes("新增") &&
+        updateLayout.text.includes("修改") &&
+        updateLayout.overflow === 0,
+      `${scenario.name}: update announcement is invalid ` +
+        JSON.stringify(updateLayout)
+    );
+    await page.screenshot({
+      path: path.join(outputDirectory, `${scenario.name}-announcement.png`),
+      fullPage: false
+    });
+    await announcement
+      .locator("[data-close-update-announcement]")
+      .last()
+      .click();
+    await page.reload({ waitUntil: "networkidle" });
+    assert(
+      await announcement.isHidden(),
+      `${scenario.name}: dismissed announcement reopened`
+    );
+    const updateCache = await page.evaluate(() => {
+      return {
+        version: window.localStorage.getItem(
+          "gck-content-version:v1:100"
+        ),
+        pending: window.localStorage.getItem(
+          "gck-update-announcement:v1:100"
+        )
+      };
+    });
+    assert(
+      updateCache.version === updateAnnouncementRevision &&
+        updateCache.pending === null &&
+        updateAnnouncementRequests === 1,
+      `${scenario.name}: update announcement cache is invalid ` +
+        JSON.stringify(updateCache)
+    );
+  }
   if (scenario.ambient || scenario.pointerEffect !== undefined) {
     await page.waitForFunction(
       ({ ambient, pointer }) => {
@@ -1825,6 +1927,14 @@ async function inspectPage(browser, scenario) {
       viewport: { width: 1440, height: 1000 },
       readerEditor: true,
       readerAutosave: true,
+      visualSettings: { pointer_effect_enabled: false }
+    },
+    {
+      name: "reader-update-announcement-desktop",
+      route: "/program/knowledge/ecs/02-core-model/",
+      viewport: { width: 1440, height: 1000 },
+      authenticated: true,
+      updateAnnouncement: true,
       visualSettings: { pointer_effect_enabled: false }
     },
     {

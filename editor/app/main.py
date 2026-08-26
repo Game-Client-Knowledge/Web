@@ -103,6 +103,7 @@ from .smtp_config import (
 from .site_updates import (
     UpdateAlreadyRunningError,
     queue_update,
+    read_release_source,
     update_status,
 )
 from .star_formulas import (
@@ -2510,6 +2511,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 contribution_graph if graph_matches_tree else None
             ),
         }
+
+    @app.get("/api/repository/update-announcement")
+    async def repository_update_announcement(
+        from_revision: str,
+        user: dict[str, Any] = Depends(require_ready_user),
+    ) -> dict[str, Any]:
+        del user
+        if not re.fullmatch(r"[0-9a-fA-F]{7,40}", from_revision):
+            raise HTTPException(
+                status_code=422,
+                detail="本地内容版本格式无效",
+            )
+        deployed = read_release_source(
+            settings.site_release_source_path
+        )
+        to_revision = str(deployed.get("content") or "")
+        if not re.fullmatch(r"[0-9a-fA-F]{40}", to_revision):
+            reference = await github.main_reference()
+            to_revision = str(reference["object"]["sha"])
+        if to_revision.startswith(from_revision) or (
+            len(from_revision) == 40 and from_revision == to_revision
+        ):
+            return {
+                "from_revision": from_revision,
+                "to_revision": to_revision,
+                "total_commits": 0,
+                "commits": [],
+                "files": [],
+                "truncated": False,
+            }
+        return await github.repository_changes(
+            from_revision,
+            to_revision,
+        )
 
     @app.get("/api/repository/file")
     async def repository_file(

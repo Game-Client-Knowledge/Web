@@ -588,6 +588,78 @@ def test_bootstrap_returns_session_drafts_and_active_preview(
     assert "Immediate draft content." in payload["active_draft_html"]
 
 
+def test_update_announcement_compares_cached_and_deployed_versions(
+    client: TestClient,
+) -> None:
+    registered = client.post(
+        "/api/auth/register",
+        json={
+            "email": "updates@example.test",
+            "username": "updates-user",
+            "password": "local-password-123",
+        },
+    )
+    assert registered.status_code == 200
+    base = "a" * 40
+    head = "b" * 40
+    client.app.state.settings.site_release_source_path.write_text(
+        f"web={'c' * 40}\ncontent={head}\n",
+        encoding="utf-8",
+    )
+    summary = {
+        "from_revision": base,
+        "to_revision": head,
+        "total_commits": 1,
+        "commits": [
+            {
+                "sha": "d" * 40,
+                "message": "Add update announcement",
+                "author": "alice",
+                "committed_at": "2026-08-25T12:00:00Z",
+            }
+        ],
+        "files": [
+            {
+                "path": "program/knowledge/ecs/new.md",
+                "previous_path": "",
+                "status": "added",
+                "additions": 12,
+                "deletions": 0,
+                "changes": 12,
+            }
+        ],
+        "truncated": False,
+    }
+    client.app.state.github.repository_changes = AsyncMock(
+        return_value=summary
+    )
+
+    response = client.get(
+        "/api/repository/update-announcement",
+        params={"from_revision": base},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == summary
+    client.app.state.github.repository_changes.assert_awaited_once_with(
+        base,
+        head,
+    )
+
+    current = client.get(
+        "/api/repository/update-announcement",
+        params={"from_revision": head},
+    )
+    assert current.status_code == 200
+    assert current.json()["files"] == []
+
+    invalid = client.get(
+        "/api/repository/update-announcement",
+        params={"from_revision": "not-a-commit"},
+    )
+    assert invalid.status_code == 422
+
+
 def test_line_attribution_and_comment_threads(client: TestClient) -> None:
     author = client.post(
         "/api/auth/register",

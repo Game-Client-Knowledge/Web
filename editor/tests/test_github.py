@@ -186,6 +186,75 @@ def test_repository_blob_loads_historical_utf8_content() -> None:
     assert request.kwargs["token"] == "user-token"
 
 
+def test_repository_changes_returns_bounded_release_summary() -> None:
+    base = "a" * 40
+    head = "b" * 40
+    settings = SimpleNamespace(
+        github_repo="owner/repository",
+        github_bot_token="bot-token",
+    )
+    client = GitHubClient(settings)
+    client._request = AsyncMock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "status": "ahead",
+                "base_commit": {"sha": base},
+                "merge_base_commit": {"sha": base},
+                "head_commit": {"sha": head},
+                "total_commits": 2,
+                "commits": [
+                    {
+                        "sha": "c" * 40,
+                        "author": {"login": "alice"},
+                        "commit": {
+                            "message": "Add ECS notes\n\nDetails",
+                            "author": {
+                                "name": "Alice",
+                                "date": "2026-08-25T12:00:00Z",
+                            },
+                        },
+                    }
+                ],
+                "files": [
+                    {
+                        "filename": "program/knowledge/ecs/new.md",
+                        "status": "added",
+                        "additions": 12,
+                        "deletions": 0,
+                        "changes": 12,
+                    }
+                ],
+            },
+        )
+    )
+
+    result = asyncio.run(client.repository_changes(base, head))
+
+    assert result["from_revision"] == base
+    assert result["to_revision"] == head
+    assert result["total_commits"] == 2
+    assert result["truncated"] is True
+    assert result["commits"][0]["message"] == "Add ECS notes"
+    assert result["commits"][0]["author"] == "alice"
+    assert result["files"] == [
+        {
+            "path": "program/knowledge/ecs/new.md",
+            "previous_path": "",
+            "status": "added",
+            "additions": 12,
+            "deletions": 0,
+            "changes": 12,
+        }
+    ]
+    request = client._request.await_args
+    assert request.args == (
+        "GET",
+        f"/repos/owner/repository/compare/{base}...{head}",
+    )
+    assert request.kwargs["token"] == "bot-token"
+
+
 def test_external_pull_discovery_uses_bounded_github_queries() -> None:
     settings = SimpleNamespace(github_repo="owner/repository")
     client = GitHubClient(settings)

@@ -17,6 +17,8 @@ from .config import Settings
 
 API_VERSION = "2022-11-28"
 MAX_EDITABLE_FILE_BYTES = 512 * 1024
+MAX_UPDATE_ANNOUNCEMENT_COMMITS = 20
+MAX_UPDATE_ANNOUNCEMENT_FILES = 80
 OAUTH_WEB_FALLBACK_IPS = (
     "140.82.112.4",
     "140.82.113.4",
@@ -197,6 +199,93 @@ class GitHubClient:
         if int(payload.get("size", 0)) > MAX_EDITABLE_FILE_BYTES:
             raise GitHubError("文件超过在线编辑大小限制", 413)
         return self._decode_text_blob(payload)
+
+    async def repository_changes(
+        self,
+        base_revision: str,
+        head_revision: str,
+    ) -> dict[str, Any]:
+        response = await self._request(
+            "GET",
+            (
+                f"/repos/{self.settings.github_repo}/compare/"
+                f"{quote(base_revision, safe='')}..."
+                f"{quote(head_revision, safe='')}"
+            ),
+            token=self.settings.github_bot_token or None,
+            params={"per_page": 100, "page": 1},
+        )
+        payload = response.json()
+        status = str(payload.get("status") or "")
+        resolved_base = str(
+            (payload.get("base_commit") or {}).get("sha") or ""
+        )
+        merge_base = str(
+            (payload.get("merge_base_commit") or {}).get("sha") or ""
+        )
+        if status not in {"ahead", "identical"} or (
+            resolved_base and merge_base != resolved_base
+        ):
+            raise GitHubError(
+                "本地内容版本不属于当前发布版本的历史",
+                status_code=409,
+            )
+
+        raw_commits = list(payload.get("commits") or [])
+        raw_files = list(payload.get("files") or [])
+        commits = []
+        for item in raw_commits[-MAX_UPDATE_ANNOUNCEMENT_COMMITS:]:
+            commit = item.get("commit") or {}
+            author = item.get("author") or {}
+            commit_author = commit.get("author") or {}
+            message = str(commit.get("message") or "").splitlines()[0].strip()
+            commits.append(
+                {
+                    "sha": str(item.get("sha") or ""),
+                    "message": message[:180],
+                    "author": str(
+                        author.get("login")
+                        or commit_author.get("name")
+                        or "unknown"
+                    )[:80],
+                    "committed_at": commit_author.get("date"),
+                }
+            )
+        files = []
+        for item in raw_files[:MAX_UPDATE_ANNOUNCEMENT_FILES]:
+            file_status = str(item.get("status") or "modified")
+            if file_status not in {"added", "modified", "removed", "renamed"}:
+                file_status = "modified"
+            files.append(
+                {
+                    "path": str(item.get("filename") or "")[:500],
+                    "previous_path": str(
+                        item.get("previous_filename") or ""
+                    )[:500],
+                    "status": file_status,
+                    "additions": max(0, int(item.get("additions") or 0)),
+                    "deletions": max(0, int(item.get("deletions") or 0)),
+                    "changes": max(0, int(item.get("changes") or 0)),
+                }
+            )
+        total_commits = max(
+            len(raw_commits),
+            int(payload.get("total_commits") or 0),
+        )
+        return {
+            "from_revision": resolved_base or base_revision,
+            "to_revision": str(
+                (payload.get("head_commit") or {}).get("sha")
+                or head_revision
+            ),
+            "total_commits": total_commits,
+            "commits": commits,
+            "files": files,
+            "truncated": (
+                total_commits > len(commits)
+                or len(raw_files) > len(files)
+            ),
+        }
 
     @staticmethod
     def _decode_text_blob(payload: dict[str, Any]) -> str:

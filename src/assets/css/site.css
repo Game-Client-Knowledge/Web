@@ -4963,7 +4963,8 @@ body.has-comments-open .reader-comments {
 }
 
 .account-dialog,
-.content-create-dialog {
+.content-create-dialog,
+.update-announcement-dialog {
   width: min(460px, calc(100% - 28px));
   max-height: calc(100vh - 32px);
   padding: 0;
@@ -4977,8 +4978,198 @@ body.has-comments-open .reader-comments {
 
 .account-dialog::backdrop,
 .content-create-dialog::backdrop,
+.update-announcement-dialog::backdrop,
 .onboarding-dialog::backdrop {
   background: rgba(15, 24, 21, 0.62);
+}
+
+.update-announcement-dialog {
+  width: min(720px, calc(100% - 28px));
+}
+
+.update-announcement-panel {
+  padding: 28px;
+}
+
+.update-announcement-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.update-announcement-header h2 {
+  margin: 0;
+  font-size: 23px;
+  line-height: 1.3;
+}
+
+.update-announcement-header [data-update-announcement-version] {
+  margin: 7px 0 0;
+  color: var(--ink-faint);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+}
+
+.update-announcement-summary {
+  display: flex;
+  margin: 22px 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  gap: 24px;
+}
+
+.update-announcement-summary span {
+  display: inline-flex;
+  color: var(--ink-soft);
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.update-announcement-summary svg {
+  width: 16px;
+  height: 16px;
+  color: var(--teal-dark);
+}
+
+.update-announcement-summary strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.update-announcement-content {
+  display: grid;
+  gap: 22px;
+}
+
+.update-announcement-group h3 {
+  display: flex;
+  margin: 0 0 8px;
+  color: var(--ink);
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.update-announcement-group h3 span {
+  display: grid;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border: 1px solid;
+  border-radius: 3px;
+  font-size: 10px;
+  place-items: center;
+}
+
+.update-announcement-group[data-status="added"] h3 span {
+  color: var(--git-added);
+  background: var(--git-added-soft);
+  border-color: #82c891;
+}
+
+.update-announcement-group[data-status="modified"] h3 span,
+.update-announcement-group[data-status="renamed"] h3 span {
+  color: var(--git-modified);
+  background: var(--git-modified-soft);
+  border-color: #d4a72c;
+}
+
+.update-announcement-group[data-status="removed"] h3 span {
+  color: var(--git-deleted);
+  background: var(--git-deleted-soft);
+  border-color: #ff8182;
+}
+
+.update-announcement-list,
+.update-announcement-commits {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.update-announcement-list li {
+  display: grid;
+  min-height: 38px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  align-items: start;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.update-announcement-list li:first-child {
+  border-top: 1px solid var(--line);
+}
+
+.update-announcement-list strong,
+.update-announcement-list small {
+  display: block;
+}
+
+.update-announcement-list strong {
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.update-announcement-list small {
+  margin-top: 2px;
+  color: var(--ink-faint);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.update-announcement-lines {
+  color: var(--ink-faint);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.update-announcement-lines .is-added {
+  color: var(--git-added);
+}
+
+.update-announcement-lines .is-deleted {
+  margin-left: 5px;
+  color: var(--git-deleted);
+}
+
+.update-announcement-commits li {
+  display: grid;
+  padding: 7px 0;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--line);
+  gap: 3px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.update-announcement-commits small {
+  color: var(--ink-faint);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+}
+
+.update-announcement-note {
+  margin: 18px 0 0;
+  padding: 9px 12px;
+  color: var(--ink-soft);
+  background: var(--git-modified-soft);
+  border-left: 3px solid var(--git-modified);
+  font-size: 11px;
+}
+
+.update-announcement-footer {
+  display: flex;
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  justify-content: flex-end;
 }
 
 .onboarding-dialog {
@@ -6539,6 +6730,7 @@ body.has-comments-open .reader-comments {
 
   .account-dialog,
   .content-create-dialog,
+  .update-announcement-dialog,
   .onboarding-dialog {
     width: calc(100% - 16px);
     max-height: calc(100vh - 16px);
@@ -6551,6 +6743,22 @@ body.has-comments-open .reader-comments {
 
   .onboarding-panel {
     padding: 22px 18px;
+  }
+
+  .update-announcement-panel {
+    padding: 22px 18px;
+  }
+
+  .update-announcement-header h2 {
+    font-size: 20px;
+  }
+
+  .update-announcement-summary {
+    gap: 16px;
+  }
+
+  .update-announcement-list li {
+    gap: 8px;
   }
 
   .onboarding-header h2 {

@@ -627,6 +627,59 @@
       </section>
     </dialog>
 
+    <dialog
+      class="update-announcement-dialog"
+      data-update-announcement-dialog
+      aria-labelledby="update-announcement-title"
+    >
+      <section class="update-announcement-panel">
+        <header class="update-announcement-header">
+          <div>
+            <p class="eyebrow">What's new</p>
+            <h2 id="update-announcement-title">知识库已更新</h2>
+            <p data-update-announcement-version></p>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            data-close-update-announcement
+            aria-label="关闭更新公告"
+            title="关闭"
+          >
+            <i data-lucide="x" aria-hidden="true"></i>
+          </button>
+        </header>
+        <div class="update-announcement-summary">
+          <span>
+            <i data-lucide="git-commit-horizontal" aria-hidden="true"></i>
+            <strong data-update-commit-count>0</strong>
+            次提交
+          </span>
+          <span>
+            <i data-lucide="files" aria-hidden="true"></i>
+            <strong data-update-file-count>0</strong>
+            个文件
+          </span>
+        </div>
+        <div
+          class="update-announcement-content"
+          data-update-announcement-content
+        ></div>
+        <p class="update-announcement-note" data-update-announcement-note hidden>
+          版本跨度较大，仅展示最近的部分更新。
+        </p>
+        <footer class="update-announcement-footer">
+          <button
+            class="primary-button"
+            type="button"
+            data-close-update-announcement
+          >
+            知道了
+          </button>
+        </footer>
+      </section>
+    </dialog>
+
     <dialog class="content-create-dialog" data-content-create-dialog>
       <form class="content-create-form" data-content-create-form>
         <header>

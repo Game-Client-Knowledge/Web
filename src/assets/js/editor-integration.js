@@ -6,6 +6,8 @@
   const editorUrl = config.editorUrl || "/editor/";
   const IDENTITY_CACHE_KEY = "gck-editor-identity:v1";
   const IDENTITY_CACHE_TTL = 5 * 60 * 1000;
+  const UPDATE_VERSION_PREFIX = "gck-content-version:v1:";
+  const UPDATE_PENDING_PREFIX = "gck-update-announcement:v1:";
   const state = {
     config: null,
     session: null,
@@ -24,6 +26,8 @@
     onboardingStep: 0,
     onboardingManual: false,
     onboardingSaving: false,
+    pendingUpdateAnnouncement: null,
+    updateAnnouncementChecking: false,
     identityLoaded: false,
     identityPromise: null,
     cachedDraftCount: 0
@@ -413,6 +417,258 @@
     });
     addDraftNavigation();
     return true;
+  }
+
+  function updateStorageKey(prefix) {
+    const userId = editorUserId();
+    return userId ? prefix + encodeURIComponent(String(userId)) : "";
+  }
+
+  function readStoredJson(key) {
+    if (!key) return null;
+    try {
+      const value = JSON.parse(window.localStorage.getItem(key) || "null");
+      return value && typeof value === "object" ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeStoredValue(key, value) {
+    if (!key) return false;
+    try {
+      window.localStorage.setItem(key, value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function removeStoredValue(key) {
+    if (!key) return;
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // The in-memory dismissal still applies for the current page.
+    }
+  }
+
+  function validContentRevision(value) {
+    return /^[0-9a-f]{7,40}$/i.test(String(value || ""));
+  }
+
+  function announcementFileTitle(path) {
+    const entry = state.workspaceSnapshot &&
+      state.workspaceSnapshot.entries.find(function (item) {
+        return item.path === path;
+      });
+    return entry && entry.title
+      ? entry.title
+      : path.split("/").pop() || path;
+  }
+
+  function appendUpdateFileGroup(container, status, files) {
+    if (!files.length) return;
+    const labels = {
+      added: "新增",
+      modified: "修改",
+      removed: "删除",
+      renamed: "重命名"
+    };
+    const section = document.createElement("section");
+    section.className = "update-announcement-group";
+    section.dataset.status = status;
+    const heading = document.createElement("h3");
+    const badge = document.createElement("span");
+    badge.textContent = String(files.length);
+    heading.append(badge, document.createTextNode(labels[status] || "变更"));
+    const list = document.createElement("ul");
+    list.className = "update-announcement-list";
+    files.forEach(function (file) {
+      const item = document.createElement("li");
+      const copy = document.createElement("div");
+      const title = document.createElement("strong");
+      const path = document.createElement("small");
+      title.textContent = announcementFileTitle(file.path);
+      path.textContent =
+        status === "renamed" && file.previous_path
+          ? file.previous_path + " → " + file.path
+          : file.path;
+      copy.append(title, path);
+      const lines = document.createElement("span");
+      lines.className = "update-announcement-lines";
+      const additions = document.createElement("span");
+      additions.className = "is-added";
+      additions.textContent = "+" + (Number(file.additions) || 0);
+      const deletions = document.createElement("span");
+      deletions.className = "is-deleted";
+      deletions.textContent = "-" + (Number(file.deletions) || 0);
+      lines.append(additions, deletions);
+      item.append(copy, lines);
+      list.append(item);
+    });
+    section.append(heading, list);
+    container.append(section);
+  }
+
+  function appendUpdateCommits(container, commits) {
+    if (!commits.length) return;
+    const section = document.createElement("section");
+    section.className = "update-announcement-group";
+    const heading = document.createElement("h3");
+    heading.textContent = "提交摘要";
+    const list = document.createElement("ul");
+    list.className = "update-announcement-commits";
+    commits.forEach(function (commit) {
+      const item = document.createElement("li");
+      const message = document.createElement("strong");
+      const meta = document.createElement("small");
+      message.textContent = commit.message || "内容更新";
+      meta.textContent =
+        String(commit.sha || "").slice(0, 7) +
+        " · " +
+        (commit.author || "unknown");
+      item.append(message, meta);
+      list.append(item);
+    });
+    section.append(heading, list);
+    container.append(section);
+  }
+
+  function renderUpdateAnnouncement(payload) {
+    const dialog = query("[data-update-announcement-dialog]");
+    const content = query("[data-update-announcement-content]", dialog);
+    const files = Array.isArray(payload.files) ? payload.files : [];
+    const commits = Array.isArray(payload.commits) ? payload.commits : [];
+    query("[data-update-announcement-version]", dialog).textContent =
+      String(payload.from_revision || "").slice(0, 7) +
+      " → " +
+      String(payload.to_revision || "").slice(0, 7);
+    query("[data-update-commit-count]", dialog).textContent = String(
+      Number(payload.total_commits) || commits.length
+    );
+    query("[data-update-file-count]", dialog).textContent = String(
+      files.length
+    );
+    content.replaceChildren();
+    ["added", "modified", "removed", "renamed"].forEach(function (status) {
+      appendUpdateFileGroup(
+        content,
+        status,
+        files.filter(function (file) {
+          return file.status === status;
+        })
+      );
+    });
+    appendUpdateCommits(content, commits);
+    query("[data-update-announcement-note]", dialog).hidden =
+      !payload.truncated;
+    refreshIcons(dialog);
+  }
+
+  function showPendingUpdateAnnouncement() {
+    const payload = state.pendingUpdateAnnouncement;
+    const dialog = query("[data-update-announcement-dialog]");
+    if (
+      !payload ||
+      !dialog ||
+      dialog.open ||
+      query("dialog[open]")
+    ) {
+      return false;
+    }
+    renderUpdateAnnouncement(payload);
+    dialog.showModal();
+    return true;
+  }
+
+  function queueUpdateAnnouncement(payload) {
+    const key = updateStorageKey(UPDATE_PENDING_PREFIX);
+    state.pendingUpdateAnnouncement = payload;
+    writeStoredValue(key, JSON.stringify(payload));
+    showPendingUpdateAnnouncement();
+  }
+
+  function restorePendingUpdateAnnouncement() {
+    const payload = readStoredJson(
+      updateStorageKey(UPDATE_PENDING_PREFIX)
+    );
+    if (!payload || !validContentRevision(payload.to_revision)) {
+      return false;
+    }
+    state.pendingUpdateAnnouncement = payload;
+    showPendingUpdateAnnouncement();
+    return true;
+  }
+
+  function acknowledgeUpdateAnnouncement() {
+    const dialog = query("[data-update-announcement-dialog]");
+    removeStoredValue(updateStorageKey(UPDATE_PENDING_PREFIX));
+    state.pendingUpdateAnnouncement = null;
+    if (dialog && dialog.open) dialog.close();
+  }
+
+  async function checkForUpdateAnnouncement() {
+    if (
+      state.updateAnnouncementChecking ||
+      !state.session ||
+      !state.session.authenticated ||
+      state.session.user.must_change_password
+    ) {
+      return;
+    }
+    if (restorePendingUpdateAnnouncement()) return;
+    const currentRevision =
+      config.contentRevision || config.contentVersion || "";
+    if (!validContentRevision(currentRevision)) return;
+    const versionKey = updateStorageKey(UPDATE_VERSION_PREFIX);
+    let previousRevision = "";
+    try {
+      previousRevision = window.localStorage.getItem(versionKey) || "";
+    } catch {
+      previousRevision = "";
+    }
+    if (!validContentRevision(previousRevision)) {
+      const workspace = readLocalWorkspace();
+      previousRevision =
+        workspace && workspace.base ? workspace.base.revision : "";
+    }
+    if (
+      !validContentRevision(previousRevision) ||
+      currentRevision.startsWith(previousRevision)
+    ) {
+      writeStoredValue(versionKey, currentRevision);
+      return;
+    }
+
+    state.updateAnnouncementChecking = true;
+    try {
+      const payload = await api(
+        "/repository/update-announcement?from_revision=" +
+          encodeURIComponent(previousRevision)
+      );
+      if (
+        !payload ||
+        !validContentRevision(payload.to_revision) ||
+        !(
+          currentRevision.startsWith(payload.to_revision) ||
+          payload.to_revision.startsWith(currentRevision)
+        )
+      ) {
+        return;
+      }
+      writeStoredValue(versionKey, payload.to_revision);
+      if (
+        (Array.isArray(payload.files) && payload.files.length) ||
+        (Array.isArray(payload.commits) && payload.commits.length)
+      ) {
+        queueUpdateAnnouncement(payload);
+      }
+    } catch {
+      // Keep the previous version so a later login can retry the summary.
+    } finally {
+      state.updateAnnouncementChecking = false;
+    }
   }
 
   function applyWorkspaceState(workspace) {
@@ -1487,6 +1743,7 @@
     }
     await applyDraftsToReader(payload.active_draft_html);
     const onboardingOpen = openOnboardingIfNeeded();
+    checkForUpdateAnnouncement();
     if (
       !onboardingOpen &&
       state.editMode &&
@@ -3366,6 +3623,7 @@
         await applyDraftsToReader();
         beginWorkspaceSync();
         openOnboardingIfNeeded();
+        checkForUpdateAnnouncement();
       } catch (error) {
         feedback(target, error.message);
       }
@@ -3390,6 +3648,7 @@
         await applyDraftsToReader();
         beginWorkspaceSync();
         openOnboardingIfNeeded();
+        checkForUpdateAnnouncement();
       } catch (error) {
         feedback(target, error.message);
       }
@@ -3474,6 +3733,26 @@
     queryAll("[data-close-content-create]").forEach(function (button) {
       button.addEventListener("click", function () {
         query("[data-content-create-dialog]").close();
+      });
+    });
+    queryAll("[data-close-update-announcement]").forEach(function (button) {
+      button.addEventListener("click", acknowledgeUpdateAnnouncement);
+    });
+    query("[data-update-announcement-dialog]").addEventListener(
+      "cancel",
+      function (event) {
+        event.preventDefault();
+        acknowledgeUpdateAnnouncement();
+      }
+    );
+    [
+      "[data-search-dialog]",
+      "[data-account-dialog]",
+      "[data-onboarding-dialog]",
+      "[data-content-create-dialog]"
+    ].forEach(function (selector) {
+      query(selector).addEventListener("close", function () {
+        window.setTimeout(showPendingUpdateAnnouncement, 0);
       });
     });
     query("[data-content-create-form]").addEventListener("submit", function (event) {
