@@ -32,6 +32,7 @@
     manualAnnouncementIndex: 0,
     updateAnnouncementChecking: false,
     manualAnnouncementChecking: false,
+    announcementGateReady: window.GCK_PAGE_KIND !== "home",
     identityLoaded: false,
     identityPromise: null,
     cachedDraftCount: 0
@@ -634,7 +635,28 @@
     return true;
   }
 
+  function initializeAnnouncementGate() {
+    if (state.announcementGateReady) return;
+    const introReady = window.GCK_HOME_INTRO_READY;
+    if (!introReady || typeof introReady.then !== "function") {
+      state.announcementGateReady = true;
+      return;
+    }
+    Promise.race([
+      introReady,
+      new Promise(function (resolve) {
+        window.setTimeout(function () {
+          resolve("timeout");
+        }, 25000);
+      })
+    ]).then(function () {
+      state.announcementGateReady = true;
+      showPendingAnnouncements();
+    });
+  }
+
   function showPendingAnnouncements() {
+    if (!state.announcementGateReady) return false;
     if (showPendingManualAnnouncement()) return true;
     return showPendingUpdateAnnouncement();
   }
@@ -3975,6 +3997,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    initializeAnnouncementGate();
     bindEvents();
     restoreCachedWorkspaceNavigation();
     loadIdentity({ cacheOnly: true });

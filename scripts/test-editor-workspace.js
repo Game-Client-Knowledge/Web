@@ -138,6 +138,14 @@ assert.match(siteIntegration, /ONCE_ANNOUNCEMENT_SEEN_PREFIX/);
 assert.match(siteIntegration, /item\.display_mode !== "once"/);
 assert.match(
   siteIntegration,
+  /Promise\.race\(\[\s*introReady,[\s\S]*?25000[\s\S]*?showPendingAnnouncements\(\)/
+);
+assert.match(
+  siteIntegration,
+  /if \(!state\.announcementGateReady\) return false/
+);
+assert.match(
+  siteIntegration,
   /openOnboardingIfNeeded\(\);\s*checkForUpdateAnnouncement\(\)/
 );
 assert.match(

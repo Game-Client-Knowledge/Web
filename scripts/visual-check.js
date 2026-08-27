@@ -414,6 +414,23 @@ async function inspectPage(browser, scenario) {
         JSON.stringify(updateCache)
     );
   }
+  if (scenario.announcementWaitForIntro) {
+    const announcement = page.locator("[data-manual-announcement-dialog]");
+    assert(
+      await announcement.isHidden(),
+      `${scenario.name}: announcement opened before intro`
+    );
+    if (scenario.announcementWaitForIntro === "skip") {
+      await page.locator("[data-entry-sequence]").click({
+        position: { x: 8, y: 8 }
+      });
+    }
+    await page.waitForFunction(() => {
+      return ["complete", "skipped", "seen"].includes(
+        document.body.dataset.homeIntro
+      );
+    });
+  }
   if (scenario.manualAnnouncements) {
     const announcement = page.locator("[data-manual-announcement-dialog]");
     await announcement.waitFor({ state: "visible" });
@@ -441,15 +458,17 @@ async function inspectPage(browser, scenario) {
     await announcement
       .locator("[data-next-manual-announcement]")
       .click();
-    assert(
+    if (scenario.manualAnnouncements.length > 1) {
+      assert(
+        await announcement
+          .locator("[data-manual-announcement-title]")
+          .textContent() === scenario.manualAnnouncements[1].title,
+        `${scenario.name}: next announcement was not shown`
+      );
       await announcement
-        .locator("[data-manual-announcement-title]")
-        .textContent() === scenario.manualAnnouncements[1].title,
-      `${scenario.name}: next announcement was not shown`
-    );
-    await announcement
-      .locator("[data-next-manual-announcement]")
-      .click();
+        .locator("[data-next-manual-announcement]")
+        .click();
+    }
     await page.reload({ waitUntil: "networkidle" });
     await announcement.waitFor({ state: "visible" });
     assert(
@@ -2027,6 +2046,60 @@ async function inspectPage(browser, scenario) {
         }
       ],
       visualSettings: { pointer_effect_enabled: false }
+    },
+    {
+      name: "home-announcement-after-intro-complete",
+      route: "/",
+      viewport: { width: 1440, height: 1000 },
+      authenticated: true,
+      announcementWaitForIntro: "complete",
+      manualAnnouncements: [
+        {
+          id: 21,
+          title: "动画后公告",
+          body: "入场动画完成后展示。",
+          priority: 10,
+          display_mode: "persistent",
+          published_by: "sourcecode",
+          published_at: "2026-08-27T08:00:00Z"
+        }
+      ],
+      visualSettings: {
+        pointer_effect_enabled: false,
+        home_intro_enabled: true,
+        home_intro_mode: "always",
+        home_intro_duration_ms: 1800,
+        home_intro_assembly_duration_ms: 1000,
+        home_intro_hold_duration_ms: 400,
+        home_intro_lock_scroll: true
+      }
+    },
+    {
+      name: "home-announcement-after-intro-skip",
+      route: "/",
+      viewport: { width: 1440, height: 1000 },
+      authenticated: true,
+      announcementWaitForIntro: "skip",
+      manualAnnouncements: [
+        {
+          id: 22,
+          title: "跳过动画后公告",
+          body: "用户跳过入场动画后展示。",
+          priority: 10,
+          display_mode: "persistent",
+          published_by: "sourcecode",
+          published_at: "2026-08-27T08:00:00Z"
+        }
+      ],
+      visualSettings: {
+        pointer_effect_enabled: false,
+        home_intro_enabled: true,
+        home_intro_mode: "always",
+        home_intro_duration_ms: 3000,
+        home_intro_assembly_duration_ms: 1800,
+        home_intro_hold_duration_ms: 700,
+        home_intro_lock_scroll: true
+      }
     },
     {
       name: "reader-editor-roundtrip-desktop",
