@@ -172,6 +172,12 @@ assert.match(
 assert.doesNotMatch(html, /star-formula-engine\.js\?v=2/);
 assert.match(html, /id="commentAgentForm"/);
 assert.match(html, /id="commentAgentProvider"/);
+assert.match(html, /id="announcementForm"/);
+assert.match(html, /id="announcementList"/);
+assert.match(javascript, /\/admin\/announcements/);
+assert.match(javascript, /function renderAnnouncements\(/);
+assert.match(serverSource, /@app\.post\("\/api\/admin\/announcements"\)/);
+assert.match(databaseSource, /CREATE TABLE IF NOT EXISTS announcements/);
 for (const field of [
   "protocol",
   "base_url",

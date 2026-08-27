@@ -680,6 +680,46 @@
       </section>
     </dialog>
 
+    <dialog
+      class="update-announcement-dialog manual-announcement-dialog"
+      data-manual-announcement-dialog
+      aria-labelledby="manual-announcement-title"
+    >
+      <section class="update-announcement-panel">
+        <header class="update-announcement-header">
+          <div>
+            <p class="eyebrow">Announcement</p>
+            <h2 id="manual-announcement-title" data-manual-announcement-title>
+              站点公告
+            </h2>
+            <p data-manual-announcement-meta></p>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            data-close-manual-announcement
+            aria-label="关闭站点公告"
+            title="关闭"
+          >
+            <i data-lucide="x" aria-hidden="true"></i>
+          </button>
+        </header>
+        <div
+          class="manual-announcement-body"
+          data-manual-announcement-body
+        ></div>
+        <footer class="update-announcement-footer">
+          <button
+            class="primary-button"
+            type="button"
+            data-close-manual-announcement
+          >
+            知道了
+          </button>
+        </footer>
+      </section>
+    </dialog>
+
     <dialog class="content-create-dialog" data-content-create-dialog>
       <form class="content-create-form" data-content-create-form>
         <header>

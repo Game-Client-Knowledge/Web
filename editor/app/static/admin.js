@@ -1047,6 +1047,29 @@ function renderNotifications(items) {
   if (!items.length) target.textContent = "暂无通知记录";
 }
 
+function renderAnnouncements(items) {
+  const target = byId("announcementList");
+  target.replaceChildren();
+  for (const item of items) {
+    const row = makeRow(
+      item.title,
+      `${item.published_by} · ${formatUpdateTime(item.published_at)}`
+    );
+    const body = document.createElement("p");
+    body.textContent = item.body;
+    row.children[0].append(body);
+    target.append(row);
+  }
+  if (!items.length) target.textContent = "暂无已发布公告";
+}
+
+function announcementFeedback(message, kind = "error") {
+  const target = byId("announcementFeedback");
+  target.textContent = message || "";
+  target.className =
+    `feedback${message ? " is-visible" : ""} ${kind}`;
+}
+
 function renderUsers(items) {
   const target = byId("userList");
   target.replaceChildren();
@@ -1280,6 +1303,7 @@ async function loadOverview() {
   renderSubmissions(data.submissions);
   renderExternalPullRequests(data.external_pull_requests);
   renderNotifications(data.notifications);
+  renderAnnouncements(data.announcements || []);
   renderUsers(data.users);
   refreshIcons();
 }
@@ -1682,6 +1706,29 @@ byId("updateSiteButton").addEventListener("click", () => {
 });
 byId("refreshSiteUpdateButton").addEventListener("click", () => {
   refreshSiteUpdate().catch((error) => siteUpdateFeedback(error.message));
+});
+byId("announcementForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  announcementFeedback("");
+  try {
+    await api("/admin/announcements", {
+      method: "POST",
+      body: JSON.stringify({
+        title: form.title.value,
+        body: form.body.value
+      })
+    });
+    form.reset();
+    announcementFeedback("公告已发布。", "success");
+    await loadOverview();
+  } catch (error) {
+    announcementFeedback(error.message);
+  } finally {
+    button.disabled = false;
+  }
 });
 
 byId("smtpProvider").addEventListener("change", applySmtpTemplate);

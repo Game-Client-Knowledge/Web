@@ -255,6 +255,32 @@ def test_repository_changes_returns_bounded_release_summary() -> None:
     assert request.kwargs["token"] == "bot-token"
 
 
+def test_repository_parent_revision_uses_deployed_commit() -> None:
+    head = "b" * 40
+    parent = "a" * 40
+    settings = SimpleNamespace(
+        github_repo="owner/repository",
+        github_bot_token="bot-token",
+    )
+    client = GitHubClient(settings)
+    client._request = AsyncMock(
+        return_value=httpx.Response(
+            200,
+            json={"parents": [{"sha": parent}]},
+        )
+    )
+
+    result = asyncio.run(client.repository_parent_revision(head))
+
+    assert result == parent
+    request = client._request.await_args
+    assert request.args == (
+        "GET",
+        f"/repos/owner/repository/commits/{head}",
+    )
+    assert request.kwargs["token"] == "bot-token"
+
+
 def test_external_pull_discovery_uses_bounded_github_queries() -> None:
     settings = SimpleNamespace(github_repo="owner/repository")
     client = GitHubClient(settings)

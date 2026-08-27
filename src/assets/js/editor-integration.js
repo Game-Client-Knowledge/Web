@@ -8,6 +8,9 @@
   const IDENTITY_CACHE_TTL = 5 * 60 * 1000;
   const UPDATE_VERSION_PREFIX = "gck-content-version:v1:";
   const UPDATE_PENDING_PREFIX = "gck-update-announcement:v1:";
+  const MANUAL_ANNOUNCEMENT_SEEN_PREFIX = "gck-announcement-seen:v1:";
+  const MANUAL_ANNOUNCEMENT_PENDING_PREFIX =
+    "gck-announcement-pending:v1:";
   const state = {
     config: null,
     session: null,
@@ -27,7 +30,9 @@
     onboardingManual: false,
     onboardingSaving: false,
     pendingUpdateAnnouncement: null,
+    pendingManualAnnouncement: null,
     updateAnnouncementChecking: false,
+    manualAnnouncementChecking: false,
     identityLoaded: false,
     identityPromise: null,
     cachedDraftCount: 0
@@ -582,11 +587,50 @@
     return true;
   }
 
+  function renderManualAnnouncement(payload) {
+    const dialog = query("[data-manual-announcement-dialog]");
+    query("[data-manual-announcement-title]", dialog).textContent =
+      payload.title || "站点公告";
+    query("[data-manual-announcement-body]", dialog).textContent =
+      payload.body || "";
+    const publishedAt = new Date(payload.published_at || "");
+    query("[data-manual-announcement-meta]", dialog).textContent =
+      (payload.published_by || "管理员") +
+      " · " +
+      (
+        Number.isNaN(publishedAt.getTime())
+          ? String(payload.published_at || "")
+          : publishedAt.toLocaleString("zh-CN")
+      );
+    refreshIcons(dialog);
+  }
+
+  function showPendingManualAnnouncement() {
+    const payload = state.pendingManualAnnouncement;
+    const dialog = query("[data-manual-announcement-dialog]");
+    if (
+      !payload ||
+      !dialog ||
+      dialog.open ||
+      query("dialog[open]")
+    ) {
+      return false;
+    }
+    renderManualAnnouncement(payload);
+    dialog.showModal();
+    return true;
+  }
+
+  function showPendingAnnouncements() {
+    if (showPendingManualAnnouncement()) return true;
+    return showPendingUpdateAnnouncement();
+  }
+
   function queueUpdateAnnouncement(payload) {
     const key = updateStorageKey(UPDATE_PENDING_PREFIX);
     state.pendingUpdateAnnouncement = payload;
     writeStoredValue(key, JSON.stringify(payload));
-    showPendingUpdateAnnouncement();
+    showPendingAnnouncements();
   }
 
   function restorePendingUpdateAnnouncement() {
@@ -597,7 +641,7 @@
       return false;
     }
     state.pendingUpdateAnnouncement = payload;
-    showPendingUpdateAnnouncement();
+    showPendingAnnouncements();
     return true;
   }
 
@@ -606,6 +650,80 @@
     removeStoredValue(updateStorageKey(UPDATE_PENDING_PREFIX));
     state.pendingUpdateAnnouncement = null;
     if (dialog && dialog.open) dialog.close();
+    window.setTimeout(showPendingAnnouncements, 0);
+  }
+
+  function queueManualAnnouncement(payload) {
+    const key = updateStorageKey(MANUAL_ANNOUNCEMENT_PENDING_PREFIX);
+    state.pendingManualAnnouncement = payload;
+    writeStoredValue(key, JSON.stringify(payload));
+    showPendingAnnouncements();
+  }
+
+  function restorePendingManualAnnouncement() {
+    const payload = readStoredJson(
+      updateStorageKey(MANUAL_ANNOUNCEMENT_PENDING_PREFIX)
+    );
+    if (!payload || !Number.isInteger(Number(payload.id))) {
+      return false;
+    }
+    state.pendingManualAnnouncement = payload;
+    showPendingAnnouncements();
+    return true;
+  }
+
+  function acknowledgeManualAnnouncement() {
+    const dialog = query("[data-manual-announcement-dialog]");
+    const payload = state.pendingManualAnnouncement;
+    if (payload) {
+      writeStoredValue(
+        updateStorageKey(MANUAL_ANNOUNCEMENT_SEEN_PREFIX),
+        String(payload.id)
+      );
+    }
+    removeStoredValue(
+      updateStorageKey(MANUAL_ANNOUNCEMENT_PENDING_PREFIX)
+    );
+    state.pendingManualAnnouncement = null;
+    if (dialog && dialog.open) dialog.close();
+    window.setTimeout(showPendingAnnouncements, 0);
+  }
+
+  async function checkForManualAnnouncement() {
+    if (
+      state.manualAnnouncementChecking ||
+      !state.session ||
+      !state.session.authenticated ||
+      state.session.user.must_change_password
+    ) {
+      return;
+    }
+    if (restorePendingManualAnnouncement()) return;
+    state.manualAnnouncementChecking = true;
+    try {
+      const payload = await api("/announcements/latest");
+      const announcement = payload && payload.announcement;
+      if (!announcement || !Number.isInteger(Number(announcement.id))) {
+        return;
+      }
+      let seen = 0;
+      try {
+        seen = Number(
+          window.localStorage.getItem(
+            updateStorageKey(MANUAL_ANNOUNCEMENT_SEEN_PREFIX)
+          ) || 0
+        );
+      } catch {
+        seen = 0;
+      }
+      if (Number(announcement.id) > seen) {
+        queueManualAnnouncement(announcement);
+      }
+    } catch {
+      // A later authenticated page load retries unavailable announcements.
+    } finally {
+      state.manualAnnouncementChecking = false;
+    }
   }
 
   async function checkForUpdateAnnouncement() {
@@ -630,11 +748,16 @@
     }
     if (!validContentRevision(previousRevision)) {
       const workspace = readLocalWorkspace();
-      previousRevision =
+      const workspaceRevision =
         workspace && workspace.base ? workspace.base.revision : "";
+      previousRevision =
+        validContentRevision(workspaceRevision) &&
+        !currentRevision.startsWith(workspaceRevision)
+          ? workspaceRevision
+          : "";
     }
     if (
-      !validContentRevision(previousRevision) ||
+      validContentRevision(previousRevision) &&
       currentRevision.startsWith(previousRevision)
     ) {
       writeStoredValue(versionKey, currentRevision);
@@ -643,9 +766,11 @@
 
     state.updateAnnouncementChecking = true;
     try {
+      const queryString = validContentRevision(previousRevision)
+        ? "?from_revision=" + encodeURIComponent(previousRevision)
+        : "";
       const payload = await api(
-        "/repository/update-announcement?from_revision=" +
-          encodeURIComponent(previousRevision)
+        "/repository/update-announcement" + queryString
       );
       if (
         !payload ||
@@ -1744,6 +1869,7 @@
     await applyDraftsToReader(payload.active_draft_html);
     const onboardingOpen = openOnboardingIfNeeded();
     checkForUpdateAnnouncement();
+    checkForManualAnnouncement();
     if (
       !onboardingOpen &&
       state.editMode &&
@@ -3624,6 +3750,7 @@
         beginWorkspaceSync();
         openOnboardingIfNeeded();
         checkForUpdateAnnouncement();
+        checkForManualAnnouncement();
       } catch (error) {
         feedback(target, error.message);
       }
@@ -3649,6 +3776,7 @@
         beginWorkspaceSync();
         openOnboardingIfNeeded();
         checkForUpdateAnnouncement();
+        checkForManualAnnouncement();
       } catch (error) {
         feedback(target, error.message);
       }
@@ -3745,6 +3873,16 @@
         acknowledgeUpdateAnnouncement();
       }
     );
+    queryAll("[data-close-manual-announcement]").forEach(function (button) {
+      button.addEventListener("click", acknowledgeManualAnnouncement);
+    });
+    query("[data-manual-announcement-dialog]").addEventListener(
+      "cancel",
+      function (event) {
+        event.preventDefault();
+        acknowledgeManualAnnouncement();
+      }
+    );
     [
       "[data-search-dialog]",
       "[data-account-dialog]",
@@ -3752,7 +3890,7 @@
       "[data-content-create-dialog]"
     ].forEach(function (selector) {
       query(selector).addEventListener("close", function () {
-        window.setTimeout(showPendingUpdateAnnouncement, 0);
+        window.setTimeout(showPendingAnnouncements, 0);
       });
     });
     query("[data-content-create-form]").addEventListener("submit", function (event) {

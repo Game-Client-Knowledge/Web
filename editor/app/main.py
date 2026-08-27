@@ -212,6 +212,11 @@ class AdminDecisionRequest(BaseModel):
     decision: str
 
 
+class AnnouncementRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    body: str = Field(min_length=1, max_length=5000)
+
+
 def module_root_for_path(value: str) -> str:
     parts = value.split("/")
     if parts and parts[0] in TRACK_ROOTS and len(parts) >= 2:
@@ -2514,11 +2519,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/repository/update-announcement")
     async def repository_update_announcement(
-        from_revision: str,
+        from_revision: str | None = None,
         user: dict[str, Any] = Depends(require_ready_user),
     ) -> dict[str, Any]:
         del user
-        if not re.fullmatch(r"[0-9a-fA-F]{7,40}", from_revision):
+        if from_revision and not re.fullmatch(
+            r"[0-9a-fA-F]{7,40}",
+            from_revision,
+        ):
             raise HTTPException(
                 status_code=422,
                 detail="本地内容版本格式无效",
@@ -2530,6 +2538,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not re.fullmatch(r"[0-9a-fA-F]{40}", to_revision):
             reference = await github.main_reference()
             to_revision = str(reference["object"]["sha"])
+        if not from_revision:
+            from_revision = await github.repository_parent_revision(
+                to_revision
+            )
         if to_revision.startswith(from_revision) or (
             len(from_revision) == 40 and from_revision == to_revision
         ):
@@ -2545,6 +2557,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             from_revision,
             to_revision,
         )
+
+    @app.get("/api/announcements/latest")
+    async def latest_announcement(
+        user: dict[str, Any] = Depends(require_ready_user),
+    ) -> dict[str, Any]:
+        del user
+        with db.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT a.id, a.title, a.body, a.published_at,
+                       u.username AS published_by
+                FROM announcements a
+                JOIN users u ON u.id = a.created_by
+                ORDER BY a.published_at DESC, a.id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        return {"announcement": dict(row) if row else None}
 
     @app.get("/api/repository/file")
     async def repository_file(
@@ -3581,6 +3611,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     """
                 ).fetchall()
             ]
+            announcements = [
+                dict(row)
+                for row in connection.execute(
+                    """
+                    SELECT a.id, a.title, a.body, a.published_at,
+                           u.username AS published_by
+                    FROM announcements a
+                    JOIN users u ON u.id = a.created_by
+                    ORDER BY a.published_at DESC, a.id DESC
+                    LIMIT 50
+                    """
+                ).fetchall()
+            ]
             comment_agent_usage = [
                 dict(row)
                 for row in connection.execute(
@@ -3609,6 +3652,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "submissions": submissions,
             "external_pull_requests": external_pull_requests,
             "notifications": notifications,
+            "announcements": announcements,
             "analytics": analytics_dashboard(db),
             "settings": {
                 "edit_policy": db.setting(
@@ -4255,6 +4299,51 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.site_release_source_path,
             settings.site_update_request_path,
         )
+
+    @app.post("/api/admin/announcements")
+    async def publish_announcement(
+        payload: AnnouncementRequest,
+        request: Request,
+        x_csrf_token: str | None = Header(default=None),
+        admin: dict[str, Any] = Depends(require_admin),
+    ) -> dict[str, Any]:
+        verify_csrf(admin, x_csrf_token)
+        title = payload.title.strip()
+        body = payload.body.strip()
+        if not title or not body:
+            raise HTTPException(status_code=422, detail="公告标题和正文不能为空")
+        published_at = utc_now()
+        with db.connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO announcements(
+                    title, body, created_by, published_at, created_at
+                )
+                VALUES(?, ?, ?, ?, ?)
+                """,
+                (
+                    title,
+                    body,
+                    admin["id"],
+                    published_at,
+                    published_at,
+                ),
+            )
+            announcement_id = int(cursor.lastrowid)
+        db.audit(
+            "announcement.published",
+            request_ip(request),
+            user_id=admin["id"],
+            target=str(announcement_id),
+            detail=title,
+        )
+        return {
+            "id": announcement_id,
+            "title": title,
+            "body": body,
+            "published_by": admin["username"],
+            "published_at": published_at,
+        }
 
     @app.post("/api/admin/site-update")
     async def request_site_update(

@@ -287,6 +287,24 @@ class GitHubClient:
             ),
         }
 
+    async def repository_parent_revision(
+        self,
+        revision: str,
+    ) -> str:
+        response = await self._request(
+            "GET",
+            (
+                f"/repos/{self.settings.github_repo}/commits/"
+                f"{quote(revision, safe='')}"
+            ),
+            token=self.settings.github_bot_token or None,
+        )
+        parents = list(response.json().get("parents") or [])
+        parent = str(parents[0].get("sha") or "") if parents else ""
+        if not parent:
+            raise GitHubError("当前内容版本没有可比较的父提交", 409)
+        return parent
+
     @staticmethod
     def _decode_text_blob(payload: dict[str, Any]) -> str:
         try:

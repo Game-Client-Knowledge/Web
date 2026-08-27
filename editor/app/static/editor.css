@@ -2001,6 +2001,38 @@ dialog::backdrop {
   border-left: 0;
 }
 
+.admin-subsection {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.announcement-form {
+  display: grid;
+  margin-top: 16px;
+  gap: 14px;
+}
+
+.announcement-list {
+  margin-top: 20px;
+}
+
+.announcement-list .data-row {
+  align-items: start;
+  grid-template-columns: minmax(150px, 1fr) minmax(220px, 2fr) auto;
+}
+
+.announcement-list .data-row p {
+  display: -webkit-box;
+  margin: 3px 0 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
 .external-urge-shell {
   display: grid;
   min-height: calc(100vh - var(--header-height));

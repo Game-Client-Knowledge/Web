@@ -5004,11 +5004,24 @@ body.has-comments-open .reader-comments {
   line-height: 1.3;
 }
 
-.update-announcement-header [data-update-announcement-version] {
+.update-announcement-header [data-update-announcement-version],
+.update-announcement-header [data-manual-announcement-meta] {
   margin: 7px 0 0;
   color: var(--ink-faint);
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 11px;
+}
+
+.manual-announcement-body {
+  min-height: 140px;
+  margin-top: 22px;
+  padding: 20px 0;
+  color: var(--ink-soft);
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .update-announcement-summary {

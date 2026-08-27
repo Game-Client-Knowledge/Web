@@ -659,6 +659,21 @@ def test_update_announcement_compares_cached_and_deployed_versions(
     )
     assert invalid.status_code == 422
 
+    parent = "e" * 40
+    client.app.state.github.repository_parent_revision = AsyncMock(
+        return_value=parent
+    )
+    client.app.state.github.repository_changes.reset_mock()
+    first_visit = client.get("/api/repository/update-announcement")
+    assert first_visit.status_code == 200
+    client.app.state.github.repository_parent_revision.assert_awaited_once_with(
+        head
+    )
+    client.app.state.github.repository_changes.assert_awaited_once_with(
+        parent,
+        head,
+    )
+
 
 def test_line_attribution_and_comment_threads(client: TestClient) -> None:
     author = client.post(
@@ -1594,6 +1609,47 @@ def test_admin_can_queue_and_observe_site_updates(
         "/api/admin/site-update",
         headers={"X-CSRF-Token": csrf},
         json={"mode": "database"},
+    )
+    assert invalid.status_code == 422
+
+
+def test_admin_can_publish_login_announcement(
+    client: TestClient,
+) -> None:
+    payload = login(client, "sourcecode", TEST_BOOTSTRAP_PASSWORD)
+    changed = client.post(
+        "/api/auth/change-password",
+        headers={"X-CSRF-Token": payload["csrf_token"]},
+        json={
+            "current_password": TEST_BOOTSTRAP_PASSWORD,
+            "new_password": "a-new-strong-password",
+        },
+    ).json()
+
+    published = client.post(
+        "/api/admin/announcements",
+        headers={"X-CSRF-Token": changed["csrf_token"]},
+        json={
+            "title": "维护公告",
+            "body": "今晚 22:00 更新知识库内容。",
+        },
+    )
+
+    assert published.status_code == 200, published.text
+    assert published.json()["title"] == "维护公告"
+    latest = client.get("/api/announcements/latest")
+    assert latest.status_code == 200
+    assert latest.json()["announcement"]["id"] == published.json()["id"]
+    assert latest.json()["announcement"]["body"] == (
+        "今晚 22:00 更新知识库内容。"
+    )
+    overview = client.get("/api/admin/overview").json()
+    assert overview["announcements"][0]["title"] == "维护公告"
+
+    invalid = client.post(
+        "/api/admin/announcements",
+        headers={"X-CSRF-Token": changed["csrf_token"]},
+        json={"title": " ", "body": " "},
     )
     assert invalid.status_code == 422
 

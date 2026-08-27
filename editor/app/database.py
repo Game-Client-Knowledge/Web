@@ -164,6 +164,15 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS announcements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_by INTEGER NOT NULL REFERENCES users(id),
+    published_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS content_revisions (
     path TEXT PRIMARY KEY,
     commit_sha TEXT NOT NULL,
@@ -313,6 +322,8 @@ CREATE INDEX IF NOT EXISTS idx_site_analytics_day
 ON site_analytics_daily(day);
 CREATE INDEX IF NOT EXISTS idx_content_analytics_path
 ON content_analytics_daily(path, day);
+CREATE INDEX IF NOT EXISTS idx_announcements_published
+ON announcements(published_at DESC, id DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_application_pending
 ON admin_applications(user_id) WHERE status = 'pending';
 """

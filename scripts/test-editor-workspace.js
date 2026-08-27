@@ -73,6 +73,7 @@ const baseLayout = fs.readFileSync(
 );
 assert.match(baseLayout, /data-update-announcement-dialog/);
 assert.match(baseLayout, /data-update-announcement-content/);
+assert.match(baseLayout, /data-manual-announcement-dialog/);
 assert.match(siteCss, /\.update-announcement-dialog\s*\{/);
 assert.match(siteCss, /\.update-announcement-group\[data-status="added"\]/);
 assert.match(
@@ -130,8 +131,9 @@ assert.deepEqual(
 );
 assert.match(
   siteIntegration,
-  /\/repository\/update-announcement\?from_revision=/
+  /"\/repository\/update-announcement" \+ queryString/
 );
+assert.match(siteIntegration, /\/announcements\/latest/);
 assert.match(
   siteIntegration,
   /openOnboardingIfNeeded\(\);\s*checkForUpdateAnnouncement\(\)/

@@ -136,6 +136,18 @@ async function inspectPage(browser, scenario) {
   let previewAttempts = 0;
   let updateAnnouncementRequests = 0;
   let updateAnnouncementRevision = "";
+  if (scenario.updateAnnouncement) {
+    const generatedPath = path.join(
+      __dirname,
+      "..",
+      "_site",
+      scenario.route.replace(/^\/|\/$/g, ""),
+      "index.html"
+    );
+    const generated = fs.readFileSync(generatedPath, "utf8");
+    updateAnnouncementRevision =
+      generated.match(/contentRevision:\s*"([0-9a-f]+)"/)?.[1] || "";
+  }
   const draftWrites = [];
   const visualSettings = {
     ...defaultVisualSettings,
@@ -261,6 +273,14 @@ async function inspectPage(browser, scenario) {
       });
     }
   );
+  await context.route("**/editor/api/announcements/latest**", (route) => {
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        announcement: scenario.manualAnnouncement || null
+      })
+    });
+  });
   await context.route("**/editor/api/repository/delete-tree**", (route) => {
     const url = new URL(route.request().url());
     const path = url.searchParams.get("path");
@@ -346,16 +366,6 @@ async function inspectPage(browser, scenario) {
   });
   await page.waitForFunction(() => document.body.dataset.visualType);
   if (scenario.updateAnnouncement) {
-    updateAnnouncementRevision = await page.evaluate(() => {
-      return window.GCK_CONFIG.contentRevision;
-    });
-    await page.evaluate(() => {
-      window.localStorage.setItem(
-        "gck-content-version:v1:100",
-        "a".repeat(40)
-      );
-    });
-    await page.reload({ waitUntil: "networkidle" });
     const announcement = page.locator("[data-update-announcement-dialog]");
     await announcement.waitFor({ state: "visible" });
     const updateLayout = await announcement.evaluate((dialog) => {
@@ -402,6 +412,51 @@ async function inspectPage(browser, scenario) {
         updateAnnouncementRequests === 1,
       `${scenario.name}: update announcement cache is invalid ` +
         JSON.stringify(updateCache)
+    );
+  }
+  if (scenario.manualAnnouncement) {
+    const announcement = page.locator("[data-manual-announcement-dialog]");
+    await announcement.waitFor({ state: "visible" });
+    const manualLayout = await announcement.evaluate((dialog) => {
+      return {
+        title: dialog.querySelector("h2")?.textContent,
+        text: dialog.textContent.replace(/\s+/g, " ").trim(),
+        overflow: dialog.scrollWidth - dialog.clientWidth
+      };
+    });
+    assert(
+      manualLayout.title === scenario.manualAnnouncement.title &&
+        manualLayout.text.includes(scenario.manualAnnouncement.body) &&
+        manualLayout.overflow === 0,
+      `${scenario.name}: manual announcement is invalid ` +
+        JSON.stringify(manualLayout)
+    );
+    await page.screenshot({
+      path: path.join(outputDirectory, `${scenario.name}-announcement.png`),
+      fullPage: false
+    });
+    await announcement
+      .locator("[data-close-manual-announcement]")
+      .last()
+      .click();
+    await page.reload({ waitUntil: "networkidle" });
+    assert(
+      await announcement.isHidden(),
+      `${scenario.name}: dismissed manual announcement reopened`
+    );
+    const manualCache = await page.evaluate(() => {
+      return {
+        seen: window.localStorage.getItem("gck-announcement-seen:v1:100"),
+        pending: window.localStorage.getItem(
+          "gck-announcement-pending:v1:100"
+        )
+      };
+    });
+    assert(
+      manualCache.seen === String(scenario.manualAnnouncement.id) &&
+        manualCache.pending === null,
+      `${scenario.name}: manual announcement cache is invalid ` +
+        JSON.stringify(manualCache)
     );
   }
   if (scenario.ambient || scenario.pointerEffect !== undefined) {
@@ -1935,6 +1990,20 @@ async function inspectPage(browser, scenario) {
       viewport: { width: 1440, height: 1000 },
       authenticated: true,
       updateAnnouncement: true,
+      visualSettings: { pointer_effect_enabled: false }
+    },
+    {
+      name: "reader-manual-announcement-desktop",
+      route: "/program/knowledge/ecs/02-core-model/",
+      viewport: { width: 1440, height: 1000 },
+      authenticated: true,
+      manualAnnouncement: {
+        id: 17,
+        title: "本周知识库维护公告",
+        body: "新增 ECS 调度章节，并修正多个代码示例。",
+        published_by: "sourcecode",
+        published_at: "2026-08-27T08:00:00Z"
+      },
       visualSettings: { pointer_effect_enabled: false }
     },
     {
