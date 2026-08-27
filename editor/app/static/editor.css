@@ -2013,6 +2013,12 @@ dialog::backdrop {
   gap: 14px;
 }
 
+.announcement-options {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(120px, 0.4fr) minmax(240px, 1fr);
+}
+
 .announcement-list {
   margin-top: 20px;
 }
@@ -2031,6 +2037,17 @@ dialog::backdrop {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
+}
+
+.danger-icon-button {
+  color: #9a3412;
+  border-color: #e6b9a7;
+}
+
+.danger-icon-button:hover:not(:disabled) {
+  color: #7c2d12;
+  background: var(--orange-soft);
+  border-color: #d99c84;
 }
 
 .external-urge-shell {
@@ -2795,6 +2812,10 @@ dialog::backdrop {
 
   .admin-section {
     padding: 20px;
+  }
+
+  .announcement-options {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .admin-nav {

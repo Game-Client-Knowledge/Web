@@ -1677,6 +1677,26 @@ def test_admin_can_publish_login_announcement(
     assert overview["announcements"][0]["active"] == 1
     assert overview["announcements"][1]["active"] == 0
 
+    deleted = client.delete(
+        f"/api/admin/announcements/{published.json()['id']}",
+        headers={"X-CSRF-Token": changed["csrf_token"]},
+    )
+    assert deleted.status_code == 200
+    assert deleted.json() == {"ok": True}
+    assert client.get("/api/announcements").json()["items"] == []
+    latest_after_delete = client.get("/api/announcements/latest").json()
+    assert latest_after_delete["announcement"] is None
+    overview = client.get("/api/admin/overview").json()
+    assert [item["id"] for item in overview["announcements"]] == [
+        second.json()["id"]
+    ]
+
+    missing = client.delete(
+        f"/api/admin/announcements/{published.json()['id']}",
+        headers={"X-CSRF-Token": changed["csrf_token"]},
+    )
+    assert missing.status_code == 404
+
     invalid = client.post(
         "/api/admin/announcements",
         headers={"X-CSRF-Token": changed["csrf_token"]},

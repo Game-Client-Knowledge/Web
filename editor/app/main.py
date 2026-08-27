@@ -4435,6 +4435,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return {"ok": True}
 
+    @app.delete("/api/admin/announcements/{announcement_id}")
+    async def delete_announcement(
+        announcement_id: int,
+        request: Request,
+        x_csrf_token: str | None = Header(default=None),
+        admin: dict[str, Any] = Depends(require_admin),
+    ) -> dict[str, Any]:
+        verify_csrf(admin, x_csrf_token)
+        with db.connect() as connection:
+            announcement = connection.execute(
+                """
+                SELECT title
+                FROM announcements
+                WHERE id = ?
+                """,
+                (announcement_id,),
+            ).fetchone()
+            if not announcement:
+                raise HTTPException(status_code=404, detail="公告不存在")
+            connection.execute(
+                "DELETE FROM announcements WHERE id = ?",
+                (announcement_id,),
+            )
+        db.audit(
+            "announcement.deleted",
+            request_ip(request),
+            user_id=admin["id"],
+            target=str(announcement_id),
+            detail=announcement["title"],
+        )
+        return {"ok": True}
+
     @app.post("/api/admin/site-update")
     async def request_site_update(
         payload: SiteUpdateRequest,

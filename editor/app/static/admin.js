@@ -1070,13 +1070,35 @@ function renderAnnouncements(items) {
         }
       }
     );
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "icon-button danger-icon-button";
+    remove.title = "删除公告";
+    remove.setAttribute("aria-label", `删除公告：${item.title}`);
+    remove.innerHTML = '<i data-lucide="trash-2" aria-hidden="true"></i>';
+    remove.addEventListener("click", async () => {
+      if (!window.confirm(`确定永久删除公告“${item.title}”吗？`)) {
+        return;
+      }
+      remove.disabled = true;
+      try {
+        await api(`/admin/announcements/${item.id}`, {
+          method: "DELETE"
+        });
+        announcementFeedback("公告已删除。", "success");
+        await loadOverview();
+      } catch (error) {
+        announcementFeedback(error.message);
+        remove.disabled = false;
+      }
+    });
     const displayMode =
       item.display_mode === "once" ? "单次" : "常驻";
     const row = makeRow(
       `${item.title} · ${displayMode} · ${item.active ? "启用" : "停用"}`,
       `优先级 ${item.priority} · ${item.published_by} · ` +
         formatUpdateTime(item.published_at),
-      [toggle]
+      [toggle, remove]
     );
     const body = document.createElement("p");
     body.textContent = item.body;

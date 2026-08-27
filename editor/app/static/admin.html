@@ -66,6 +66,10 @@
             <i data-lucide="server-cog" aria-hidden="true"></i>
             <span>站点发布</span>
           </a>
+          <a href="#announcements">
+            <i data-lucide="megaphone" aria-hidden="true"></i>
+            <span>公告管理</span>
+          </a>
           <a href="#visuals">
             <i data-lucide="palette" aria-hidden="true"></i>
             <span>网站视觉</span>
@@ -259,31 +263,36 @@
         </button>
       </div>
       <div id="siteUpdateFeedback" class="feedback" role="status" aria-live="polite"></div>
-      <div class="admin-subsection">
-        <div class="subsection-heading">
-          <h3>常驻公告</h3>
-          <p>登录用户每次打开页面都会按优先级浏览全部启用公告。</p>
+    </section>
+
+    <section id="announcements" class="admin-section admin-panel" hidden>
+      <div class="section-title">
+        <div>
+          <h2>公告管理</h2>
+          <p>发布、启停或永久删除面向登录用户的公告。</p>
         </div>
-        <form id="announcementForm" class="announcement-form">
-          <label>
-            公告标题
-            <input
-              name="title"
-              maxlength="120"
-              placeholder="本周知识库更新"
-              required
-            >
-          </label>
-          <label>
-            公告正文
-            <textarea
-              name="body"
-              rows="6"
-              maxlength="5000"
-              placeholder="说明更新内容、影响范围或需要用户关注的事项。"
-              required
-            ></textarea>
-          </label>
+      </div>
+      <form id="announcementForm" class="announcement-form">
+        <label>
+          公告标题
+          <input
+            name="title"
+            maxlength="120"
+            placeholder="本周知识库更新"
+            required
+          >
+        </label>
+        <label>
+          公告正文
+          <textarea
+            name="body"
+            rows="6"
+            maxlength="5000"
+            placeholder="说明更新内容、影响范围或需要用户关注的事项。"
+            required
+          ></textarea>
+        </label>
+        <div class="announcement-options">
           <label class="announcement-priority-field">
             优先级
             <input
@@ -303,19 +312,25 @@
               <option value="once">单次 · 每个浏览器仅展示一次</option>
             </select>
           </label>
-          <div class="section-actions">
-            <button class="primary-button" type="submit">
-              <i data-lucide="megaphone" aria-hidden="true"></i>
-              发布公告
-            </button>
-          </div>
-          <div
-            id="announcementFeedback"
-            class="feedback"
-            role="status"
-            aria-live="polite"
-          ></div>
-        </form>
+        </div>
+        <div class="section-actions">
+          <button class="primary-button" type="submit">
+            <i data-lucide="megaphone" aria-hidden="true"></i>
+            发布公告
+          </button>
+        </div>
+        <div
+          id="announcementFeedback"
+          class="feedback"
+          role="status"
+          aria-live="polite"
+        ></div>
+      </form>
+      <div class="admin-subsection">
+        <div class="subsection-heading">
+          <h3>已发布公告</h3>
+          <p>启用公告按优先级展示；删除操作不可恢复。</p>
+        </div>
         <div id="announcementList" class="data-list announcement-list"></div>
       </div>
     </section>

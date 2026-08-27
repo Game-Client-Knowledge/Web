@@ -32,6 +32,7 @@ for (const target of [
   "overview",
   "editing",
   "publishing",
+  "announcements",
   "visuals",
   "contributions",
   "email",
@@ -43,7 +44,7 @@ for (const target of [
 }
 assert.equal(
   (html.match(/class="[^"]*\badmin-panel\b[^"]*"/g) || []).length,
-  8
+  9
 );
 assert.equal(
   (html.match(/data-visual-panel-target=/g) || []).length,
@@ -174,12 +175,22 @@ assert.match(html, /id="commentAgentForm"/);
 assert.match(html, /id="commentAgentProvider"/);
 assert.match(html, /id="announcementForm"/);
 assert.match(html, /id="announcementList"/);
+assert.match(
+  html,
+  /id="announcements"[\s\S]*id="announcementForm"[\s\S]*id="announcementList"/
+);
 assert.match(html, /name="priority"/);
 assert.match(html, /name="display_mode"/);
 assert.match(javascript, /\/admin\/announcements/);
 assert.match(javascript, /method:\s*"PATCH"/);
+assert.match(javascript, /method:\s*"DELETE"/);
+assert.match(javascript, /trash-2/);
 assert.match(javascript, /function renderAnnouncements\(/);
 assert.match(serverSource, /@app\.post\("\/api\/admin\/announcements"\)/);
+assert.match(
+  serverSource,
+  /@app\.delete\("\/api\/admin\/announcements\/\{announcement_id\}"\)/
+);
 assert.match(databaseSource, /CREATE TABLE IF NOT EXISTS announcements/);
 for (const field of [
   "protocol",
