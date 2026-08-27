@@ -216,11 +216,19 @@ class AnnouncementRequest(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     body: str = Field(min_length=1, max_length=5000)
     priority: int = Field(default=0, ge=0, le=100)
+    display_mode: str = Field(
+        default="persistent",
+        pattern=r"^(persistent|once)$",
+    )
 
 
 class AnnouncementUpdateRequest(BaseModel):
     active: bool | None = None
     priority: int | None = Field(default=None, ge=0, le=100)
+    display_mode: str | None = Field(
+        default=None,
+        pattern=r"^(persistent|once)$",
+    )
 
 
 def module_root_for_path(value: str) -> str:
@@ -2572,7 +2580,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with db.connect() as connection:
             row = connection.execute(
                 """
-                SELECT a.id, a.title, a.body, a.priority, a.published_at,
+                SELECT a.id, a.title, a.body, a.priority, a.display_mode,
+                       a.published_at,
                        u.username AS published_by
                 FROM announcements a
                 JOIN users u ON u.id = a.created_by
@@ -2591,7 +2600,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with db.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT a.id, a.title, a.body, a.priority, a.published_at,
+                SELECT a.id, a.title, a.body, a.priority, a.display_mode,
+                       a.published_at,
                        u.username AS published_by
                 FROM announcements a
                 JOIN users u ON u.id = a.created_by
@@ -3642,7 +3652,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 for row in connection.execute(
                     """
                     SELECT a.id, a.title, a.body, a.active, a.priority,
-                           a.published_at,
+                           a.display_mode, a.published_at,
                            u.username AS published_by
                     FROM announcements a
                     JOIN users u ON u.id = a.created_by
@@ -4346,15 +4356,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 """
                 INSERT INTO announcements(
                     title, body, created_by, active, priority,
-                    published_at, created_at, updated_at
+                    display_mode, published_at, created_at, updated_at
                 )
-                VALUES(?, ?, ?, 1, ?, ?, ?, ?)
+                VALUES(?, ?, ?, 1, ?, ?, ?, ?, ?)
                 """,
                 (
                     title,
                     body,
                     admin["id"],
                     payload.priority,
+                    payload.display_mode,
                     published_at,
                     published_at,
                     published_at,
@@ -4374,6 +4385,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "body": body,
             "active": True,
             "priority": payload.priority,
+            "display_mode": payload.display_mode,
             "published_by": admin["username"],
             "published_at": published_at,
         }
@@ -4395,6 +4407,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if payload.priority is not None:
             assignments.append("priority = ?")
             values.append(payload.priority)
+        if payload.display_mode is not None:
+            assignments.append("display_mode = ?")
+            values.append(payload.display_mode)
         if not assignments:
             raise HTTPException(status_code=422, detail="没有可更新的公告字段")
         assignments.append("updated_at = ?")

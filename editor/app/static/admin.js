@@ -1070,8 +1070,10 @@ function renderAnnouncements(items) {
         }
       }
     );
+    const displayMode =
+      item.display_mode === "once" ? "单次" : "常驻";
     const row = makeRow(
-      `${item.title} · ${item.active ? "启用" : "停用"}`,
+      `${item.title} · ${displayMode} · ${item.active ? "启用" : "停用"}`,
       `优先级 ${item.priority} · ${item.published_by} · ` +
         formatUpdateTime(item.published_at),
       [toggle]
@@ -1740,7 +1742,8 @@ byId("announcementForm").addEventListener("submit", async (event) => {
       body: JSON.stringify({
         title: form.title.value,
         body: form.body.value,
-        priority: Number(form.priority.value)
+        priority: Number(form.priority.value),
+        display_mode: form.display_mode.value
       })
     });
     form.reset();

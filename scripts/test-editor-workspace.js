@@ -134,6 +134,8 @@ assert.match(
   /"\/repository\/update-announcement" \+ queryString/
 );
 assert.match(siteIntegration, /api\("\/announcements"\)/);
+assert.match(siteIntegration, /ONCE_ANNOUNCEMENT_SEEN_PREFIX/);
+assert.match(siteIntegration, /item\.display_mode !== "once"/);
 assert.match(
   siteIntegration,
   /openOnboardingIfNeeded\(\);\s*checkForUpdateAnnouncement\(\)/

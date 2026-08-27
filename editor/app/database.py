@@ -171,6 +171,8 @@ CREATE TABLE IF NOT EXISTS announcements (
     created_by INTEGER NOT NULL REFERENCES users(id),
     active INTEGER NOT NULL DEFAULT 1,
     priority INTEGER NOT NULL DEFAULT 0,
+    display_mode TEXT NOT NULL DEFAULT 'persistent'
+        CHECK(display_mode IN ('persistent', 'once')),
     published_at TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -564,6 +566,13 @@ class Database:
                 (
                     "updated_at",
                     "ALTER TABLE announcements ADD COLUMN updated_at TEXT",
+                ),
+                (
+                    "display_mode",
+                    """
+                    ALTER TABLE announcements
+                    ADD COLUMN display_mode TEXT NOT NULL DEFAULT 'persistent'
+                    """,
                 ),
             ]:
                 if name not in announcement_columns:

@@ -175,6 +175,7 @@ assert.match(html, /id="commentAgentProvider"/);
 assert.match(html, /id="announcementForm"/);
 assert.match(html, /id="announcementList"/);
 assert.match(html, /name="priority"/);
+assert.match(html, /name="display_mode"/);
 assert.match(javascript, /\/admin\/announcements/);
 assert.match(javascript, /method:\s*"PATCH"/);
 assert.match(javascript, /function renderAnnouncements\(/);

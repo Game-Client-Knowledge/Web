@@ -1637,6 +1637,7 @@ def test_admin_can_publish_login_announcement(
 
     assert published.status_code == 200, published.text
     assert published.json()["title"] == "维护公告"
+    assert published.json()["display_mode"] == "persistent"
     latest = client.get("/api/announcements/latest")
     assert latest.status_code == 200
     assert latest.json()["announcement"]["id"] == published.json()["id"]
@@ -1653,6 +1654,7 @@ def test_admin_can_publish_login_announcement(
             "title": "高优先级公告",
             "body": "这条公告应当排在最前面。",
             "priority": 80,
+            "display_mode": "once",
         },
     )
     assert second.status_code == 200
@@ -1661,6 +1663,7 @@ def test_admin_can_publish_login_announcement(
         "高优先级公告",
         "维护公告",
     ]
+    assert active[0]["display_mode"] == "once"
 
     disabled = client.patch(
         f"/api/admin/announcements/{second.json()['id']}",
@@ -1720,12 +1723,16 @@ def test_announcement_schema_migrates_existing_table(
             ).fetchall()
         }
         row = connection.execute(
-            "SELECT active, priority, updated_at FROM announcements"
+            """
+            SELECT active, priority, display_mode, updated_at
+            FROM announcements
+            """
         ).fetchone()
-    assert {"active", "priority", "updated_at"} <= columns
+    assert {"active", "priority", "display_mode", "updated_at"} <= columns
     assert dict(row) == {
         "active": 1,
         "priority": 0,
+        "display_mode": "persistent",
         "updated_at": "2026-08-27T08:00:00Z",
     }
 

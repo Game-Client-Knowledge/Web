@@ -8,6 +8,7 @@
   const IDENTITY_CACHE_TTL = 5 * 60 * 1000;
   const UPDATE_VERSION_PREFIX = "gck-content-version:v1:";
   const UPDATE_PENDING_PREFIX = "gck-update-announcement:v1:";
+  const ONCE_ANNOUNCEMENT_SEEN_PREFIX = "gck-announcement-once-seen:v1:";
   const state = {
     config: null,
     session: null,
@@ -595,6 +596,8 @@
       payload.body || "";
     const publishedAt = new Date(payload.published_at || "");
     query("[data-manual-announcement-meta]", dialog).textContent =
+      (payload.display_mode === "once" ? "单次公告" : "常驻公告") +
+      " · " +
       (payload.published_by || "管理员") +
       " · " +
       (
@@ -602,6 +605,9 @@
           ? String(payload.published_at || "")
           : publishedAt.toLocaleString("zh-CN")
       );
+    if (payload.display_mode === "once") {
+      markOnceAnnouncementSeen(payload.id);
+    }
     query("[data-manual-announcement-progress]", dialog).textContent =
       index + 1 + " / " + total;
     query("[data-previous-manual-announcement]", dialog).hidden =
@@ -687,6 +693,23 @@
     if (dialog && !dialog.open) dialog.showModal();
   }
 
+  function readSeenOnceAnnouncements() {
+    const stored = readStoredJson(
+      updateStorageKey(ONCE_ANNOUNCEMENT_SEEN_PREFIX)
+    );
+    return new Set(Array.isArray(stored) ? stored.map(Number) : []);
+  }
+
+  function markOnceAnnouncementSeen(id) {
+    const key = updateStorageKey(ONCE_ANNOUNCEMENT_SEEN_PREFIX);
+    const seen = readSeenOnceAnnouncements();
+    seen.add(Number(id));
+    writeStoredValue(
+      key,
+      JSON.stringify(Array.from(seen).filter(Number.isInteger).slice(-200))
+    );
+  }
+
   async function checkForManualAnnouncement() {
     if (
       state.manualAnnouncementChecking ||
@@ -699,9 +722,17 @@
     state.manualAnnouncementChecking = true;
     try {
       const payload = await api("/announcements");
+      const seenOnce = readSeenOnceAnnouncements();
       const announcements = Array.isArray(payload && payload.items)
         ? payload.items.filter(function (item) {
-            return item && Number.isInteger(Number(item.id));
+            return (
+              item &&
+              Number.isInteger(Number(item.id)) &&
+              (
+                item.display_mode !== "once" ||
+                !seenOnce.has(Number(item.id))
+              )
+            );
           })
         : [];
       if (announcements.length) queueManualAnnouncements(announcements);

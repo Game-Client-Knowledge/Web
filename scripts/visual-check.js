@@ -458,6 +458,12 @@ async function inspectPage(browser, scenario) {
         .textContent() === scenario.manualAnnouncements[0].title,
       `${scenario.name}: persistent announcements did not restart`
     );
+    assert(
+      await announcement
+        .locator("[data-manual-announcement-progress]")
+        .textContent() === "1 / 1",
+      `${scenario.name}: one-time announcement reopened`
+    );
     await announcement
       .locator("[data-close-manual-announcement]")
       .click();
@@ -2006,6 +2012,7 @@ async function inspectPage(browser, scenario) {
           title: "重要维护公告",
           body: "今晚 22:00 将进行短时维护。",
           priority: 100,
+          display_mode: "persistent",
           published_by: "sourcecode",
           published_at: "2026-08-27T09:00:00Z"
         },
@@ -2014,6 +2021,7 @@ async function inspectPage(browser, scenario) {
           title: "本周知识库更新",
           body: "新增 ECS 调度章节，并修正多个代码示例。",
           priority: 10,
+          display_mode: "once",
           published_by: "sourcecode",
           published_at: "2026-08-27T08:00:00Z"
         }
