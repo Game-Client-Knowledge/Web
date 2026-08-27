@@ -273,11 +273,11 @@ async function inspectPage(browser, scenario) {
       });
     }
   );
-  await context.route("**/editor/api/announcements/latest**", (route) => {
+  await context.route("**/editor/api/announcements**", (route) => {
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        announcement: scenario.manualAnnouncement || null
+        items: scenario.manualAnnouncements || []
       })
     });
   });
@@ -414,7 +414,7 @@ async function inspectPage(browser, scenario) {
         JSON.stringify(updateCache)
     );
   }
-  if (scenario.manualAnnouncement) {
+  if (scenario.manualAnnouncements) {
     const announcement = page.locator("[data-manual-announcement-dialog]");
     await announcement.waitFor({ state: "visible" });
     const manualLayout = await announcement.evaluate((dialog) => {
@@ -425,8 +425,11 @@ async function inspectPage(browser, scenario) {
       };
     });
     assert(
-      manualLayout.title === scenario.manualAnnouncement.title &&
-        manualLayout.text.includes(scenario.manualAnnouncement.body) &&
+      manualLayout.title === scenario.manualAnnouncements[0].title &&
+        manualLayout.text.includes(scenario.manualAnnouncements[0].body) &&
+        manualLayout.text.includes(
+          `1 / ${scenario.manualAnnouncements.length}`
+        ) &&
         manualLayout.overflow === 0,
       `${scenario.name}: manual announcement is invalid ` +
         JSON.stringify(manualLayout)
@@ -436,28 +439,28 @@ async function inspectPage(browser, scenario) {
       fullPage: false
     });
     await announcement
-      .locator("[data-close-manual-announcement]")
-      .last()
+      .locator("[data-next-manual-announcement]")
+      .click();
+    assert(
+      await announcement
+        .locator("[data-manual-announcement-title]")
+        .textContent() === scenario.manualAnnouncements[1].title,
+      `${scenario.name}: next announcement was not shown`
+    );
+    await announcement
+      .locator("[data-next-manual-announcement]")
       .click();
     await page.reload({ waitUntil: "networkidle" });
+    await announcement.waitFor({ state: "visible" });
     assert(
-      await announcement.isHidden(),
-      `${scenario.name}: dismissed manual announcement reopened`
+      await announcement
+        .locator("[data-manual-announcement-title]")
+        .textContent() === scenario.manualAnnouncements[0].title,
+      `${scenario.name}: persistent announcements did not restart`
     );
-    const manualCache = await page.evaluate(() => {
-      return {
-        seen: window.localStorage.getItem("gck-announcement-seen:v1:100"),
-        pending: window.localStorage.getItem(
-          "gck-announcement-pending:v1:100"
-        )
-      };
-    });
-    assert(
-      manualCache.seen === String(scenario.manualAnnouncement.id) &&
-        manualCache.pending === null,
-      `${scenario.name}: manual announcement cache is invalid ` +
-        JSON.stringify(manualCache)
-    );
+    await announcement
+      .locator("[data-close-manual-announcement]")
+      .click();
   }
   if (scenario.ambient || scenario.pointerEffect !== undefined) {
     await page.waitForFunction(
@@ -1997,13 +2000,24 @@ async function inspectPage(browser, scenario) {
       route: "/program/knowledge/ecs/02-core-model/",
       viewport: { width: 1440, height: 1000 },
       authenticated: true,
-      manualAnnouncement: {
-        id: 17,
-        title: "本周知识库维护公告",
-        body: "新增 ECS 调度章节，并修正多个代码示例。",
-        published_by: "sourcecode",
-        published_at: "2026-08-27T08:00:00Z"
-      },
+      manualAnnouncements: [
+        {
+          id: 18,
+          title: "重要维护公告",
+          body: "今晚 22:00 将进行短时维护。",
+          priority: 100,
+          published_by: "sourcecode",
+          published_at: "2026-08-27T09:00:00Z"
+        },
+        {
+          id: 17,
+          title: "本周知识库更新",
+          body: "新增 ECS 调度章节，并修正多个代码示例。",
+          priority: 10,
+          published_by: "sourcecode",
+          published_at: "2026-08-27T08:00:00Z"
+        }
+      ],
       visualSettings: { pointer_effect_enabled: false }
     },
     {

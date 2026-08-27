@@ -133,7 +133,7 @@ assert.match(
   siteIntegration,
   /"\/repository\/update-announcement" \+ queryString/
 );
-assert.match(siteIntegration, /\/announcements\/latest/);
+assert.match(siteIntegration, /api\("\/announcements"\)/);
 assert.match(
   siteIntegration,
   /openOnboardingIfNeeded\(\);\s*checkForUpdateAnnouncement\(\)/

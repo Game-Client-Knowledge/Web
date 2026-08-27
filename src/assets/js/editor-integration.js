@@ -8,9 +8,6 @@
   const IDENTITY_CACHE_TTL = 5 * 60 * 1000;
   const UPDATE_VERSION_PREFIX = "gck-content-version:v1:";
   const UPDATE_PENDING_PREFIX = "gck-update-announcement:v1:";
-  const MANUAL_ANNOUNCEMENT_SEEN_PREFIX = "gck-announcement-seen:v1:";
-  const MANUAL_ANNOUNCEMENT_PENDING_PREFIX =
-    "gck-announcement-pending:v1:";
   const state = {
     config: null,
     session: null,
@@ -30,7 +27,8 @@
     onboardingManual: false,
     onboardingSaving: false,
     pendingUpdateAnnouncement: null,
-    pendingManualAnnouncement: null,
+    manualAnnouncements: [],
+    manualAnnouncementIndex: 0,
     updateAnnouncementChecking: false,
     manualAnnouncementChecking: false,
     identityLoaded: false,
@@ -589,6 +587,8 @@
 
   function renderManualAnnouncement(payload) {
     const dialog = query("[data-manual-announcement-dialog]");
+    const total = state.manualAnnouncements.length;
+    const index = state.manualAnnouncementIndex;
     query("[data-manual-announcement-title]", dialog).textContent =
       payload.title || "站点公告";
     query("[data-manual-announcement-body]", dialog).textContent =
@@ -602,11 +602,18 @@
           ? String(payload.published_at || "")
           : publishedAt.toLocaleString("zh-CN")
       );
+    query("[data-manual-announcement-progress]", dialog).textContent =
+      index + 1 + " / " + total;
+    query("[data-previous-manual-announcement]", dialog).hidden =
+      index === 0;
+    query("[data-next-manual-announcement]", dialog).textContent =
+      index === total - 1 ? "知道了" : "下一条";
     refreshIcons(dialog);
   }
 
   function showPendingManualAnnouncement() {
-    const payload = state.pendingManualAnnouncement;
+    const payload =
+      state.manualAnnouncements[state.manualAnnouncementIndex];
     const dialog = query("[data-manual-announcement-dialog]");
     if (
       !payload ||
@@ -653,40 +660,31 @@
     window.setTimeout(showPendingAnnouncements, 0);
   }
 
-  function queueManualAnnouncement(payload) {
-    const key = updateStorageKey(MANUAL_ANNOUNCEMENT_PENDING_PREFIX);
-    state.pendingManualAnnouncement = payload;
-    writeStoredValue(key, JSON.stringify(payload));
+  function queueManualAnnouncements(items) {
+    state.manualAnnouncements = items;
+    state.manualAnnouncementIndex = 0;
     showPendingAnnouncements();
   }
 
-  function restorePendingManualAnnouncement() {
-    const payload = readStoredJson(
-      updateStorageKey(MANUAL_ANNOUNCEMENT_PENDING_PREFIX)
-    );
-    if (!payload || !Number.isInteger(Number(payload.id))) {
-      return false;
-    }
-    state.pendingManualAnnouncement = payload;
-    showPendingAnnouncements();
-    return true;
-  }
-
-  function acknowledgeManualAnnouncement() {
+  function closeManualAnnouncements() {
     const dialog = query("[data-manual-announcement-dialog]");
-    const payload = state.pendingManualAnnouncement;
-    if (payload) {
-      writeStoredValue(
-        updateStorageKey(MANUAL_ANNOUNCEMENT_SEEN_PREFIX),
-        String(payload.id)
-      );
-    }
-    removeStoredValue(
-      updateStorageKey(MANUAL_ANNOUNCEMENT_PENDING_PREFIX)
-    );
-    state.pendingManualAnnouncement = null;
+    state.manualAnnouncements = [];
+    state.manualAnnouncementIndex = 0;
     if (dialog && dialog.open) dialog.close();
     window.setTimeout(showPendingAnnouncements, 0);
+  }
+
+  function moveManualAnnouncement(offset) {
+    const dialog = query("[data-manual-announcement-dialog]");
+    const next = state.manualAnnouncementIndex + offset;
+    if (next < 0) return;
+    if (next >= state.manualAnnouncements.length) {
+      closeManualAnnouncements();
+      return;
+    }
+    state.manualAnnouncementIndex = next;
+    renderManualAnnouncement(state.manualAnnouncements[next]);
+    if (dialog && !dialog.open) dialog.showModal();
   }
 
   async function checkForManualAnnouncement() {
@@ -698,27 +696,15 @@
     ) {
       return;
     }
-    if (restorePendingManualAnnouncement()) return;
     state.manualAnnouncementChecking = true;
     try {
-      const payload = await api("/announcements/latest");
-      const announcement = payload && payload.announcement;
-      if (!announcement || !Number.isInteger(Number(announcement.id))) {
-        return;
-      }
-      let seen = 0;
-      try {
-        seen = Number(
-          window.localStorage.getItem(
-            updateStorageKey(MANUAL_ANNOUNCEMENT_SEEN_PREFIX)
-          ) || 0
-        );
-      } catch {
-        seen = 0;
-      }
-      if (Number(announcement.id) > seen) {
-        queueManualAnnouncement(announcement);
-      }
+      const payload = await api("/announcements");
+      const announcements = Array.isArray(payload && payload.items)
+        ? payload.items.filter(function (item) {
+            return item && Number.isInteger(Number(item.id));
+          })
+        : [];
+      if (announcements.length) queueManualAnnouncements(announcements);
     } catch {
       // A later authenticated page load retries unavailable announcements.
     } finally {
@@ -3874,13 +3860,25 @@
       }
     );
     queryAll("[data-close-manual-announcement]").forEach(function (button) {
-      button.addEventListener("click", acknowledgeManualAnnouncement);
+      button.addEventListener("click", closeManualAnnouncements);
     });
+    query("[data-previous-manual-announcement]").addEventListener(
+      "click",
+      function () {
+        moveManualAnnouncement(-1);
+      }
+    );
+    query("[data-next-manual-announcement]").addEventListener(
+      "click",
+      function () {
+        moveManualAnnouncement(1);
+      }
+    );
     query("[data-manual-announcement-dialog]").addEventListener(
       "cancel",
       function (event) {
         event.preventDefault();
-        acknowledgeManualAnnouncement();
+        closeManualAnnouncements();
       }
     );
     [

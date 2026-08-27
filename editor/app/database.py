@@ -169,8 +169,11 @@ CREATE TABLE IF NOT EXISTS announcements (
     title TEXT NOT NULL,
     body TEXT NOT NULL,
     created_by INTEGER NOT NULL REFERENCES users(id),
+    active INTEGER NOT NULL DEFAULT 1,
+    priority INTEGER NOT NULL DEFAULT 0,
     published_at TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS content_revisions (
@@ -537,6 +540,49 @@ class Database:
             ]:
                 if name not in notification_columns:
                     connection.execute(statement)
+            announcement_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(announcements)"
+                ).fetchall()
+            }
+            for name, statement in [
+                (
+                    "active",
+                    """
+                    ALTER TABLE announcements
+                    ADD COLUMN active INTEGER NOT NULL DEFAULT 1
+                    """,
+                ),
+                (
+                    "priority",
+                    """
+                    ALTER TABLE announcements
+                    ADD COLUMN priority INTEGER NOT NULL DEFAULT 0
+                    """,
+                ),
+                (
+                    "updated_at",
+                    "ALTER TABLE announcements ADD COLUMN updated_at TEXT",
+                ),
+            ]:
+                if name not in announcement_columns:
+                    connection.execute(statement)
+            connection.execute(
+                """
+                UPDATE announcements
+                SET updated_at = COALESCE(updated_at, published_at, created_at)
+                WHERE updated_at IS NULL
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_announcements_active
+                ON announcements(
+                    active, priority DESC, published_at DESC, id DESC
+                )
+                """
+            )
             agent_request_columns = {
                 row["name"]
                 for row in connection.execute(

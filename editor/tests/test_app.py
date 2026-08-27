@@ -1646,12 +1646,88 @@ def test_admin_can_publish_login_announcement(
     overview = client.get("/api/admin/overview").json()
     assert overview["announcements"][0]["title"] == "维护公告"
 
+    second = client.post(
+        "/api/admin/announcements",
+        headers={"X-CSRF-Token": changed["csrf_token"]},
+        json={
+            "title": "高优先级公告",
+            "body": "这条公告应当排在最前面。",
+            "priority": 80,
+        },
+    )
+    assert second.status_code == 200
+    active = client.get("/api/announcements").json()["items"]
+    assert [item["title"] for item in active] == [
+        "高优先级公告",
+        "维护公告",
+    ]
+
+    disabled = client.patch(
+        f"/api/admin/announcements/{second.json()['id']}",
+        headers={"X-CSRF-Token": changed["csrf_token"]},
+        json={"active": False},
+    )
+    assert disabled.status_code == 200
+    active = client.get("/api/announcements").json()["items"]
+    assert [item["title"] for item in active] == ["维护公告"]
+    overview = client.get("/api/admin/overview").json()
+    assert overview["announcements"][0]["active"] == 1
+    assert overview["announcements"][1]["active"] == 0
+
     invalid = client.post(
         "/api/admin/announcements",
         headers={"X-CSRF-Token": changed["csrf_token"]},
         json={"title": " ", "body": " "},
     )
     assert invalid.status_code == 422
+
+
+def test_announcement_schema_migrates_existing_table(
+    client: TestClient,
+) -> None:
+    with client.app.state.db.connect() as connection:
+        connection.execute("DROP TABLE announcements")
+        connection.execute(
+            """
+            CREATE TABLE announcements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                body TEXT NOT NULL,
+                created_by INTEGER NOT NULL REFERENCES users(id),
+                published_at TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO announcements(
+                title, body, created_by, published_at, created_at
+            )
+            SELECT 'Existing', 'Existing body', id, ?, ?
+            FROM users WHERE username = 'sourcecode'
+            """,
+            ("2026-08-27T08:00:00Z", "2026-08-27T08:00:00Z"),
+        )
+
+    client.app.state.db.initialize(client.app.state.settings)
+
+    with client.app.state.db.connect() as connection:
+        columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(announcements)"
+            ).fetchall()
+        }
+        row = connection.execute(
+            "SELECT active, priority, updated_at FROM announcements"
+        ).fetchone()
+    assert {"active", "priority", "updated_at"} <= columns
+    assert dict(row) == {
+        "active": 1,
+        "priority": 0,
+        "updated_at": "2026-08-27T08:00:00Z",
+    }
 
 
 def test_admin_can_configure_client_visual_effects(

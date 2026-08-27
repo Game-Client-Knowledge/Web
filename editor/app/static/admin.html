@@ -261,8 +261,8 @@
       <div id="siteUpdateFeedback" class="feedback" role="status" aria-live="polite"></div>
       <div class="admin-subsection">
         <div class="subsection-heading">
-          <h3>主动发布公告</h3>
-          <p>发布后，登录用户将在下次页面加载时收到一次公告。</p>
+          <h3>常驻公告</h3>
+          <p>登录用户每次打开页面都会按优先级浏览全部启用公告。</p>
         </div>
         <form id="announcementForm" class="announcement-form">
           <label>
@@ -283,6 +283,18 @@
               placeholder="说明更新内容、影响范围或需要用户关注的事项。"
               required
             ></textarea>
+          </label>
+          <label class="announcement-priority-field">
+            优先级
+            <input
+              name="priority"
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value="0"
+              required
+            >
           </label>
           <div class="section-actions">
             <button class="primary-button" type="submit">

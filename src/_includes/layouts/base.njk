@@ -705,16 +705,28 @@
           </button>
         </header>
         <div
+          class="manual-announcement-progress"
+          data-manual-announcement-progress
+        ></div>
+        <div
           class="manual-announcement-body"
           data-manual-announcement-body
         ></div>
         <footer class="update-announcement-footer">
           <button
+            class="secondary-button"
+            type="button"
+            data-previous-manual-announcement
+            hidden
+          >
+            上一条
+          </button>
+          <button
             class="primary-button"
             type="button"
-            data-close-manual-announcement
+            data-next-manual-announcement
           >
-            知道了
+            下一条
           </button>
         </footer>
       </section>

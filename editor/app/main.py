@@ -215,6 +215,12 @@ class AdminDecisionRequest(BaseModel):
 class AnnouncementRequest(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     body: str = Field(min_length=1, max_length=5000)
+    priority: int = Field(default=0, ge=0, le=100)
+
+
+class AnnouncementUpdateRequest(BaseModel):
+    active: bool | None = None
+    priority: int | None = Field(default=None, ge=0, le=100)
 
 
 def module_root_for_path(value: str) -> str:
@@ -2566,15 +2572,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         with db.connect() as connection:
             row = connection.execute(
                 """
-                SELECT a.id, a.title, a.body, a.published_at,
+                SELECT a.id, a.title, a.body, a.priority, a.published_at,
                        u.username AS published_by
                 FROM announcements a
                 JOIN users u ON u.id = a.created_by
-                ORDER BY a.published_at DESC, a.id DESC
+                WHERE a.active = 1
+                ORDER BY a.priority DESC, a.published_at DESC, a.id DESC
                 LIMIT 1
                 """
             ).fetchone()
         return {"announcement": dict(row) if row else None}
+
+    @app.get("/api/announcements")
+    async def active_announcements(
+        user: dict[str, Any] = Depends(require_ready_user),
+    ) -> dict[str, Any]:
+        del user
+        with db.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT a.id, a.title, a.body, a.priority, a.published_at,
+                       u.username AS published_by
+                FROM announcements a
+                JOIN users u ON u.id = a.created_by
+                WHERE a.active = 1
+                ORDER BY a.priority DESC, a.published_at DESC, a.id DESC
+                LIMIT 20
+                """
+            ).fetchall()
+        return {"items": [dict(row) for row in rows]}
 
     @app.get("/api/repository/file")
     async def repository_file(
@@ -3615,11 +3641,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 dict(row)
                 for row in connection.execute(
                     """
-                    SELECT a.id, a.title, a.body, a.published_at,
+                    SELECT a.id, a.title, a.body, a.active, a.priority,
+                           a.published_at,
                            u.username AS published_by
                     FROM announcements a
                     JOIN users u ON u.id = a.created_by
-                    ORDER BY a.published_at DESC, a.id DESC
+                    ORDER BY a.active DESC, a.priority DESC,
+                             a.published_at DESC, a.id DESC
                     LIMIT 50
                     """
                 ).fetchall()
@@ -4317,14 +4345,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             cursor = connection.execute(
                 """
                 INSERT INTO announcements(
-                    title, body, created_by, published_at, created_at
+                    title, body, created_by, active, priority,
+                    published_at, created_at, updated_at
                 )
-                VALUES(?, ?, ?, ?, ?)
+                VALUES(?, ?, ?, 1, ?, ?, ?, ?)
                 """,
                 (
                     title,
                     body,
                     admin["id"],
+                    payload.priority,
+                    published_at,
                     published_at,
                     published_at,
                 ),
@@ -4341,9 +4372,53 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "id": announcement_id,
             "title": title,
             "body": body,
+            "active": True,
+            "priority": payload.priority,
             "published_by": admin["username"],
             "published_at": published_at,
         }
+
+    @app.patch("/api/admin/announcements/{announcement_id}")
+    async def update_announcement(
+        announcement_id: int,
+        payload: AnnouncementUpdateRequest,
+        request: Request,
+        x_csrf_token: str | None = Header(default=None),
+        admin: dict[str, Any] = Depends(require_admin),
+    ) -> dict[str, Any]:
+        verify_csrf(admin, x_csrf_token)
+        assignments = []
+        values: list[Any] = []
+        if payload.active is not None:
+            assignments.append("active = ?")
+            values.append(1 if payload.active else 0)
+        if payload.priority is not None:
+            assignments.append("priority = ?")
+            values.append(payload.priority)
+        if not assignments:
+            raise HTTPException(status_code=422, detail="没有可更新的公告字段")
+        assignments.append("updated_at = ?")
+        values.append(utc_now())
+        values.append(announcement_id)
+        with db.connect() as connection:
+            updated = connection.execute(
+                f"""
+                UPDATE announcements
+                SET {", ".join(assignments)}
+                WHERE id = ?
+                """,
+                values,
+            )
+        if not updated.rowcount:
+            raise HTTPException(status_code=404, detail="公告不存在")
+        db.audit(
+            "announcement.updated",
+            request_ip(request),
+            user_id=admin["id"],
+            target=str(announcement_id),
+            detail=payload.model_dump_json(exclude_none=True),
+        )
+        return {"ok": True}
 
     @app.post("/api/admin/site-update")
     async def request_site_update(

@@ -5024,6 +5024,13 @@ body.has-comments-open .reader-comments {
   white-space: pre-wrap;
 }
 
+.manual-announcement-progress {
+  margin-top: 20px;
+  color: var(--ink-faint);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+}
+
 .update-announcement-summary {
   display: flex;
   margin: 22px 0;
@@ -5183,6 +5190,7 @@ body.has-comments-open .reader-comments {
   padding-top: 18px;
   border-top: 1px solid var(--line);
   justify-content: flex-end;
+  gap: 9px;
 }
 
 .onboarding-dialog {

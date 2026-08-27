@@ -1051,9 +1051,30 @@ function renderAnnouncements(items) {
   const target = byId("announcementList");
   target.replaceChildren();
   for (const item of items) {
+    const toggle = actionButton(
+      item.active ? "停用" : "启用",
+      item.active ? "danger-button" : "secondary-button",
+      async () => {
+        try {
+          await api(`/admin/announcements/${item.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ active: !item.active })
+          });
+          announcementFeedback(
+            item.active ? "公告已停用。" : "公告已启用。",
+            "success"
+          );
+          await loadOverview();
+        } catch (error) {
+          announcementFeedback(error.message);
+        }
+      }
+    );
     const row = makeRow(
-      item.title,
-      `${item.published_by} · ${formatUpdateTime(item.published_at)}`
+      `${item.title} · ${item.active ? "启用" : "停用"}`,
+      `优先级 ${item.priority} · ${item.published_by} · ` +
+        formatUpdateTime(item.published_at),
+      [toggle]
     );
     const body = document.createElement("p");
     body.textContent = item.body;
@@ -1718,7 +1739,8 @@ byId("announcementForm").addEventListener("submit", async (event) => {
       method: "POST",
       body: JSON.stringify({
         title: form.title.value,
-        body: form.body.value
+        body: form.body.value,
+        priority: Number(form.priority.value)
       })
     });
     form.reset();
