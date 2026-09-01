@@ -5,6 +5,7 @@ import pytest
 from app.star_formulas import (
     DEFAULT_STAR_BRIGHTNESS_RULES,
     DEFAULT_STAR_BRIGHTNESS_TIERS,
+    LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS,
     PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULE_SETS,
     PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS,
     resolved_star_brightness_rules,
@@ -100,23 +101,37 @@ def test_tiers_are_bounded_and_sorted() -> None:
     ]
 
 
-def test_previous_default_tiers_gain_luminous_classes() -> None:
-    tiers = resolved_star_brightness_tiers(
+@pytest.mark.parametrize(
+    "tiers",
+    [
+        LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS,
         PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS,
+    ],
+)
+def test_previous_default_tiers_upgrade_high_brightness_thresholds(
+    tiers: list[dict[str, object]],
+) -> None:
+    tiers = resolved_star_brightness_tiers(
+        tiers,
         0,
         100,
     )
     assert tiers == DEFAULT_STAR_BRIGHTNESS_TIERS
-    assert tiers[-2:] == [
+    assert tiers[-3:] == [
+        {
+            "id": "blue-giant",
+            "name": "蓝巨星",
+            "min_brightness": 85.0,
+        },
         {
             "id": "blue-supergiant",
             "name": "蓝超巨星",
-            "min_brightness": 92.0,
+            "min_brightness": 95.0,
         },
         {
             "id": "hypergiant",
             "name": "特超巨星",
-            "min_brightness": 98.0,
+            "min_brightness": 99.0,
         },
     ]
 

@@ -21,16 +21,22 @@
   const formulaEngine = window.GCK_STAR_FORMULA_ENGINE;
   if (!formulaEngine) return;
 
-  const PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS = [
+  const LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS = [
     { id: "brown-dwarf", name: "褐矮星", min_brightness: 0 },
     { id: "red-dwarf", name: "红矮星", min_brightness: 25 },
     { id: "yellow-dwarf", name: "黄矮星", min_brightness: 50 },
     { id: "blue-giant", name: "蓝巨星", min_brightness: 80 }
   ];
-  const DEFAULT_STAR_BRIGHTNESS_TIERS = [
-    ...PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS,
+  const PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS = [
+    ...LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS,
     { id: "blue-supergiant", name: "蓝超巨星", min_brightness: 92 },
     { id: "hypergiant", name: "特超巨星", min_brightness: 98 }
+  ];
+  const DEFAULT_STAR_BRIGHTNESS_TIERS = [
+    ...LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS.slice(0, 3),
+    { id: "blue-giant", name: "蓝巨星", min_brightness: 85 },
+    { id: "blue-supergiant", name: "蓝超巨星", min_brightness: 95 },
+    { id: "hypergiant", name: "特超巨星", min_brightness: 99 }
   ];
   const defaults = {
     home_background_style: "old_star_map",
@@ -842,21 +848,26 @@
       brightnessMinimum,
       brightnessMax
     );
-    const previousDefaultTiers = formulaEngine.normalizeTiers(
-      PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS,
-      brightnessMinimum,
-      brightnessMax
-    );
-    const usesPreviousDefaultTiers =
-      normalizedTierSource.length === previousDefaultTiers.length &&
-      normalizedTierSource.every((tier, index) => {
-        const previous = previousDefaultTiers[index];
-        return (
-          tier.id === previous.id &&
-          tier.name === previous.name &&
-          tier.min_brightness === previous.min_brightness
-        );
-      });
+    const usesPreviousDefaultTiers = [
+      LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS,
+      PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS
+    ].some((tiers) => {
+      const previous = formulaEngine.normalizeTiers(
+        tiers,
+        brightnessMinimum,
+        brightnessMax
+      );
+      return (
+        normalizedTierSource.length === previous.length &&
+        normalizedTierSource.every((tier, index) => {
+          return (
+            tier.id === previous[index].id &&
+            tier.name === previous[index].name &&
+            tier.min_brightness === previous[index].min_brightness
+          );
+        })
+      );
+    });
     const validTiers = formulaEngine.normalizeTiers(
       usesPreviousDefaultTiers
         ? DEFAULT_STAR_BRIGHTNESS_TIERS

@@ -660,13 +660,15 @@ The built-in brightness tiers are:
 | `brown-dwarf` | 褐矮星 | 0 | Dim red-brown core with ember flicker |
 | `red-dwarf` | 红矮星 | 25 | Compact warm halo with brief flare peaks |
 | `yellow-dwarf` | 黄矮星 | 50 | Warm circulating corona, visible pulsation, four rotating diffraction spikes |
-| `blue-giant` | 蓝巨星 | 80 | Blue-white corona, Airy ring, eight diffraction spikes |
-| `blue-supergiant` | 蓝超巨星 | 92 | Expanded stellar-wind halo and slower variability |
-| `hypergiant` | 特超巨星 | 98 | Broad turbulent corona and strongest low-frequency variability |
+| `blue-giant` | 蓝巨星 | 85 | Blue-white corona, Airy ring, eight diffraction spikes |
+| `blue-supergiant` | 蓝超巨星 | 95 | Expanded stellar-wind halo and slower variability |
+| `hypergiant` | 特超巨星 | 99 | Broad turbulent corona and strongest low-frequency variability |
 
 The effects are generated inside the existing halo, core, and spike point
-shaders. They do not add WebGL draw calls. The previous built-in four-tier
-configuration migrates automatically; a customized tier list is not replaced.
+shaders. They do not add WebGL draw calls. Earlier built-in four-tier and
+six-tier configurations migrate automatically; a customized tier list is not
+replaced. The `0`, `25`, and `50` low-brightness thresholds remain stable while
+the high-brightness thresholds are deliberately more selective.
 
 Every built-in tier has a distinct and visually detectable time-domain
 profile: brown dwarfs flicker like embers, red dwarfs produce brief flare
