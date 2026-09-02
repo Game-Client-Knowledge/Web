@@ -372,8 +372,10 @@ Reading metrics come from aggregate anonymous site analytics. Code systems sum
 their member files. Contributor stars sum each distinct file attributed to
 that contributor. The default final rule leaves scores through `50` unchanged,
 then scales only the excess using views, total reading time, and average
-reading time. This preserves the low-brightness curve while making luminous
-tiers depend on both content production and sustained readership.
+reading time. Excess retention ranges from `35%` without readership to `125%`
+when all engagement inputs saturate; normal range clamping still caps final
+brightness at `100`. This preserves the low-brightness curve while making
+luminous tiers depend on both content production and sustained readership.
 
 The runtime stores:
 

@@ -262,9 +262,10 @@ unchanged. Only the portion above `50` is scaled by total views, total reading
 time, and average reading time. Static contributors receive the aggregate
 readership of files they contributed to. This keeps low-brightness
 classification stable while requiring both contribution and sustained
-readership for blue-giant classes. The previously active production curve and
-earlier built-in defaults migrate to this curve; unrelated administrator
-customizations remain unchanged.
+readership for blue-giant classes. The excess retention ranges from `35%` to
+`125%`; the final score remains clamped to the configured maximum. The
+previously active production curve and earlier built-in defaults migrate to
+this curve; unrelated administrator customizations remain unchanged.
 
 Configurable tier thresholds classify the formula result. Classification uses
 base brightness only, so optional random variation cannot move a star between

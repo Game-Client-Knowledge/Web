@@ -217,6 +217,27 @@ assert.equal(
   100,
   "sustained readership can retain the full high-brightness score"
 );
+assert.equal(
+  engine.calculateBrightness(
+    {
+      kind: "contributor",
+      metrics: {
+        viewCount: 10000,
+        readingSeconds: 1000000,
+        averageReadingSeconds: 900
+      }
+    },
+    [
+      { target: "contributor", formula: "80" },
+      contributorGate
+    ],
+    0,
+    15,
+    100
+  ),
+  87.5,
+  "fully saturated engagement should retain 125% of brightness above 50"
+);
 
 const previousDefaults = [
   {
