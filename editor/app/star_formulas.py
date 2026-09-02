@@ -326,7 +326,7 @@ LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS = [
     {"id": "yellow-dwarf", "name": "黄矮星", "min_brightness": 50.0},
     {"id": "blue-giant", "name": "蓝巨星", "min_brightness": 80.0},
 ]
-DEFAULT_STAR_BRIGHTNESS_TIERS = [
+UNLIMITED_DEFAULT_STAR_BRIGHTNESS_TIERS = [
     *LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS,
     {
         "id": "blue-supergiant",
@@ -334,6 +334,27 @@ DEFAULT_STAR_BRIGHTNESS_TIERS = [
         "min_brightness": 92.0,
     },
     {"id": "hypergiant", "name": "特超巨星", "min_brightness": 98.0},
+]
+DEFAULT_STAR_BRIGHTNESS_TIERS = [
+    *LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS[:3],
+    {
+        "id": "blue-giant",
+        "name": "蓝巨星",
+        "min_brightness": 80.0,
+        "max_count": 5,
+    },
+    {
+        "id": "blue-supergiant",
+        "name": "蓝超巨星",
+        "min_brightness": 92.0,
+        "max_count": 2,
+    },
+    {
+        "id": "hypergiant",
+        "name": "特超巨星",
+        "min_brightness": 98.0,
+        "max_count": 1,
+    },
 ]
 PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS = [
     *LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS[:3],
@@ -499,6 +520,7 @@ def resolved_star_brightness_tiers(
     source = value if isinstance(value, list) else DEFAULT_STAR_BRIGHTNESS_TIERS
     if source in (
         LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS,
+        UNLIMITED_DEFAULT_STAR_BRIGHTNESS_TIERS,
         PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS,
     ):
         source = DEFAULT_STAR_BRIGHTNESS_TIERS
@@ -512,6 +534,11 @@ def resolved_star_brightness_tiers(
         name = str(item.get("name", "")).strip()
         try:
             threshold = float(item.get("min_brightness"))
+        except (TypeError, ValueError):
+            continue
+        raw_limit = item.get("max_count")
+        try:
+            limit = None if raw_limit in (None, "") else int(raw_limit)
         except (TypeError, ValueError):
             continue
         threshold = max(0, min(100, threshold))
@@ -529,6 +556,11 @@ def resolved_star_brightness_tiers(
                 "id": tier_id,
                 "name": name[:80],
                 "min_brightness": threshold,
+                **(
+                    {"max_count": max(0, min(10000, limit))}
+                    if limit is not None
+                    else {}
+                ),
             }
         )
     if not tiers:

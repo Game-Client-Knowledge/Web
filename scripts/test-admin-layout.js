@@ -162,13 +162,15 @@ assert.match(html, /id="starBrightnessRuleList"/);
 assert.match(html, /id="starBrightnessTierList"/);
 assert.match(html, /id="addStarBrightnessRule"/);
 assert.match(html, /id="addStarBrightnessTier"/);
+assert.match(html, /数量上限留空表示不限/);
+assert.match(javascript, /tier\.max_count/);
 assert.match(html, /id="starFormulaVariableReference"/);
 assert.match(html, /id="starFormulaFunctionReference"/);
 assert.match(html, /star-formula-engine\.js/);
 assert.match(
   html,
-  /star-formula-engine\.js\?v=total-relations-v1/,
-  "the admin formula engine URL must invalidate the pre-variable bundle"
+  /star-formula-engine\.js\?v=brightness-ranking-v1/,
+  "the admin formula engine URL must invalidate the pre-ranking bundle"
 );
 assert.doesNotMatch(html, /star-formula-engine\.js\?v=2/);
 assert.match(html, /id="commentAgentForm"/);

@@ -242,8 +242,10 @@ while normal star movement continues.
 
 Rules execute in administrator-defined list order. Every rule selects static
 contributors or moving documents/code systems and returns the next current
-brightness. The result is clamped to the configured minimum and maximum after
-each formula.
+brightness. Intermediate results are not clamped, so later rules can use values
+above the configured display maximum. After every star finishes its rule
+pipeline, raw brightness values are ranked globally and only then mapped into
+the configured display range.
 
 The expression engine supports `+ - * / % ^`, parentheses, `pi`, `e`, and
 common functions including `sin`, `cos`, `exp`, `log`, `sqrt`, `pow`, `min`,
@@ -270,6 +272,12 @@ this curve; unrelated administrator customizations remain unchanged.
 Configurable tier thresholds classify the formula result. Classification uses
 base brightness only, so optional random variation cannot move a star between
 tiers.
+
+Each tier may define a maximum count. Ranked stars take the highest tier they
+naturally qualify for while capacity remains; overflow falls to the next lower
+tier and is never promoted to fill an empty slot. The built-in luminous limits
+are five blue giants, two blue supergiants, and one hypergiant. Unlimited lower
+tiers preserve the existing low-brightness distribution.
 
 Optional random variation interpolates between bounded offsets. The
 administrator controls the offset magnitude, interpolation duration, and

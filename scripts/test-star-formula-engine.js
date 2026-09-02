@@ -130,6 +130,12 @@ assert.deepEqual(
         formula: "current_brightness + 100"
       },
       {
+        id: "after-cap",
+        name: "超限后继续计算",
+        target: "document",
+        formula: "current_brightness - 30"
+      },
+      {
         id: "ignored",
         name: "静星规则",
         target: "contributor",
@@ -142,9 +148,11 @@ assert.deepEqual(
   ),
   {
     initial: 10,
+    raw: 84,
     final: 80,
     minimum: 5,
     maximum: 80,
+    clamped: true,
     steps: [
       {
         id: "reference",
@@ -158,9 +166,17 @@ assert.deepEqual(
         id: "cap",
         name: "上限测试",
         before: 14,
-        after: 80,
-        delta: 66,
-        clamped: true
+        after: 114,
+        delta: 100,
+        clamped: false
+      },
+      {
+        id: "after-cap",
+        name: "超限后继续计算",
+        before: 114,
+        after: 84,
+        delta: -30,
+        clamped: false
       }
     ]
   }
@@ -436,9 +452,19 @@ const tiers = [
   { id: "brown", name: "褐矮星", min_brightness: 0 },
   { id: "red", name: "红矮星", min_brightness: 25 },
   { id: "yellow", name: "黄矮星", min_brightness: 50 },
-  { id: "blue", name: "蓝巨星", min_brightness: 80 },
-  { id: "blue-supergiant", name: "蓝超巨星", min_brightness: 92 },
-  { id: "hypergiant", name: "特超巨星", min_brightness: 98 }
+  { id: "blue", name: "蓝巨星", min_brightness: 80, max_count: 2 },
+  {
+    id: "blue-supergiant",
+    name: "蓝超巨星",
+    min_brightness: 92,
+    max_count: 2
+  },
+  {
+    id: "hypergiant",
+    name: "特超巨星",
+    min_brightness: 98,
+    max_count: 1
+  }
 ];
 assert.equal(engine.brightnessTier(10, tiers).name, "褐矮星");
 assert.equal(engine.brightnessTier(50, tiers).name, "黄矮星");
@@ -451,6 +477,32 @@ assert.equal(
     [{ id: "red", name: "红矮星", min_brightness: 25 }]
   ),
   null
+);
+const ranked = engine.allocateBrightnessRanks(
+  [150, 140, 130, 120, 110, 90, 70].map((raw, index) => ({
+    id: `star-${index}`,
+    brightnessDetails: { raw }
+  })),
+  tiers,
+  0,
+  100
+);
+assert.deepEqual(
+  ranked.map((item) => ({
+    tier: item.tier?.id,
+    brightness: Number(item.finalBrightness.toFixed(1)),
+    slot: item.tierSlot,
+    limit: item.tierLimit
+  })),
+  [
+    { tier: "hypergiant", brightness: 100, slot: 1, limit: 1 },
+    { tier: "blue-supergiant", brightness: 97.9, slot: 1, limit: 2 },
+    { tier: "blue-supergiant", brightness: 97.8, slot: 2, limit: 2 },
+    { tier: "blue", brightness: 91.9, slot: 1, limit: 2 },
+    { tier: "blue", brightness: 91.8, slot: 2, limit: 2 },
+    { tier: "yellow", brightness: 79.9, slot: 1, limit: undefined },
+    { tier: "yellow", brightness: 70, slot: 2, limit: undefined }
+  ]
 );
 
 process.stdout.write("Star formula engine checks passed\n");

@@ -275,7 +275,10 @@ async function runScenario(browser, scenario) {
   assert.match(coverage, /关系/);
   assert.match(coverage, /星体等级/);
   assert.match(coverage, /黄矮星/);
-  assert.match(coverage, /基础亮度/);
+  assert.match(coverage, /规则亮度/);
+  assert.match(coverage, /最终亮度/);
+  assert.match(coverage, /亮度排名/);
+  assert.match(coverage, /等级名额/);
   assert.match(coverage, /亮度计算/);
   assert.match(coverage, /初始亮度\s+25\.0/);
   assert.match(coverage, /Visual contributor\s+\+40\.0 → 65\.0/);
@@ -330,14 +333,15 @@ async function runScenario(browser, scenario) {
       `${scenario.name}: single path did not prune tree branches`
     );
   }
-  assert.ok(
-    await page.locator(".star-map-label:not([hidden])").isVisible(),
-    `${scenario.name}: contributor label is missing`
+  const selectedLabel = page.locator(
+    ".star-map-label:not(.star-map-hover-label)"
   );
-  assert.match(
-    await page.locator(".star-map-label:not([hidden])").innerText(),
-    /黄矮星 · 65\.0/
+  assert.equal(
+    await selectedLabel.isVisible(),
+    scenario.viewport.width > 700,
+    `${scenario.name}: contributor label visibility is invalid`
   );
+  assert.match(await selectedLabel.innerText(), /黄矮星 · 65\.0/);
   const labelOverlapsPanel = await page.evaluate(() => {
     const panel = document.querySelector(".star-coverage-panel");
     const label = document.querySelector(

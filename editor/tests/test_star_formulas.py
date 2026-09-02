@@ -8,6 +8,7 @@ from app.star_formulas import (
     LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS,
     PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULE_SETS,
     PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS,
+    UNLIMITED_DEFAULT_STAR_BRIGHTNESS_TIERS,
     resolved_star_brightness_rules,
     resolved_star_brightness_tiers,
     validate_star_formula,
@@ -105,6 +106,7 @@ def test_tiers_are_bounded_and_sorted() -> None:
     "tiers",
     [
         LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS,
+        UNLIMITED_DEFAULT_STAR_BRIGHTNESS_TIERS,
         PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS,
     ],
 )
@@ -122,16 +124,19 @@ def test_previous_default_tiers_restore_standard_thresholds(
             "id": "blue-giant",
             "name": "蓝巨星",
             "min_brightness": 80.0,
+            "max_count": 5,
         },
         {
             "id": "blue-supergiant",
             "name": "蓝超巨星",
             "min_brightness": 92.0,
+            "max_count": 2,
         },
         {
             "id": "hypergiant",
             "name": "特超巨星",
             "min_brightness": 98.0,
+            "max_count": 1,
         },
     ]
 

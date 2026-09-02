@@ -327,7 +327,10 @@ array. Active pruning only changes selected-edge emphasis.
 ## 9. Brightness Pipeline
 
 Logical brightness starts at `home_star_brightness_initial`, executes enabled
-formula rules in list order, and clamps each result to
+formula rules in list order without clamping intermediate results. The raw
+result may exceed `home_star_brightness_max` and remains available to later
+rules and global ranking. After all stars are evaluated, ranking and tier
+capacity produce the final value inside
 `[home_star_brightness_min, home_star_brightness_max]`. Defaults are `0`, `10`,
 and `100`. A rule targets either `contributor` (static star) or `document`
 (moving document/code-system star).
@@ -418,10 +421,10 @@ base brightness:
 
 The coverage panel also shows a compact calculation trace. It starts with the
 configured initial brightness, then lists each applicable enabled rule by name
-with its signed contribution and resulting brightness. Formula source is not
-shown. A step that reaches the configured minimum or maximum is marked as
-clamped. The displayed classification and trace stay stable while rendering
-variation animates.
+with its signed contribution and unbounded result. Formula source is not shown.
+The panel then records the rule-factory result, global rank, tier slot/capacity,
+and final display brightness. The displayed classification and trace stay
+stable while rendering variation animates.
 
 ## 10. Rendering Lifecycle
 
@@ -429,13 +432,14 @@ variation animates.
 
 1. read first-frame cached settings;
 2. merge a revision-matched contribution graph when available;
-3. calculate base brightness;
-4. assign deterministic positions, velocity, and color;
-5. render complete normal relations according to visibility;
-6. apply traversal after a click;
-7. calculate relation coverage;
-8. prune only the active visual relations;
-9. clear relation state and labels on independent timers.
+3. calculate unbounded raw brightness;
+4. rank stars and enforce tier capacities;
+5. assign deterministic positions, velocity, and color;
+6. render complete normal relations according to visibility;
+7. apply traversal after a click;
+8. calculate relation coverage;
+9. prune only the active visual relations;
+10. clear relation state and labels on independent timers.
 
 Contributor stars are static. Document and code-system stars move.
 
@@ -649,7 +653,7 @@ Main settings:
 | `home_star_brightness_initial` | `0..100`, inside configured bounds |
 | `home_star_brightness_max` | `1..100` |
 | `home_star_brightness_rules` | Ordered formula rules, at most 50 |
-| `home_star_brightness_tiers` | 1 to 20 unique thresholds in `0..100`; unreachable tiers are preserved |
+| `home_star_brightness_tiers` | 1 to 20 unique thresholds in `0..100`; optional per-tier `max_count` is `0..10000` |
 | `home_star_brightness_variation_amount` | `0..20` |
 | `home_star_brightness_transition_ms` | `100..10000` |
 | `home_star_brightness_interval_ms` | `200..30000` |
@@ -672,14 +676,14 @@ default.
 
 The built-in brightness tiers are:
 
-| ID | Name | Minimum | Visual treatment |
+| ID | Name | Minimum / capacity | Visual treatment |
 | --- | --- | ---: | --- |
 | `brown-dwarf` | 褐矮星 | 0 | Dim red-brown core with ember flicker |
 | `red-dwarf` | 红矮星 | 25 | Compact warm halo with brief flare peaks |
 | `yellow-dwarf` | 黄矮星 | 50 | Warm circulating corona, visible pulsation, four rotating diffraction spikes |
-| `blue-giant` | 蓝巨星 | 80 | Blue-white corona, Airy ring, eight diffraction spikes |
-| `blue-supergiant` | 蓝超巨星 | 92 | Expanded stellar-wind halo and slower variability |
-| `hypergiant` | 特超巨星 | 98 | Broad turbulent corona and strongest low-frequency variability |
+| `blue-giant` | 蓝巨星 | 80, max 5 | Blue-white corona, Airy ring, eight diffraction spikes |
+| `blue-supergiant` | 蓝超巨星 | 92, max 2 | Expanded stellar-wind halo and slower variability |
+| `hypergiant` | 特超巨星 | 98, max 1 | Broad turbulent corona and strongest low-frequency variability |
 
 The effects are generated inside the existing halo, core, and spike point
 shaders. They do not add WebGL draw calls. Earlier built-in four-tier and the

@@ -280,6 +280,7 @@ class StarBrightnessTierRequest(BaseModel):
     id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
     name: str = Field(min_length=1, max_length=80)
     min_brightness: float = Field(ge=0, le=100)
+    max_count: int | None = Field(default=None, ge=0, le=10000)
 
 
 class VisualSettingsRequest(BaseModel):
@@ -4259,7 +4260,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "home_star_brightness_tiers": json.dumps(
                 [
-                    tier.model_dump()
+                    tier.model_dump(exclude_none=True)
                     for tier in sorted(
                         payload.home_star_brightness_tiers,
                         key=lambda item: item.min_brightness,
@@ -4293,6 +4294,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
         response_payload = {
             **payload.model_dump(),
+            "home_star_brightness_tiers": [
+                tier.model_dump(exclude_none=True)
+                for tier in payload.home_star_brightness_tiers
+            ],
             "home_intro_enabled": intro_mode != "off",
             "home_intro_mode": intro_mode,
             "home_intro_duration_ms": total_duration_ms,

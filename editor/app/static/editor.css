@@ -2287,7 +2287,11 @@ dialog::backdrop {
 
 .star-tier-row {
   align-items: end;
-  grid-template-columns: minmax(0, 1fr) minmax(130px, 0.5fr) 36px;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(120px, 0.45fr)
+    minmax(140px, 0.5fr)
+    36px;
 }
 
 .star-formula-reference {

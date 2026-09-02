@@ -1063,7 +1063,7 @@
         <fieldset class="star-rule-editor">
           <legend>公式规则引擎</legend>
           <p class="star-rule-note">
-            规则按列表顺序执行，每条公式的结果成为下一条规则的当前亮度。
+            规则按列表顺序执行且可超过亮度上限；全部规则完成后统一截断并排名。
           </p>
           <div id="starBrightnessRuleList" class="star-rule-list"></div>
           <div class="star-rule-add">
@@ -1084,7 +1084,7 @@
         <fieldset class="star-rule-editor">
           <legend>星体等级</legend>
           <p class="star-rule-note">
-            等级仅按公式计算后的基础亮度判定，不包含随机浮动亮度。
+            等级按规则原始亮度从高到低分配。数量上限留空表示不限，填 0 可禁用该等级；低分星不会补位晋升。
           </p>
           <div id="starBrightnessTierList" class="star-tier-list"></div>
           <div class="star-rule-add">
@@ -1443,7 +1443,7 @@
 
   <script src="../assets/vendor/lucide.js"></script>
   <script
-    src="../assets/vendor/star-formula-engine.js?v=total-relations-v1"
+    src="../assets/vendor/star-formula-engine.js?v=brightness-ranking-v1"
   ></script>
   <script src="assets/admin.js"></script>
 </body>

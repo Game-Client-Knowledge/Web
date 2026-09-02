@@ -27,10 +27,31 @@
     { id: "yellow-dwarf", name: "黄矮星", min_brightness: 50 },
     { id: "blue-giant", name: "蓝巨星", min_brightness: 80 }
   ];
-  const DEFAULT_STAR_BRIGHTNESS_TIERS = [
+  const UNLIMITED_DEFAULT_STAR_BRIGHTNESS_TIERS = [
     ...LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS,
     { id: "blue-supergiant", name: "蓝超巨星", min_brightness: 92 },
     { id: "hypergiant", name: "特超巨星", min_brightness: 98 }
+  ];
+  const DEFAULT_STAR_BRIGHTNESS_TIERS = [
+    ...LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS.slice(0, 3),
+    {
+      id: "blue-giant",
+      name: "蓝巨星",
+      min_brightness: 80,
+      max_count: 5
+    },
+    {
+      id: "blue-supergiant",
+      name: "蓝超巨星",
+      min_brightness: 92,
+      max_count: 2
+    },
+    {
+      id: "hypergiant",
+      name: "特超巨星",
+      min_brightness: 98,
+      max_count: 1
+    }
   ];
   const PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS = [
     ...LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS.slice(0, 3),
@@ -893,6 +914,7 @@
     );
     const usesPreviousDefaultTiers = [
       LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS,
+      UNLIMITED_DEFAULT_STAR_BRIGHTNESS_TIERS,
       PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS
     ].some((tiers) => {
       const previous = formulaEngine.normalizeTiers(
@@ -906,7 +928,8 @@
           return (
             tier.id === previous[index].id &&
             tier.name === previous[index].name &&
-            tier.min_brightness === previous[index].min_brightness
+            tier.min_brightness === previous[index].min_brightness &&
+            tier.max_count === previous[index].max_count
           );
         })
       );
@@ -1290,7 +1313,10 @@
       "<small data-star-coverage-kind></small>" +
       "<dl>" +
       "<div><dt>星体等级</dt><dd data-star-coverage-tier></dd></div>" +
-      "<div><dt>基础亮度</dt><dd data-star-coverage-brightness></dd></div>" +
+      "<div><dt>规则亮度</dt><dd data-star-coverage-raw-brightness></dd></div>" +
+      "<div><dt>最终亮度</dt><dd data-star-coverage-brightness></dd></div>" +
+      "<div><dt>亮度排名</dt><dd data-star-coverage-rank></dd></div>" +
+      "<div><dt>等级名额</dt><dd data-star-coverage-tier-limit></dd></div>" +
       "<div><dt>点亮星体</dt><dd data-star-coverage-total></dd></div>" +
       "<div><dt>静星</dt><dd data-star-coverage-contributors></dd></div>" +
       "<div><dt>动星</dt><dd data-star-coverage-documents></dd></div>" +
@@ -1360,10 +1386,17 @@
         return {
           name: step.name,
           value:
-            `${delta} → ${step.after.toFixed(1)}` +
-            (step.clamped ? " · 已限幅" : "")
+            `${delta} → ${step.after.toFixed(1)}`
         };
-      })
+      }),
+      { name: "规则工厂结果", value: details.raw.toFixed(1) },
+      {
+        name: "排名与容量",
+        value:
+          `${details.final - details.raw >= 0 ? "+" : ""}` +
+          `${(details.final - details.raw).toFixed(1)} → ` +
+          details.final.toFixed(1)
+      }
     ];
     list.replaceChildren(
       ...rows.map((row) => {
@@ -1443,14 +1476,28 @@
         index
       };
     });
-    for (const star of stars) {
-      star.brightnessTier = formulaEngine.brightnessTier(
-        star.baseBrightness,
-        runtimeSettings.home_star_brightness_tiers,
-        runtimeSettings.home_star_brightness_min,
-        runtimeSettings.home_star_brightness_max
-      );
-    }
+    const brightnessAllocations = formulaEngine.allocateBrightnessRanks(
+      stars,
+      runtimeSettings.home_star_brightness_tiers,
+      runtimeSettings.home_star_brightness_min,
+      runtimeSettings.home_star_brightness_max
+    );
+    stars.forEach((star, index) => {
+      const allocation = brightnessAllocations[index];
+      star.rawBrightness = allocation.rawBrightness;
+      star.baseBrightness = allocation.finalBrightness;
+      star.brightnessRank = allocation.rank;
+      star.brightnessTier = allocation.tier;
+      star.brightnessTierSlot = allocation.tierSlot;
+      star.brightnessTierLimit = allocation.tierLimit;
+      star.brightnessDetails = {
+        ...star.brightnessDetails,
+        final: allocation.finalBrightness,
+        natural: allocation.naturalBrightness,
+        rank: allocation.rank,
+        quotaAdjusted: allocation.quotaAdjusted
+      };
+    });
     const starById = new Map(stars.map((star) => [star.id, star]));
     const edges = sourceGraph.edges.filter((edge) => {
       return starById.has(edge.source) && starById.has(edge.target);
@@ -2047,9 +2094,19 @@
         selectedStar ? starKindName(selectedStar) : "";
       panel.querySelector("[data-star-coverage-tier]").textContent =
         selectedStar?.brightnessTier?.name || "未分级";
+      panel.querySelector(
+        "[data-star-coverage-raw-brightness]"
+      ).textContent = selectedStar.rawBrightness.toFixed(1);
       panel.querySelector("[data-star-coverage-brightness]").textContent =
         `${selectedStar.baseBrightness.toFixed(1)} / ` +
         `${runtimeSettings.home_star_brightness_max}`;
+      panel.querySelector("[data-star-coverage-rank]").textContent =
+        `#${selectedStar.brightnessRank} / ${stars.length}`;
+      panel.querySelector("[data-star-coverage-tier-limit]").textContent =
+        selectedStar.brightnessTierLimit === undefined
+          ? "不限"
+          : `${selectedStar.brightnessTierSlot} / ` +
+            `${selectedStar.brightnessTierLimit}`;
       renderBrightnessBreakdown(panel, selectedStar);
       panel.querySelector("[data-star-coverage-total]").textContent =
         `${previewIds.size} / ${stars.length} · ` +

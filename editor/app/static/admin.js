@@ -583,6 +583,23 @@ function renderStarBrightnessTiers() {
         renderStarBrightnessTiers();
       });
       thresholdLabel.append(threshold);
+      const limitLabel = document.createElement("label");
+      limitLabel.textContent = "数量上限（留空不限）";
+      const limit = document.createElement("input");
+      limit.type = "number";
+      limit.min = "0";
+      limit.max = "10000";
+      limit.step = "1";
+      limit.placeholder = "不限";
+      limit.value =
+        tier.max_count === null || tier.max_count === undefined
+          ? ""
+          : String(tier.max_count);
+      limit.addEventListener("input", () => {
+        tier.max_count =
+          limit.value === "" ? null : Math.floor(Number(limit.value));
+      });
+      limitLabel.append(limit);
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "icon-button";
@@ -596,7 +613,7 @@ function renderStarBrightnessTiers() {
         );
         renderStarBrightnessTiers();
       });
-      row.append(nameLabel, thresholdLabel, remove);
+      row.append(nameLabel, thresholdLabel, limitLabel, remove);
       target.append(row);
     });
   byId("addStarBrightnessTier").disabled =
@@ -1412,7 +1429,8 @@ byId("addStarBrightnessTier").addEventListener("click", () => {
   state.starBrightnessTiers.push({
     id: createConfigurationId("tier"),
     name: "新星体等级",
-    min_brightness: threshold
+    min_brightness: threshold,
+    max_count: null
   });
   renderStarBrightnessTiers();
 });

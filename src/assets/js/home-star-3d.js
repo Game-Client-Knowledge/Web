@@ -828,15 +828,29 @@
         index
       };
     });
-    for (const star of stars) {
-      star.brightnessTier = formulaEngine.brightnessTier(
-        star.baseBrightness,
-        runtimeSettings.home_star_brightness_tiers,
-        runtimeSettings.home_star_brightness_min,
-        runtimeSettings.home_star_brightness_max
-      );
+    const brightnessAllocations = formulaEngine.allocateBrightnessRanks(
+      stars,
+      runtimeSettings.home_star_brightness_tiers,
+      runtimeSettings.home_star_brightness_min,
+      runtimeSettings.home_star_brightness_max
+    );
+    stars.forEach((star, index) => {
+      const allocation = brightnessAllocations[index];
+      star.rawBrightness = allocation.rawBrightness;
+      star.baseBrightness = allocation.finalBrightness;
+      star.brightnessRank = allocation.rank;
+      star.brightnessTier = allocation.tier;
+      star.brightnessTierSlot = allocation.tierSlot;
+      star.brightnessTierLimit = allocation.tierLimit;
+      star.brightnessDetails = {
+        ...star.brightnessDetails,
+        final: allocation.finalBrightness,
+        natural: allocation.naturalBrightness,
+        rank: allocation.rank,
+        quotaAdjusted: allocation.quotaAdjusted
+      };
       star.colorGain = starColorGain(star);
-    }
+    });
     const starById = new Map(stars.map((star) => [star.id, star]));
     const edges = sourceGraph.edges.filter((edge) => {
       return starById.has(edge.source) && starById.has(edge.target);
@@ -3387,9 +3401,19 @@
         selectedStar ? starKindName(selectedStar) : "";
       panel.querySelector("[data-star-coverage-tier]").textContent =
         selectedStar?.brightnessTier?.name || "未分级";
+      panel.querySelector(
+        "[data-star-coverage-raw-brightness]"
+      ).textContent = selectedStar.rawBrightness.toFixed(1);
       panel.querySelector("[data-star-coverage-brightness]").textContent =
         `${selectedStar.baseBrightness.toFixed(1)} / ` +
         `${runtimeSettings.home_star_brightness_max}`;
+      panel.querySelector("[data-star-coverage-rank]").textContent =
+        `#${selectedStar.brightnessRank} / ${stars.length}`;
+      panel.querySelector("[data-star-coverage-tier-limit]").textContent =
+        selectedStar.brightnessTierLimit === undefined
+          ? "不限"
+          : `${selectedStar.brightnessTierSlot} / ` +
+            `${selectedStar.brightnessTierLimit}`;
       host.renderBrightnessBreakdown(panel, selectedStar);
       panel.querySelector("[data-star-coverage-total]").textContent =
         `${previewIds.size} / ${stars.length} · ` +

@@ -1546,6 +1546,10 @@ body[data-editor-state="loading"] [data-account-label] {
     bottom: 12px;
     width: min(300px, calc(100vw - 24px));
   }
+
+  body:has(.star-coverage-panel:not([hidden])) .star-map-label {
+    display: none;
+  }
 }
 
 .library-intro-overlay {
