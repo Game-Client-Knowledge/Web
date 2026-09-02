@@ -82,7 +82,7 @@ def test_contributor_total_upgrades_inside_partially_customized_rules() -> None:
         "min(1, log(1 + modification_30_count / log(501)))"
     )
     resolved = resolved_star_brightness_rules(rules)
-    assert "total_relation_count" in resolved[0]["formula"]
+    assert "brightness_span * 0.65" in resolved[0]["formula"]
     assert resolved[1]["formula"] == rules[1]["formula"]
 
 
@@ -108,7 +108,7 @@ def test_tiers_are_bounded_and_sorted() -> None:
         PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS,
     ],
 )
-def test_previous_default_tiers_upgrade_high_brightness_thresholds(
+def test_previous_default_tiers_restore_standard_thresholds(
     tiers: list[dict[str, object]],
 ) -> None:
     tiers = resolved_star_brightness_tiers(
@@ -121,17 +121,17 @@ def test_previous_default_tiers_upgrade_high_brightness_thresholds(
         {
             "id": "blue-giant",
             "name": "蓝巨星",
-            "min_brightness": 85.0,
+            "min_brightness": 80.0,
         },
         {
             "id": "blue-supergiant",
             "name": "蓝超巨星",
-            "min_brightness": 95.0,
+            "min_brightness": 92.0,
         },
         {
             "id": "hypergiant",
             "name": "特超巨星",
-            "min_brightness": 99.0,
+            "min_brightness": 98.0,
         },
     ]
 

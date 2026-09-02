@@ -16,7 +16,7 @@ for (const relative of [
   );
 }
 
-assert.equal(engine.VARIABLE_DEFINITIONS.length, 18);
+assert.equal(engine.VARIABLE_DEFINITIONS.length, 21);
 assert.ok(
   engine.VARIABLE_DEFINITIONS.every((definition) => {
     return (
@@ -40,15 +40,19 @@ assert.equal(engine.evaluateFormula("pow(3, 2) + sqrt(16)", {}), 13);
 
 assert.deepEqual(
   engine.validateFormula(
-    "current_brightness + reference_count * 2 + total_relation_count"
+    "current_brightness + reference_count * 2 + total_relation_count + " +
+      "view_count + reading_seconds + average_reading_seconds"
   ),
   {
     valid: true,
     message: "",
     variables: [
+      "average_reading_seconds",
       "current_brightness",
+      "reading_seconds",
       "reference_count",
-      "total_relation_count"
+      "total_relation_count",
+      "view_count"
     ]
   }
 );
@@ -71,7 +75,10 @@ const star = {
     activity30Count: 8,
     modification7Count: 13,
     modification30Count: 21,
-    contributorCount: 2
+    contributorCount: 2,
+    viewCount: 34,
+    readingSeconds: 2100,
+    averageReadingSeconds: 61.76
   }
 };
 const rules = [
@@ -105,6 +112,110 @@ assert.equal(
     80
   ),
   80
+);
+assert.deepEqual(
+  engine.calculateBrightnessDetails(
+    star,
+    [
+      {
+        id: "reference",
+        name: "引用关系",
+        target: "document",
+        formula: "current_brightness + reference_count * 2"
+      },
+      {
+        id: "cap",
+        name: "上限测试",
+        target: "document",
+        formula: "current_brightness + 100"
+      },
+      {
+        id: "ignored",
+        name: "静星规则",
+        target: "contributor",
+        formula: "max_brightness"
+      }
+    ],
+    5,
+    10,
+    80
+  ),
+  {
+    initial: 10,
+    final: 80,
+    minimum: 5,
+    maximum: 80,
+    steps: [
+      {
+        id: "reference",
+        name: "引用关系",
+        before: 10,
+        after: 14,
+        delta: 4,
+        clamped: false
+      },
+      {
+        id: "cap",
+        name: "上限测试",
+        before: 14,
+        after: 80,
+        delta: 66,
+        clamped: true
+      }
+    ]
+  }
+);
+const contributorGate = engine.DEFAULT_BRIGHTNESS_RULES.find(
+  (rule) => rule.id === "contributor-luminous-engagement"
+);
+assert.equal(
+  engine.calculateBrightness(
+    { kind: "contributor", metrics: {} },
+    [
+      { target: "contributor", formula: "49" },
+      contributorGate
+    ],
+    0,
+    15,
+    100
+  ),
+  49,
+  "the high-brightness gate must not alter low-brightness stars"
+);
+assert.equal(
+  engine.calculateBrightness(
+    { kind: "contributor", metrics: {} },
+    [
+      { target: "contributor", formula: "100" },
+      contributorGate
+    ],
+    0,
+    15,
+    100
+  ),
+  67.5,
+  "a star without readership must not retain saturated brightness"
+);
+assert.equal(
+  engine.calculateBrightness(
+    {
+      kind: "contributor",
+      metrics: {
+        viewCount: 10000,
+        readingSeconds: 1000000,
+        averageReadingSeconds: 900
+      }
+    },
+    [
+      { target: "contributor", formula: "100" },
+      contributorGate
+    ],
+    0,
+    15,
+    100
+  ),
+  100,
+  "sustained readership can retain the full high-brightness score"
 );
 
 const previousDefaults = [
@@ -158,16 +269,59 @@ assert.deepEqual(
   engine.migrateDefaultBrightnessRules(previousDefaults),
   engine.DEFAULT_BRIGHTNESS_RULES
 );
-const rebalancedDefaults = engine.DEFAULT_BRIGHTNESS_RULES.map((rule) => ({
+const rebalancedDefaults = previousDefaults.map((rule) => ({
   ...rule,
-  formula:
-    rule.id === "contributor-total"
-      ? "current_brightness + brightness_span * 0.40 * " +
-        "min(1, log(1 + contribution_count) / log(250001))"
-      : rule.formula
+  formula: {
+    "contributor-total":
+      "current_brightness + brightness_span * 0.40 * " +
+      "min(1, log(1 + contribution_count) / log(250001))",
+    "contributor-recent":
+      "current_brightness + brightness_span * 0.05 * " +
+      "min(1, log(1 + modification_30_count) / log(5001))",
+    "document-reference":
+      "current_brightness + brightness_span * 0.22 * " +
+      "min(1, sqrt((reference_count + referenced_by_count) / 24))",
+    "document-contributors":
+      "current_brightness + brightness_span * 0.06 * " +
+      "min(1, log(1 + contributor_count) / log(9))",
+    "document-recent":
+      "current_brightness + brightness_span * 0.06 * " +
+      "min(1, log(1 + modification_30_count) / log(2001))"
+  }[rule.id]
 }));
 assert.deepEqual(
   engine.migrateDefaultBrightnessRules(rebalancedDefaults),
+  engine.DEFAULT_BRIGHTNESS_RULES
+);
+const productionDefaults = [
+  {
+    ...previousDefaults[0],
+    formula:
+      "current_brightness + brightness_span * 0.65 * " +
+      "min(1,(1 + contribution_count) / (1+ total_relation_count))"
+  },
+  {
+    ...previousDefaults[1],
+    name: "静星30日修改",
+    formula:
+      "current_brightness + brightness_span * 0.15 * " +
+      "min(1,log10(0.1 + 9.9*activity_30_count / 10))"
+  },
+  {
+    id: "rule-3f239463",
+    name: "静星7日修改",
+    enabled: true,
+    target: "contributor",
+    formula:
+      "current_brightness * (0.25 * " +
+      "log10(0.1 + 9.9*activity_7_count / 10) + 1)"
+  },
+  previousDefaults[2],
+  previousDefaults[3],
+  previousDefaults[4]
+];
+assert.deepEqual(
+  engine.migrateDefaultBrightnessRules(productionDefaults),
   engine.DEFAULT_BRIGHTNESS_RULES
 );
 const partiallyCustomizedDefaults = previousDefaults.map((rule) => ({
@@ -181,7 +335,7 @@ const partiallyMigrated = engine.migrateDefaultBrightnessRules(
 );
 assert.match(
   partiallyMigrated[0].formula,
-  /total_relation_count/
+  /brightness_span \* 0\.65/
 );
 assert.equal(
   partiallyMigrated[1].formula,

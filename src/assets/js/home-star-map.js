@@ -27,12 +27,12 @@
     { id: "yellow-dwarf", name: "黄矮星", min_brightness: 50 },
     { id: "blue-giant", name: "蓝巨星", min_brightness: 80 }
   ];
-  const PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS = [
+  const DEFAULT_STAR_BRIGHTNESS_TIERS = [
     ...LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS,
     { id: "blue-supergiant", name: "蓝超巨星", min_brightness: 92 },
     { id: "hypergiant", name: "特超巨星", min_brightness: 98 }
   ];
-  const DEFAULT_STAR_BRIGHTNESS_TIERS = [
+  const PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS = [
     ...LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS.slice(0, 3),
     { id: "blue-giant", name: "蓝巨星", min_brightness: 85 },
     { id: "blue-supergiant", name: "蓝超巨星", min_brightness: 95 },
@@ -124,7 +124,7 @@
   let ready = false;
   const legacyRuleIds = new Map([
     ["contributor_contribution_count", "contributor-total"],
-    ["contributor_recent_activity", "contributor-recent"],
+    ["contributor_recent_activity", "contributor-recent-30"],
     ["document_reference_degree", "document-reference"],
     ["document_contributor_count", "document-contributors"],
     ["document_recent_activity", "document-recent"]
@@ -661,7 +661,12 @@
         .filter((star) => star.kind === "document")
         .map((star) => ({
           ...star,
-          metrics: { ...(star.metrics || {}) }
+          metrics: {
+            ...(star.metrics || {}),
+            viewCount: 0,
+            readingSeconds: 0,
+            averageReadingSeconds: 0
+          }
         })),
       edges: source.edges.filter((edge) => edge.type !== "contribution")
     };
@@ -687,8 +692,27 @@
     const contributors = new Map(
       []
     );
+    const contributorByStarId = new Map();
     const contributorSets = new Map();
     const contributionEdges = new Map();
+
+    for (const item of cached.file_analytics || []) {
+      const documentStar = documentForPath(item.path);
+      if (!documentStar) continue;
+      documentStar.metrics.viewCount += Math.max(
+        0,
+        Number(item.view_count) || 0
+      );
+      documentStar.metrics.readingSeconds += Math.max(
+        0,
+        Number(item.reading_seconds) || 0
+      );
+    }
+    for (const documentStar of documents.values()) {
+      documentStar.metrics.averageReadingSeconds =
+        documentStar.metrics.readingSeconds /
+        Math.max(1, documentStar.metrics.viewCount);
+    }
 
     for (const link of cached.links) {
       const documentStar = documentForPath(link.path);
@@ -713,12 +737,16 @@
               sourceMetrics.contributionCount || 0
             ),
             commitCount: Number(sourceMetrics.commitCount || 0),
-            lastActiveAt: String(sourceMetrics.lastActiveAt || "")
+            lastActiveAt: String(sourceMetrics.lastActiveAt || ""),
+            viewCount: 0,
+            readingSeconds: 0,
+            averageReadingSeconds: 0
           },
           hasStaticMetrics: Boolean(staticMetrics)
         };
         result.stars.push(contributorStar);
         contributors.set(contributorId, contributorStar);
+        contributorByStarId.set(contributorStar.id, contributorStar);
       }
       if (!contributorStar.hasStaticMetrics) {
         contributorStar.metrics.commitCount += Number(
@@ -774,6 +802,21 @@
     for (const documentStar of documents.values()) {
       documentStar.metrics.contributorCount =
         contributorSets.get(documentStar.id)?.size || 0;
+      for (const contributorStarId of (
+        contributorSets.get(documentStar.id) || []
+      )) {
+        const contributorStar = contributorByStarId.get(contributorStarId);
+        if (!contributorStar) continue;
+        contributorStar.metrics.viewCount +=
+          documentStar.metrics.viewCount;
+        contributorStar.metrics.readingSeconds +=
+          documentStar.metrics.readingSeconds;
+      }
+    }
+    for (const contributorStar of contributors.values()) {
+      contributorStar.metrics.averageReadingSeconds =
+        contributorStar.metrics.readingSeconds /
+        Math.max(1, contributorStar.metrics.viewCount);
     }
     return result;
   }
@@ -1253,6 +1296,10 @@
       "<div><dt>动星</dt><dd data-star-coverage-documents></dd></div>" +
       "<div><dt>关系</dt><dd data-star-coverage-relations></dd></div>" +
       "</dl>" +
+      '<section class="star-brightness-breakdown">' +
+      "<strong>亮度计算</strong>" +
+      '<ol data-star-brightness-steps></ol>' +
+      "</section>" +
       '<div class="star-relation-legend" aria-label="联系图例">' +
       '<span data-relation-type="strong">强联系</span>' +
       '<span data-relation-type="reference">引用</span>' +
@@ -1299,6 +1346,54 @@
     );
   }
 
+  function renderBrightnessBreakdown(panel, star) {
+    const list = panel.querySelector("[data-star-brightness-steps]");
+    const details = star?.brightnessDetails;
+    if (!list || !details) return;
+    const rows = [
+      { name: "初始亮度", value: details.initial.toFixed(1) },
+      ...details.steps.map((step) => {
+        const delta =
+          Math.abs(step.delta) < 0.05
+            ? "0.0"
+            : `${step.delta > 0 ? "+" : ""}${step.delta.toFixed(1)}`;
+        return {
+          name: step.name,
+          value:
+            `${delta} → ${step.after.toFixed(1)}` +
+            (step.clamped ? " · 已限幅" : "")
+        };
+      })
+    ];
+    list.replaceChildren(
+      ...rows.map((row) => {
+        const item = document.createElement("li");
+        const name = document.createElement("span");
+        const value = document.createElement("output");
+        name.textContent = row.name;
+        value.textContent = row.value;
+        item.append(name, value);
+        return item;
+      })
+    );
+  }
+
+  function positionStarLabel(x, y, width, height, panel) {
+    if (!panel || panel.hidden) return { x, y };
+    const panelRect = panel.getBoundingClientRect();
+    const overlaps =
+      x < panelRect.right &&
+      x + width > panelRect.left &&
+      y < panelRect.bottom &&
+      y + height > panelRect.top;
+    if (!overlaps) return { x, y };
+    const gap = 8;
+    const above = panelRect.top - height - gap;
+    if (above >= gap) return { x, y: above };
+    const left = panelRect.left - width - gap;
+    return left >= gap ? { x: left, y } : { x, y };
+  }
+
   function createContributionMap(runtimeSettings) {
     document.body.classList.remove("home-stars-old");
     document.body.classList.toggle(
@@ -1320,30 +1415,34 @@
     const cached = readContributionGraph();
     const sourceGraph = graphWithCachedContributions(graph, cached);
     const random = seededRandom(hashSeed(`${graph.revision}:contribution-stars`));
-    const stars = sourceGraph.stars.map((source, index) => ({
-      ...source,
-      metrics: { ...(source.metrics || {}) },
-      x: 0,
-      y: 0,
-      vx: source.kind === "document" ? (random() - 0.5) * 0.18 : 0,
-      vy: source.kind === "document" ? (random() - 0.5) * 0.18 : 0,
-      baseBrightness: formulaEngine.calculateBrightness(
+    const stars = sourceGraph.stars.map((source, index) => {
+      const brightnessDetails = formulaEngine.calculateBrightnessDetails(
         source,
         runtimeSettings.home_star_brightness_rules,
         runtimeSettings.home_star_brightness_min,
         runtimeSettings.home_star_brightness_initial,
         runtimeSettings.home_star_brightness_max,
         { totalRelationCount: sourceGraph.edges.length }
-      ),
-      variationFrom: 0,
-      variationTo: 0,
-      variationStartedAt: 0,
-      variationNextAt: 0,
-      color: runtimeSettings.home_star_color_random_enabled
-        ? pickStarColor(random)
-        : "#ffffff",
-      index
-    }));
+      );
+      return {
+        ...source,
+        metrics: { ...(source.metrics || {}) },
+        x: 0,
+        y: 0,
+        vx: source.kind === "document" ? (random() - 0.5) * 0.18 : 0,
+        vy: source.kind === "document" ? (random() - 0.5) * 0.18 : 0,
+        baseBrightness: brightnessDetails.final,
+        brightnessDetails,
+        variationFrom: 0,
+        variationTo: 0,
+        variationStartedAt: 0,
+        variationNextAt: 0,
+        color: runtimeSettings.home_star_color_random_enabled
+          ? pickStarColor(random)
+          : "#ffffff",
+        index
+      };
+    });
     for (const star of stars) {
       star.brightnessTier = formulaEngine.brightnessTier(
         star.baseBrightness,
@@ -1842,8 +1941,16 @@
           offset.top + labelStar.y - 18
         )
       );
+      const position = positionStarLabel(
+        x,
+        y,
+        labelWidth,
+        labelHeight,
+        panel
+      );
       label.style.transform =
-        `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+        `translate3d(${Math.round(position.x)}px, ` +
+        `${Math.round(position.y)}px, 0)`;
     }
 
     function updateHoverLabel() {
@@ -1873,8 +1980,16 @@
           offset.top + hoverStar.y - 18
         )
       );
+      const position = positionStarLabel(
+        x,
+        y,
+        labelWidth,
+        labelHeight,
+        panel
+      );
       hoverLabel.style.transform =
-        `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+        `translate3d(${Math.round(position.x)}px, ` +
+        `${Math.round(position.y)}px, 0)`;
     }
 
     function draw(time) {
@@ -1935,6 +2050,7 @@
       panel.querySelector("[data-star-coverage-brightness]").textContent =
         `${selectedStar.baseBrightness.toFixed(1)} / ` +
         `${runtimeSettings.home_star_brightness_max}`;
+      renderBrightnessBreakdown(panel, selectedStar);
       panel.querySelector("[data-star-coverage-total]").textContent =
         `${previewIds.size} / ${stars.length} · ` +
         percentage(previewIds.size, stars.length);
@@ -2339,6 +2455,8 @@
       starDisplayName,
       starKindName,
       starLabelText,
+      renderBrightnessBreakdown,
+      positionStarLabel,
       hashSeed,
       seededRandom,
       fallback2D: () => createContributionMap(runtimeSettings)

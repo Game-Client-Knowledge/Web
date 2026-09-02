@@ -276,6 +276,9 @@ async function runScenario(browser, scenario) {
   assert.match(coverage, /星体等级/);
   assert.match(coverage, /黄矮星/);
   assert.match(coverage, /基础亮度/);
+  assert.match(coverage, /亮度计算/);
+  assert.match(coverage, /初始亮度\s+25\.0/);
+  assert.match(coverage, /Visual contributor\s+\+40\.0 → 65\.0/);
   const selectionMetrics = await page.evaluate(() => {
     const canvas = document.querySelector("[data-knowledge-field]");
     return {
@@ -335,6 +338,25 @@ async function runScenario(browser, scenario) {
     await page.locator(".star-map-label:not([hidden])").innerText(),
     /黄矮星 · 65\.0/
   );
+  const labelOverlapsPanel = await page.evaluate(() => {
+    const panel = document.querySelector(".star-coverage-panel");
+    const label = document.querySelector(
+      ".star-map-label:not(.star-map-hover-label)"
+    );
+    const panelRect = panel.getBoundingClientRect();
+    const labelRect = label.getBoundingClientRect();
+    return !(
+      labelRect.right <= panelRect.left ||
+      labelRect.left >= panelRect.right ||
+      labelRect.bottom <= panelRect.top ||
+      labelRect.top >= panelRect.bottom
+    );
+  });
+  assert.equal(
+    labelOverlapsPanel,
+    false,
+    `${scenario.name}: star label overlaps the profile panel`
+  );
   const selectedScreenshotPath = path.join(
     outputDirectory,
     `${scenario.name}-selected.png`
@@ -355,7 +377,9 @@ async function runScenario(browser, scenario) {
   );
   await page.waitForTimeout(800);
   assert.equal(
-    await page.locator(".star-map-label").isVisible(),
+    await page.locator(
+      ".star-map-label:not(.star-map-hover-label)"
+    ).isVisible(),
     false,
     `${scenario.name}: label did not expire independently`
   );

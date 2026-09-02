@@ -360,6 +360,18 @@ def contribution_graph_payload(db: Database) -> dict[str, Any]:
               AND github_login IS NOT NULL
             """
         ).fetchall()
+        analytics_rows = connection.execute(
+            """
+            SELECT
+                path,
+                COALESCE(SUM(view_count), 0) AS view_count,
+                COALESCE(SUM(reading_seconds), 0) AS reading_seconds
+            FROM content_analytics_daily
+            GROUP BY path
+            HAVING SUM(view_count) > 0 OR SUM(reading_seconds) > 0
+            ORDER BY path
+            """
+        ).fetchall()
         canonical_names = _canonical_contributor_names(connection)
     graph_settings = {row["key"]: row["value"] for row in settings_rows}
     try:
@@ -427,6 +439,7 @@ def contribution_graph_payload(db: Database) -> dict[str, Any]:
         "version": graph_version,
         "revision": graph_settings.get("contribution_graph_revision", ""),
         "identity_aliases": identity_aliases,
+        "file_analytics": [dict(row) for row in analytics_rows],
         "links": [
             {
                 **dict(row),

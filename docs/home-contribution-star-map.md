@@ -255,14 +255,16 @@ Relation metrics always come from the complete graph. Illumination direction,
 depth, and minimal-tree display only change the selected set and highlighted
 lines; they do not change computed brightness.
 
-The default curve keeps bright tiers selective. Contributor totals and recent
-changes use `0.40` and `0.05` of the configured brightness span, normalized
-against the complete graph's `total_relation_count` and `5000` recent lines.
-Documents use `0.22` for references, `0.08` for strong relations, `0.06` for
-contributor count, and `0.06` for recent changes. Reference degree is normalized
-against `24`, strong relations against `12`, and recent changes against `2000`.
-Existing databases that still contain an earlier unmodified default rule set
-are upgraded to this curve; administrator-customized formulas remain unchanged.
+The default curve keeps bright tiers selective with a final engagement gate.
+Existing contribution, activity, relation, and modification rules first
+calculate the same score as before. Scores at or below `50` pass through
+unchanged. Only the portion above `50` is scaled by total views, total reading
+time, and average reading time. Static contributors receive the aggregate
+readership of files they contributed to. This keeps low-brightness
+classification stable while requiring both contribution and sustained
+readership for blue-giant classes. The previously active production curve and
+earlier built-in defaults migrate to this curve; unrelated administrator
+customizations remain unchanged.
 
 Configurable tier thresholds classify the formula result. Classification uses
 base brightness only, so optional random variation cannot move a star between

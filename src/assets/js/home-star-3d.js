@@ -801,29 +801,33 @@
         ? [1, 1 - amount * 0.1, 1 - amount * 0.26]
         : [1 - amount * 0.18, 1 - amount * 0.055, 1];
     }
-    const stars = sourceGraph.stars.map((source, index) => ({
-      ...source,
-      metrics: { ...(source.metrics || {}) },
-      x: 0,
-      y: 0,
-      z: 0,
-      vx: 0,
-      vy: 0,
-      vz: 0,
-      baseBrightness: formulaEngine.calculateBrightness(
+    const stars = sourceGraph.stars.map((source, index) => {
+      const brightnessDetails = formulaEngine.calculateBrightnessDetails(
         source,
         runtimeSettings.home_star_brightness_rules,
         runtimeSettings.home_star_brightness_min,
         runtimeSettings.home_star_brightness_initial,
         runtimeSettings.home_star_brightness_max,
         { totalRelationCount: sourceGraph.edges.length }
-      ),
-      variationFrom: 0,
-      variationTo: 0,
-      variationStartedAt: 0,
-      variationNextAt: 0,
-      index
-    }));
+      );
+      return {
+        ...source,
+        metrics: { ...(source.metrics || {}) },
+        x: 0,
+        y: 0,
+        z: 0,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        baseBrightness: brightnessDetails.final,
+        brightnessDetails,
+        variationFrom: 0,
+        variationTo: 0,
+        variationStartedAt: 0,
+        variationNextAt: 0,
+        index
+      };
+    });
     for (const star of stars) {
       star.brightnessTier = formulaEngine.brightnessTier(
         star.baseBrightness,
@@ -3237,8 +3241,16 @@
           offset.top + projected.y - 18
         )
       );
+      const position = host.positionStarLabel(
+        x,
+        y,
+        labelWidth,
+        labelHeight,
+        panel
+      );
       label.style.transform =
-        `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+        `translate3d(${Math.round(position.x)}px, ` +
+        `${Math.round(position.y)}px, 0)`;
     }
 
     function updateHoverLabel() {
@@ -3277,8 +3289,16 @@
           offset.top + projected.y - 18
         )
       );
+      const position = host.positionStarLabel(
+        x,
+        y,
+        labelWidth,
+        labelHeight,
+        panel
+      );
       hoverLabel.style.transform =
-        `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+        `translate3d(${Math.round(position.x)}px, ` +
+        `${Math.round(position.y)}px, 0)`;
     }
 
     function draw(time) {
@@ -3370,6 +3390,7 @@
       panel.querySelector("[data-star-coverage-brightness]").textContent =
         `${selectedStar.baseBrightness.toFixed(1)} / ` +
         `${runtimeSettings.home_star_brightness_max}`;
+      host.renderBrightnessBreakdown(panel, selectedStar);
       panel.querySelector("[data-star-coverage-total]").textContent =
         `${previewIds.size} / ${stars.length} · ` +
         percentage(previewIds.size, stars.length);

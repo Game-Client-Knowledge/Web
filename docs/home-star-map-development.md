@@ -358,12 +358,22 @@ The browser evaluates a separate JSEP AST allowlist and never uses `eval`.
 | `contribution_count` | Contributor lifetime changed-line total |
 | `contributor_count` | Document/code-system contributor count |
 | `commit_count` | Contributor lifetime commit count |
+| `view_count` | Document views, or views earned by a contributor's files |
+| `reading_seconds` | Document reading time, or time earned by a contributor's files |
+| `average_reading_seconds` | Reading time divided by views |
 | `total_relation_count` | Complete graph edge count before visual pruning |
 
 Relation variables come from the complete embedded graph. Traversal direction,
 depth, BFS, and active-edge pruning do not change them. Code-system recent
 metrics aggregate all member files and deduplicate commits. The 7/30-day
 windows end at build time, not at the newest commit timestamp.
+
+Reading metrics come from aggregate anonymous site analytics. Code systems sum
+their member files. Contributor stars sum each distinct file attributed to
+that contributor. The default final rule leaves scores through `50` unchanged,
+then scales only the excess using views, total reading time, and average
+reading time. This preserves the low-brightness curve while making luminous
+tiers depend on both content production and sustained readership.
 
 The runtime stores:
 
@@ -404,7 +414,12 @@ base brightness:
 黄矮星 · 56.8 / 100
 ```
 
-The displayed classification stays stable while rendering variation animates.
+The coverage panel also shows a compact calculation trace. It starts with the
+configured initial brightness, then lists each applicable enabled rule by name
+with its signed contribution and resulting brightness. Formula source is not
+shown. A step that reaches the configured minimum or maximum is marked as
+clamped. The displayed classification and trace stay stable while rendering
+variation animates.
 
 ## 10. Rendering Lifecycle
 
@@ -660,15 +675,15 @@ The built-in brightness tiers are:
 | `brown-dwarf` | 褐矮星 | 0 | Dim red-brown core with ember flicker |
 | `red-dwarf` | 红矮星 | 25 | Compact warm halo with brief flare peaks |
 | `yellow-dwarf` | 黄矮星 | 50 | Warm circulating corona, visible pulsation, four rotating diffraction spikes |
-| `blue-giant` | 蓝巨星 | 85 | Blue-white corona, Airy ring, eight diffraction spikes |
-| `blue-supergiant` | 蓝超巨星 | 95 | Expanded stellar-wind halo and slower variability |
-| `hypergiant` | 特超巨星 | 99 | Broad turbulent corona and strongest low-frequency variability |
+| `blue-giant` | 蓝巨星 | 80 | Blue-white corona, Airy ring, eight diffraction spikes |
+| `blue-supergiant` | 蓝超巨星 | 92 | Expanded stellar-wind halo and slower variability |
+| `hypergiant` | 特超巨星 | 98 | Broad turbulent corona and strongest low-frequency variability |
 
 The effects are generated inside the existing halo, core, and spike point
-shaders. They do not add WebGL draw calls. Earlier built-in four-tier and
-six-tier configurations migrate automatically; a customized tier list is not
-replaced. The `0`, `25`, and `50` low-brightness thresholds remain stable while
-the high-brightness thresholds are deliberately more selective.
+shaders. They do not add WebGL draw calls. Earlier built-in four-tier and the
+briefly deployed raised-threshold configuration migrate back to these standard
+thresholds; an unrelated customized tier list is not replaced. High-brightness
+selectivity belongs to the calculation rules rather than the tier boundaries.
 
 Every built-in tier has a distinct and visually detectable time-domain
 profile: brown dwarfs flicker like embers, red dwarfs produce brief flare

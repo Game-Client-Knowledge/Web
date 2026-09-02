@@ -63,6 +63,11 @@ Contributor totals are calculated at query time by joining file totals to
 view of a shared file counts once for each contributor currently associated
 with that file.
 
+The public contribution-graph payload includes only aggregate per-file views
+and reading seconds. The star map maps these totals to document/code-system
+stars and attributes each distinct file to its contributors. Device hashes and
+daily device rows are never exposed.
+
 ## Client behavior
 
 `src/assets/js/site-analytics.js` runs on static site pages after the main

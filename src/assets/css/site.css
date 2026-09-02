@@ -1384,7 +1384,9 @@ body[data-editor-state="loading"] [data-account-label] {
   z-index: 150;
   top: calc(var(--header-height) + 18px);
   right: 18px;
-  width: min(250px, calc(100vw - 36px));
+  width: min(280px, calc(100vw - 36px));
+  max-height: calc(100vh - var(--header-height) - 36px);
+  max-height: calc(100svh - var(--header-height) - 36px);
   padding: 13px 14px;
   color: #dcebe6;
   background: rgba(7, 17, 15, 0.88);
@@ -1392,6 +1394,7 @@ body[data-editor-state="loading"] [data-account-label] {
   border-radius: 5px;
   box-shadow: 0 14px 36px rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(6px);
+  overflow-y: auto;
 }
 
 .star-coverage-panel > span {
@@ -1445,6 +1448,50 @@ body[data-editor-state="loading"] [data-account-label] {
 .star-coverage-panel dd {
   color: #ffffff;
   font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+.star-brightness-breakdown {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(156, 224, 205, 0.16);
+}
+
+.star-brightness-breakdown > strong {
+  display: block;
+  color: #9ce0cd;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.star-brightness-breakdown ol {
+  display: grid;
+  margin: 7px 0 0;
+  padding: 0;
+  gap: 5px;
+  list-style: none;
+}
+
+.star-brightness-breakdown li {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.star-brightness-breakdown li span {
+  min-width: 0;
+  color: #9fb2ab;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.star-brightness-breakdown output {
+  flex: none;
+  color: #ffffff;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .star-relation-legend {

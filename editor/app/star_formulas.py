@@ -24,6 +24,9 @@ STAR_FORMULA_VARIABLES = {
     "contribution_count",
     "contributor_count",
     "commit_count",
+    "view_count",
+    "reading_seconds",
+    "average_reading_seconds",
     "total_relation_count",
     "pi",
     "e",
@@ -109,6 +112,70 @@ PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULES = [
     },
 ]
 
+PREVIOUS_PRODUCTION_STAR_BRIGHTNESS_RULES = [
+    {
+        "id": "contributor-total",
+        "name": "静星累计贡献",
+        "enabled": True,
+        "target": "contributor",
+        "formula": (
+            "current_brightness + brightness_span * 0.65 * "
+            "min(1,(1 + contribution_count) / "
+            "(1+ total_relation_count))"
+        ),
+    },
+    {
+        "id": "contributor-recent",
+        "name": "静星30日修改",
+        "enabled": True,
+        "target": "contributor",
+        "formula": (
+            "current_brightness + brightness_span * 0.15 * "
+            "min(1,log10(0.1 + 9.9*activity_30_count / 10))"
+        ),
+    },
+    {
+        "id": "rule-3f239463",
+        "name": "静星7日修改",
+        "enabled": True,
+        "target": "contributor",
+        "formula": (
+            "current_brightness * (0.25 * "
+            "log10(0.1 + 9.9*activity_7_count / 10) + 1)"
+        ),
+    },
+    {
+        "id": "document-reference",
+        "name": "动星引用关系",
+        "enabled": True,
+        "target": "document",
+        "formula": (
+            "current_brightness + brightness_span * 0.25 * "
+            "min(1, sqrt((reference_count + referenced_by_count) / 12))"
+        ),
+    },
+    {
+        "id": "document-contributors",
+        "name": "动星贡献者",
+        "enabled": True,
+        "target": "document",
+        "formula": (
+            "current_brightness + brightness_span * 0.10 * "
+            "min(1, log(1 + contributor_count) / log(9))"
+        ),
+    },
+    {
+        "id": "document-recent",
+        "name": "动星近期修改",
+        "enabled": True,
+        "target": "document",
+        "formula": (
+            "current_brightness + brightness_span * 0.10 * "
+            "min(1, log(1 + modification_30_count) / log(501))"
+        ),
+    },
+]
+
 PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULE_SETS = [
     PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULES,
     [
@@ -153,6 +220,7 @@ PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULE_SETS = [
         }
         for rule in PREVIOUS_DEFAULT_STAR_BRIGHTNESS_RULES
     ],
+    PREVIOUS_PRODUCTION_STAR_BRIGHTNESS_RULES,
 ]
 
 DEFAULT_STAR_BRIGHTNESS_RULES = [
@@ -162,19 +230,42 @@ DEFAULT_STAR_BRIGHTNESS_RULES = [
         "enabled": True,
         "target": "contributor",
         "formula": (
-            "current_brightness + brightness_span * 0.40 * "
-            "min(1, log(1 + contribution_count) / "
-            "log(1 + total_relation_count))"
+            "current_brightness + brightness_span * 0.65 * "
+            "min(1, (1 + contribution_count) / "
+            "(1 + total_relation_count))"
         ),
     },
     {
-        "id": "contributor-recent",
-        "name": "静星近期修改",
+        "id": "contributor-recent-30",
+        "name": "静星 30 日修改",
         "enabled": True,
         "target": "contributor",
         "formula": (
-            "current_brightness + brightness_span * 0.05 * "
-            "min(1, log(1 + modification_30_count) / log(5001))"
+            "current_brightness + brightness_span * 0.15 * "
+            "min(1, log10(0.1 + 9.9 * activity_30_count / 10))"
+        ),
+    },
+    {
+        "id": "contributor-recent-7",
+        "name": "静星 7 日修改",
+        "enabled": True,
+        "target": "contributor",
+        "formula": (
+            "current_brightness * (1 + 0.25 * "
+            "log10(0.1 + 9.9 * activity_7_count / 10))"
+        ),
+    },
+    {
+        "id": "contributor-luminous-engagement",
+        "name": "静星高亮阅览门槛",
+        "enabled": True,
+        "target": "contributor",
+        "formula": (
+            "min(current_brightness, 50) + "
+            "max(0, current_brightness - 50) * (0.35 + "
+            "0.30 * min(1, log(1 + reading_seconds) / log(1000001)) + "
+            "0.20 * min(1, log(1 + view_count) / log(10001)) + "
+            "0.15 * min(1, sqrt(average_reading_seconds / 900)))"
         ),
     },
     {
@@ -183,18 +274,8 @@ DEFAULT_STAR_BRIGHTNESS_RULES = [
         "enabled": True,
         "target": "document",
         "formula": (
-            "current_brightness + brightness_span * 0.22 * "
-            "min(1, sqrt((reference_count + referenced_by_count) / 24))"
-        ),
-    },
-    {
-        "id": "document-strong",
-        "name": "动星强联系",
-        "enabled": True,
-        "target": "document",
-        "formula": (
-            "current_brightness + brightness_span * 0.08 * "
-            "min(1, sqrt(strong_relation_count / 12))"
+            "current_brightness + brightness_span * 0.25 * "
+            "min(1, sqrt((reference_count + referenced_by_count) / 12))"
         ),
     },
     {
@@ -203,7 +284,7 @@ DEFAULT_STAR_BRIGHTNESS_RULES = [
         "enabled": True,
         "target": "document",
         "formula": (
-            "current_brightness + brightness_span * 0.06 * "
+            "current_brightness + brightness_span * 0.10 * "
             "min(1, log(1 + contributor_count) / log(9))"
         ),
     },
@@ -213,8 +294,21 @@ DEFAULT_STAR_BRIGHTNESS_RULES = [
         "enabled": True,
         "target": "document",
         "formula": (
-            "current_brightness + brightness_span * 0.06 * "
-            "min(1, log(1 + modification_30_count) / log(2001))"
+            "current_brightness + brightness_span * 0.10 * "
+            "min(1, log(1 + modification_30_count) / log(501))"
+        ),
+    },
+    {
+        "id": "document-luminous-engagement",
+        "name": "动星高亮阅览门槛",
+        "enabled": True,
+        "target": "document",
+        "formula": (
+            "min(current_brightness, 50) + "
+            "max(0, current_brightness - 50) * (0.35 + "
+            "0.30 * min(1, log(1 + reading_seconds) / log(1000001)) + "
+            "0.20 * min(1, log(1 + view_count) / log(10001)) + "
+            "0.15 * min(1, sqrt(average_reading_seconds / 900)))"
         ),
     },
 ]
@@ -232,7 +326,7 @@ LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS = [
     {"id": "yellow-dwarf", "name": "黄矮星", "min_brightness": 50.0},
     {"id": "blue-giant", "name": "蓝巨星", "min_brightness": 80.0},
 ]
-PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS = [
+DEFAULT_STAR_BRIGHTNESS_TIERS = [
     *LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS,
     {
         "id": "blue-supergiant",
@@ -241,7 +335,7 @@ PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS = [
     },
     {"id": "hypergiant", "name": "特超巨星", "min_brightness": 98.0},
 ]
-DEFAULT_STAR_BRIGHTNESS_TIERS = [
+PREVIOUS_DEFAULT_STAR_BRIGHTNESS_TIERS = [
     *LEGACY_DEFAULT_STAR_BRIGHTNESS_TIERS[:3],
     {"id": "blue-giant", "name": "蓝巨星", "min_brightness": 85.0},
     {
@@ -254,7 +348,7 @@ DEFAULT_STAR_BRIGHTNESS_TIERS = [
 
 LEGACY_STAR_BRIGHTNESS_RULE_IDS = {
     "contributor_contribution_count": "contributor-total",
-    "contributor_recent_activity": "contributor-recent",
+    "contributor_recent_activity": "contributor-recent-30",
     "document_reference_degree": "document-reference",
     "document_contributor_count": "document-contributors",
     "document_recent_activity": "document-recent",

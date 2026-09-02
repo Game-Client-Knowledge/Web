@@ -827,6 +827,23 @@ def test_line_attribution_and_comment_threads(client: TestClient) -> None:
         ).fetchone()
         assert alias["contributor_id"] == f"user:{author['user']['id']}"
         connection.execute("DELETE FROM contributor_identity_aliases")
+        connection.execute(
+            """
+            INSERT INTO content_analytics_daily(
+                day, path, view_count, reading_seconds,
+                first_seen_at, last_seen_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "2026-08-20",
+                "knowledge/cpp/example.md",
+                7,
+                420,
+                "2026-08-20T00:00:00+00:00",
+                "2026-08-20T00:07:00+00:00",
+            ),
+        )
     graph = client.get("/api/config").json()["contribution_graph"]
     assert graph["version"] == 2
     assert graph["revision"] == "a" * 40
@@ -872,6 +889,13 @@ def test_line_attribution_and_comment_threads(client: TestClient) -> None:
             author_identity,
         ]
     }
+    assert graph["file_analytics"] == [
+        {
+            "path": "knowledge/cpp/example.md",
+            "view_count": 7,
+            "reading_seconds": 420,
+        }
+    ]
 
     created = client.post(
         "/api/comments",

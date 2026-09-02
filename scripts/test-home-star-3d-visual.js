@@ -364,6 +364,13 @@ async function inspectContributorIdentityMerge(browser) {
             identity_aliases: {
               [registeredId]: [staticContributors[0].contributorId]
             },
+            file_analytics: [
+              {
+                path: links[0].path,
+                view_count: 7,
+                reading_seconds: 420
+              }
+            ],
             links
           }
         }
@@ -384,7 +391,13 @@ async function inspectContributorIdentityMerge(browser) {
         id: star.contributorId,
         name: star.name,
         metrics: star.metrics
-      }))
+      })),
+      analyticsDocument: window.__GCK_STAR3D_DEBUG.stars.find((star) => {
+        return (
+          star.kind === "document" &&
+          Number(star.metrics?.viewCount) === 7
+        );
+      })?.metrics
     };
   });
   assert.equal(metrics.runtime.length, 2);
@@ -415,6 +428,15 @@ async function inspectContributorIdentityMerge(browser) {
   assert.ok(
     metrics.runtime.some((item) => item.name === "External Alias")
   );
+  const registered = metrics.runtime.find(
+    (item) => item.id === "user:visual-fixture"
+  );
+  assert.equal(registered.metrics.viewCount, 7);
+  assert.equal(registered.metrics.readingSeconds, 420);
+  assert.equal(registered.metrics.averageReadingSeconds, 60);
+  assert.equal(metrics.analyticsDocument.viewCount, 7);
+  assert.equal(metrics.analyticsDocument.readingSeconds, 420);
+  assert.equal(metrics.analyticsDocument.averageReadingSeconds, 60);
   assert.deepEqual(errors, [], "contributor identity merge: browser errors");
   await context.close();
   console.log(
@@ -607,6 +629,7 @@ async function inspectHoverPreview(browser) {
       }
     }
     const panelRect = panel.getBoundingClientRect();
+    const labelRect = hoverLabel.getBoundingClientRect();
     const panelStyle = getComputedStyle(panel);
     return {
       calls: debug.renderer.info.render.calls,
@@ -619,7 +642,12 @@ async function inspectHoverPreview(browser) {
         panel.querySelector("[data-star-coverage-name]").textContent,
       panelTotal:
         panel.querySelector("[data-star-coverage-total]").textContent,
+      brightnessSteps:
+        panel.querySelector("[data-star-brightness-steps]").innerText,
+      brightnessStepCount:
+        panel.querySelectorAll("[data-star-brightness-steps] li").length,
       panelRect: panelRect.toJSON(),
+      labelRect: labelRect.toJSON(),
       panelDisplay: panelStyle.display,
       panelVisibility: panelStyle.visibility,
       labelVisible: !hoverLabel.hidden,
@@ -640,11 +668,20 @@ async function inspectHoverPreview(browser) {
   assert.equal(metrics.panelMode, "hover");
   assert.equal(metrics.panelName, target.name);
   assert.match(metrics.panelTotal, new RegExp(`^${target.selectedCount} /`));
+  assert.match(metrics.brightnessSteps, /初始亮度\s+25\.0/);
+  assert.ok(metrics.brightnessStepCount >= 2);
   assert.notEqual(metrics.panelDisplay, "none");
   assert.equal(metrics.panelVisibility, "visible");
   assert.ok(metrics.panelRect.right <= 1440);
   assert.ok(metrics.panelRect.top >= 0);
   assert.equal(metrics.labelVisible, true);
+  assert.ok(
+    metrics.labelRect.right <= metrics.panelRect.left ||
+      metrics.labelRect.left >= metrics.panelRect.right ||
+      metrics.labelRect.bottom <= metrics.panelRect.top ||
+      metrics.labelRect.top >= metrics.panelRect.bottom,
+    "hover label overlaps the profile panel"
+  );
   assert.ok(metrics.labelText.startsWith(`${target.name} ·`));
   assert.ok(
     metrics.paintedPixels > 0,
